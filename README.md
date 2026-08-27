@@ -77,3 +77,4 @@ flowchart TB
 - Later: add remote state and CI/CD when collaboration or automation requires them.
 - Before production: decide whether to use a regional cluster.
 - See [decisions.md](decisions.md) for decisions and alternatives.
+- See the [Phase 1 worklog](worklog/phase-01-infrastructure.md) for deployment evidence.
