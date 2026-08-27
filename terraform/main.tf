@@ -11,3 +11,31 @@ module "network" {
 
   depends_on = [google_project_service.required]
 }
+
+# Creates the private GKE cluster and its separately managed general-purpose node pool.
+module "gke" {
+  source = "./modules/gke"
+
+  project_id               = var.project_id
+  cluster_name             = "k8-lab"
+  zone                     = var.zone
+  network_id               = module.network.network_id
+  subnet_id                = module.network.subnet_id
+  pod_secondary_range_name = module.network.pod_secondary_range_name
+  node_service_account_id  = "k8-lab-nodes"
+
+  node_pool_name = "general"
+  machine_type   = "e2-standard-2"
+  min_node_count = 1
+  max_node_count = 3
+  disk_size_gb   = 50
+
+  deletion_protection = true
+
+  resource_labels = {
+    managed_by  = "terraform"
+    environment = "dev"
+  }
+
+  depends_on = [module.network]
+}
