@@ -20,9 +20,32 @@ Status: Complete
 
 ![GKE cluster details](../images/gke-cluster-details.png)
 
+## Validation
+
+Status: Passed
+
+```bash
+gcloud container clusters get-credentials k8-lab --location=europe-north1-a --dns-endpoint
+kubectl config current-context
+kubectl cluster-info
+```
+
+```bash
+kubectl get nodes -o wide
+```
+
+![Ready GKE node](../images/kubectl-nodes.png)
+
+```bash
+kubectl get pods --all-namespaces
+```
+![Healthy GKE system pods](../images/kubectl-system-pods.png)
+
+Result: one `Ready` node and healthy visible system workloads.
+
 ## Decisions
 
-- Local Terraform state and manual deployment remain in use.
+- Local Terraform state and manual deployment remain in use for now.
 - Remote state and CI/CD are deferred.
 - A regional cluster remains a production decision.
 
@@ -30,6 +53,4 @@ See [decisions.md](../decisions.md) for the full record.
 
 ## Next
 
-- Connect `kubectl` through the DNS endpoint.
-- Verify nodes and system workloads.
 - Deploy the first namespace, Deployment, and Service.
