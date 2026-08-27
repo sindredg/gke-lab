@@ -46,17 +46,23 @@ flowchart TB
     PrivateAccess --> APIs
     NAT --> Internet
 
-    classDef user fill:#e8f0fe,stroke:#1a73e8,color:#174ea6,stroke-width:2px
-    classDef control fill:#f3e8fd,stroke:#9334e6,color:#681da8,stroke-width:2px
-    classDef network fill:#e6f4ea,stroke:#34a853,color:#137333,stroke-width:2px
-    classDef security fill:#fef7e0,stroke:#f9ab00,color:#b06000,stroke-width:2px
-    classDef external fill:#fce8e6,stroke:#ea4335,color:#a50e0e,stroke-width:2px
+    classDef user fill:#183B5B,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
+    classDef platform fill:#243B64,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
+    classDef control fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
+    classDef network fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
+    classDef security fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
+    classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
 
     class Developer,Terraform user
+    class APIs platform
     class DNS,ControlPlane control
     class NodePool,Dataplane,Pods,Services,Router,NAT network
     class WorkloadIdentity,NodeIdentity,PrivateAccess security
     class Internet external
+
+    style Project fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
+    style VPC fill:#102A23,stroke:#81C995,color:#F8FAFC,stroke-width:2px
+    style Subnet fill:#183B31,stroke:#A8DAB5,color:#F8FAFC,stroke-width:2px
 ```
 
 - Terraform enables seven required Google Cloud APIs.
