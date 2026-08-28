@@ -14,7 +14,8 @@ Build and prove a secure GKE workload delivery platform. The platform is the por
 - Autoscaling GKE Standard node pool
 - `demo` namespace with an NGINX Deployment and ClusterIP Service
 - Probes, resource controls, scaling, self-healing, restart, and rollback validation
-- Deployment evidence in the Phase 1 and Phase 2 worklogs
+- Credential-free pull request validation, required on `main`
+- Deployment evidence in the Phase 1, Phase 2, and Phase 3 worklogs
 
 The existing cluster, namespace, manifests, and evidence remain in use.
 
@@ -24,20 +25,24 @@ The first milestone takes the existing NGINX workload through validation, policy
 
 ### Phase 3: Credential-free CI
 
-**Status:** Next
+**Status:** Complete
 
 - Run `terraform fmt -check`.
 - Run `terraform init -backend=false` and `terraform validate`.
 - Validate Kubernetes schemas.
-- Lint Kubernetes security configuration, YAML, and Markdown.
-- Require all checks to pass before merge.
+- Report Kubernetes security findings without blocking until Phase 4 and Phase 5 close them.
+- Require both checks and a pull request before merge.
 - Do not grant the workflow Google Cloud credentials.
 
-**Exit criteria:** Invalid Terraform, Kubernetes, YAML, or Markdown changes fail in a pull request.
+Deferred: YAML and Markdown linting, until a change needs them.
+
+**Exit criteria met:** Invalid Terraform or Kubernetes changes fail in a pull request, and `main` rejects the merge.
 
 Documentation: [Terraform automation](https://developer.hashicorp.com/terraform/tutorials/automation/automate-terraform), [GitHub Actions](https://docs.github.com/en/actions), [kubeconform](https://github.com/yannh/kubeconform), [kube-linter](https://docs.kubelinter.io/)
 
 ### Phase 4: Guard the existing workload
+
+**Status:** Next
 
 - Add a `ResourceQuota` and `LimitRange` to the existing namespace.
 - Enforce the Pod Security Baseline.
@@ -166,4 +171,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Implement Phase 3 credential-free CI against the files already in the repository.
+Implement Phase 4 and guard the existing NGINX workload with Pod Security Admission, NetworkPolicy, and resource limits.
