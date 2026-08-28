@@ -1,0 +1,7 @@
+# Creates an isolated namespace for the NGINX workload.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
