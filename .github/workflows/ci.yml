@@ -1,0 +1,71 @@
+# Credential-free validation for every pull request.
+# Checks that the configuration in this repo is well formed and internally consistent.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# The workflow only needs to read repository contents.
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the previous, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.0
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform -chdir=terraform fmt -check -recursive -diff
+
+      - name: Initialize without a backend
+        run: terraform -chdir=terraform init -backend=false -input=false
+
+      - name: Validate the configuration
+        run: terraform -chdir=terraform validate
+
+  kubernetes:
+    name: Kubernetes
+    runs-on: ubuntu-24.04
+    env:
+      KUBECONFORM_VERSION: v0.8.0
+      KUBE_LINTER_VERSION: v0.8.3
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the validators
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/bin" kubeconform
+          curl -sSL "https://github.com/stackrox/kube-linter/releases/download/${KUBE_LINTER_VERSION}/kube-linter-linux.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP/bin" kube-linter
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Validate manifests against the Kubernetes schemas
+        run: kubeconform -strict -summary -verbose kubernetes/
+
+      - name: Report kube-linter findings (advisory)
+        run: |
+          {
+            echo "### kube-linter findings (advisory in Phase 3)"
+            echo ""
+            kube-linter lint kubernetes/ 2>&1 | sed 's/^/    /' || true
+          } >> "$GITHUB_STEP_SUMMARY"
