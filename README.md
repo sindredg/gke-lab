@@ -3,83 +3,58 @@
 ```mermaid
 flowchart TB
     User(["User"])
-    Developer["Developer"]
+    Developer(["Developer"])
 
     subgraph Delivery["Infrastructure and delivery"]
         Terraform["Terraform"]
-        GitHub["GitHub Actions<br/>CI now, CD planned"]
+        GitHub["GitHub Actions"]
     end
 
     subgraph GCP["Google Cloud"]
-        DNS["Cloud DNS"]
-        Gateway["HTTPS load balancer<br/>GKE Gateway API"]
+        Ingress["Cloud DNS<br/>HTTPS load<br/>balancer"]
         Registry["Artifact Registry"]
-        PubSub["Pub/Sub"]
-        Vertex["Vertex AI Gemini<br/>Flash-Lite"]
-        Results["Short-lived review results<br/>Firestore or Cloud Storage"]
+        Identity["Workload<br/>Identity<br/>Federation"]
+        Services["Pub/Sub<br/>Vertex AI<br/>Result store"]
         Observability["Cloud Logging<br/>Cloud Monitoring"]
-        Identity["Workload Identity Federation"]
-        APIs["Google Cloud APIs"]
 
         subgraph VPC["Custom VPC"]
-            ControlPlane["GKE Standard control plane<br/>DNS-only endpoint"]
-            NAT["Cloud NAT"]
+            ControlPlane["GKE control plane<br/>DNS-only endpoint"]
 
-            subgraph Cluster["Private GKE node pool, 1 to 3 nodes"]
-                Routes["Gateway and HTTPRoutes"]
-                Frontend["NGINX reference workload<br/>Current"]
-                API["Manifest review API<br/>Later milestone"]
-                Worker["Review worker<br/>Later milestone"]
-                Checks["Deterministic checks<br/>Later milestone"]
-                Guardrails["Pod Security<br/>NetworkPolicy<br/>Quotas and limits"]
-
-                Routes --> Frontend
-                Frontend --> API
-                Worker --> Checks
-                Guardrails -. protects .-> Frontend
-                Guardrails -. protects .-> API
-                Guardrails -. protects .-> Worker
+            subgraph Cluster["GKE node pool"]
+                Routes["Gateway and<br/>HTTPRoutes"]
+                Workloads["NGINX frontend<br/>Review API<br/>and worker"]
+                Guardrails["Pod Security<br/>NetworkPolicy<br/>Quotas"]
             end
+
+            NAT["Cloud NAT"]
         end
     end
 
-    User --> DNS
-    DNS --> Gateway
-    Gateway --> Routes
-    API --> PubSub
-    PubSub --> Worker
-    API -. keyless identity .-> Identity
-    Worker -. keyless identity .-> Identity
-    Identity --> PubSub
-    Identity --> Vertex
-    Identity --> Results
-
+    User --> Ingress
+    Ingress --> Routes
+    Routes --> Workloads
+    Guardrails -. protects .-> Workloads
     Developer --> Terraform
     Developer --> GitHub
-    Terraform --> APIs
+    Terraform --> ControlPlane
     GitHub -. builds .-> Registry
     GitHub -. deploys .-> ControlPlane
-    Registry -. images .-> Frontend
-    Registry -. images .-> API
-    Registry -. images .-> Worker
-
+    Registry -. images .-> Workloads
     ControlPlane --> Cluster
-    Cluster --> NAT
-    Frontend -. telemetry .-> Observability
-    API -. telemetry .-> Observability
-    Worker -. telemetry .-> Observability
+    Workloads --> NAT
+    Workloads -. telemetry .-> Observability
+    Workloads -. keyless identity .-> Identity
+    Identity --> Services
 
     classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
-    classDef current fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
-    classDef planned fill:#183B5B,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
-    classDef managed fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
     classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
+    classDef workload fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
+    classDef managed fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
 
-    class User external
-    class Developer,Terraform,GitHub delivery
-    class ControlPlane,NAT,Frontend current
-    class Routes,API,Worker,Checks,Guardrails planned
-    class DNS,Gateway,Registry,PubSub,Vertex,Results,Observability,Identity,APIs managed
+    class User,Developer external
+    class Terraform,GitHub delivery
+    class ControlPlane,NAT,Routes,Workloads,Guardrails workload
+    class Ingress,Registry,Identity,Services,Observability managed
 
     style Delivery fill:#211A0D,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
     style GCP fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
