@@ -103,3 +103,76 @@ Decision: [Local Terraform state](https://developer.hashicorp.com/terraform/lang
 Why: Keeps supporting infrastructure small while the platform is being established.
 
 Alternatives: [Cloud Storage remote state](https://docs.cloud.google.com/docs/terraform/resource-management/store-state) and [Workload Identity Federation for deployment pipelines](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines).
+
+## Project focus
+
+Decision: Build a secure GKE workload delivery platform, with an AI-assisted manifest reviewer as a later reference workload.
+
+Why: Keeps cloud and Kubernetes engineering as the primary work while providing a concrete workload to prove the platform.
+
+Alternatives: Build an [application-first AI service](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview) or a dedicated self-hosted AI platform.
+
+## First platform milestone
+
+Decision: Extend the existing NGINX workload into one complete vertical slice before adding the AI workload or broader platform features.
+
+Why: Reuses the deployed cluster, manifests, validation, and evidence while keeping the first milestone complete and testable.
+
+Alternatives: Implement networking, policy, delivery, observability, and AI as separate horizontal workstreams.
+
+## Infrastructure and workload ownership
+
+Decision: Terraform manages Google Cloud infrastructure. Declarative Kubernetes configuration manages in-cluster resources outside the GKE foundation state.
+
+Why: Keeps cluster lifecycle separate from workload lifecycle and avoids coupling Kubernetes provider access to cluster creation or destruction.
+
+Alternatives: [Terraform Kubernetes provider](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs), [Config Connector](https://cloud.google.com/config-connector/docs/overview), or a shared Terraform state.
+
+## Kubernetes configuration management
+
+Decision: Continue with plain Kubernetes YAML for the current workload. Adopt [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/) when environment or workload variants create duplication.
+
+Why: Preserves direct Kubernetes learning and avoids adding templates before there is a real variation to manage.
+
+Alternatives: [Helm](https://helm.sh/docs/), Kustomize immediately, or Terraform-managed Kubernetes resources.
+
+## Pipeline sequence
+
+Decision: Add credential-free pull request validation first. Add keyless GitHub Actions delivery through [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines) after Artifact Registry and the custom image exist.
+
+Why: Static validation needs no cloud access. Authentication is introduced only when the workflow must push or deploy.
+
+Alternatives: Add cloud credentials to the first CI workflow or install a GitOps controller before the first delivery slice.
+
+## Initial delivery model
+
+Decision: Use GitHub Actions for the first application deployment. Evaluate Argo CD and Flux when pull-based reconciliation, drift correction, or multiple environments create a requirement.
+
+Why: One cluster and one workload do not yet justify another continuously running controller and recovery surface.
+
+Alternatives: [Argo CD](https://argo-cd.readthedocs.io/en/stable/), [Flux](https://fluxcd.io/flux/), or manual deployment.
+
+## Evidence requirement
+
+Decision: A capability is complete only after its success path, relevant failure path, and recovery are recorded.
+
+Why: Demonstrates that the platform works rather than only showing that resources exist.
+
+Alternatives: Treat deployment completion or configuration review as sufficient evidence.
+
+## Cost posture
+
+Decision: Use the available GCP credits for hands-on testing, keep the zonal cluster available during active work, and provision regional capacity only for targeted validation.
+
+Why: Prioritizes learning and evidence while still measuring actual costs and avoiding unnecessary GPU or regional runtime.
+
+Alternatives: Destroy the cluster after every session or keep a regional production cluster running throughout development.
+
+## Deferred decision records
+
+Create short ADRs when these decision gates are reached:
+
+- Native controls versus Kyverno or Gatekeeper
+- GitHub Actions versus Argo CD or Flux for continued delivery
+- Standard GKE features versus fleet and multi-cluster components
+- Vertex AI versus self-hosted inference

@@ -1,80 +1,105 @@
-# GKE Platform
+# Secure GKE Workload Platform
 
 ```mermaid
 flowchart TB
+    User(["User"])
     Developer["Developer"]
-    Terraform["Terraform"]
-    Internet(("Internet"))
 
-    subgraph Project["Google Cloud project"]
+    subgraph Delivery["Infrastructure and delivery"]
+        Terraform["Terraform"]
+        GitHub["GitHub Actions<br/>CI now, CD planned"]
+    end
+
+    subgraph GCP["Google Cloud"]
+        DNS["Cloud DNS"]
+        Gateway["HTTPS load balancer<br/>GKE Gateway API"]
+        Registry["Artifact Registry"]
+        PubSub["Pub/Sub"]
+        Vertex["Vertex AI Gemini<br/>Flash-Lite"]
+        Results["Short-lived review results<br/>Firestore or Cloud Storage"]
+        Observability["Cloud Logging<br/>Cloud Monitoring"]
+        Identity["Workload Identity Federation"]
         APIs["Google Cloud APIs"]
-        DNS["IAM protected DNS endpoint"]
-        ControlPlane["GKE Standard control plane<br/>Regular release channel<br/>europe-north1-a"]
-        WorkloadIdentity["Workload Identity Federation"]
-        NodeIdentity["Dedicated node service account"]
 
-        subgraph VPC["Custom VPC: gke-vpc"]
-            subgraph Subnet["Subnet: gke-subnet<br/>Nodes: 10.10.0.0/20"]
-                NodePool["Private node pool<br/>1 to 3 e2-standard-2 nodes<br/>Shielded VMs"]
-                Dataplane["GKE Dataplane V2"]
-                Pods["Pods<br/>10.20.0.0/16"]
-                Services["GKE managed Service range"]
-
-                NodePool --> Dataplane
-                Dataplane --> Pods
-                Services --> Pods
-            end
-
-            PrivateAccess["Private Google Access"]
-            Router["Cloud Router"]
+        subgraph VPC["Custom VPC"]
+            ControlPlane["GKE Standard control plane<br/>DNS-only endpoint"]
             NAT["Cloud NAT"]
 
-            NodePool --> PrivateAccess
-            NodePool --> Router
-            Pods --> Router
-            Router --> NAT
+            subgraph Cluster["Private GKE node pool, 1 to 3 nodes"]
+                Routes["Gateway and HTTPRoutes"]
+                Frontend["NGINX reference workload<br/>Current"]
+                API["Manifest review API<br/>Later milestone"]
+                Worker["Review worker<br/>Later milestone"]
+                Checks["Deterministic checks<br/>Later milestone"]
+                Guardrails["Pod Security<br/>NetworkPolicy<br/>Quotas and limits"]
+
+                Routes --> Frontend
+                Frontend --> API
+                Worker --> Checks
+                Guardrails -. protects .-> Frontend
+                Guardrails -. protects .-> API
+                Guardrails -. protects .-> Worker
+            end
         end
     end
 
-    Developer --> DNS
-    DNS --> ControlPlane
+    User --> DNS
+    DNS --> Gateway
+    Gateway --> Routes
+    API --> PubSub
+    PubSub --> Worker
+    API -. keyless identity .-> Identity
+    Worker -. keyless identity .-> Identity
+    Identity --> PubSub
+    Identity --> Vertex
+    Identity --> Results
+
+    Developer --> Terraform
+    Developer --> GitHub
     Terraform --> APIs
-    ControlPlane --> NodePool
-    NodeIdentity --> NodePool
-    Pods --> WorkloadIdentity
-    WorkloadIdentity --> APIs
-    PrivateAccess --> APIs
-    NAT --> Internet
+    GitHub -. builds .-> Registry
+    GitHub -. deploys .-> ControlPlane
+    Registry -. images .-> Frontend
+    Registry -. images .-> API
+    Registry -. images .-> Worker
 
-    classDef user fill:#183B5B,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
-    classDef platform fill:#243B64,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
-    classDef control fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
-    classDef network fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
-    classDef security fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
+    ControlPlane --> Cluster
+    Cluster --> NAT
+    Frontend -. telemetry .-> Observability
+    API -. telemetry .-> Observability
+    Worker -. telemetry .-> Observability
+
     classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
+    classDef current fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
+    classDef planned fill:#183B5B,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
+    classDef managed fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
+    classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
 
-    class Developer,Terraform user
-    class APIs platform
-    class DNS,ControlPlane control
-    class NodePool,Dataplane,Pods,Services,Router,NAT network
-    class WorkloadIdentity,NodeIdentity,PrivateAccess security
-    class Internet external
+    class User external
+    class Developer,Terraform,GitHub delivery
+    class ControlPlane,NAT,Frontend current
+    class Routes,API,Worker,Checks,Guardrails planned
+    class DNS,Gateway,Registry,PubSub,Vertex,Results,Observability,Identity,APIs managed
 
-    style Project fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
+    style Delivery fill:#211A0D,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
+    style GCP fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
     style VPC fill:#102A23,stroke:#81C995,color:#F8FAFC,stroke-width:2px
-    style Subnet fill:#183B31,stroke:#A8DAB5,color:#F8FAFC,stroke-width:2px
+    style Cluster fill:#183B31,stroke:#A8DAB5,color:#F8FAFC,stroke-width:2px
 ```
 
-- Terraform enables seven required Google Cloud APIs.
-- A custom VPC provides explicit node and Pod address ranges.
-- Private nodes use Cloud NAT for outbound internet access.
-- The GKE control plane is reachable only through its IAM protected DNS endpoint.
-- Dataplane V2, Workload Identity Federation, Shielded Nodes, auto-repair, and auto-upgrade are enabled.
-- The general node pool scales from one to three `e2-standard-2` nodes.
-- Next: deploy Kubernetes workloads, namespaces, policies, and resource controls.
-- Next: decide Artifact Registry, Gateway or Ingress, DNS, and TLS.
-- Next: define observability, backup, and recovery requirements.
-- Later: add remote state and CI/CD when collaboration or automation requires them.
-- Before production: decide whether to use a regional cluster.
-- See [decisions.md](decisions.md) for decisions and alternatives.
-- See the [Phase 1 worklog](worklog/phase-01-infrastructure.md) for deployment evidence.
+## Status
+
+- Focus: secure workload delivery on GKE, with the AI reviewer as a later reference workload.
+- Complete: private GKE foundation built with modular Terraform.
+- Complete: NGINX Deployment, ClusterIP Service, probes, resources, scaling, self-healing, restart, and rollback validation.
+- Next: credential-free pull request validation.
+- Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
+- Milestone 2: add an AI-assisted manifest reviewer with deterministic validation before and after every model suggestion.
+
+## Documentation
+
+- [Implementation plan](plan.md)
+- [Architecture decisions](decisions.md)
+- [Phase 1 infrastructure worklog](worklog/phase-01-infrastructure.md)
+- [Phase 2 workload worklog](worklog/phase-02-nginx-workload.md)
+- [kubectl command reference](worklog/kubectl-command-reference.md)
