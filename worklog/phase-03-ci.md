@@ -31,6 +31,8 @@ Both checks must pass before main accepts the merge
 - Published kube-linter findings to the run summary as advisory output.
 - Required both checks and a pull request on `main` through a repository ruleset.
 
+![Terraform and Kubernetes set as required status checks](../images/ci-required-checks.png)
+
 ## Why the pipeline needs no credentials
 
 `terraform init -backend=false` installs providers and local modules so `terraform validate` can check the configuration, but skips backend initialization. Nothing reads state and nothing authenticates to the project. The workflow is never granted `id-token: write`, so it cannot mint a Google Cloud token even if a step tried.
@@ -51,6 +53,8 @@ kube-linter lint kubernetes/
 ```
 
 Result: both checks passed on [pull request #7](https://github.com/sindredg/k8-lab/pull/7). Terraform completed in 11 seconds and Kubernetes in 8 seconds. kubeconform validated 3 resources in 3 files.
+
+![Both CI checks passed on pull request #7](../images/ci-checks-passed.png)
 
 ## Known gaps
 
