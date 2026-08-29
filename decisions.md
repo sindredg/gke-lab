@@ -96,6 +96,24 @@ Why: Gives workloads short-lived identities without service account keys.
 
 Alternatives: [Service account impersonation](https://docs.cloud.google.com/iam/docs/service-account-impersonation) or [service account keys](https://docs.cloud.google.com/iam/docs/keys-create-delete).
 
+### Workload service account
+
+Decision: A dedicated Kubernetes ServiceAccount for each workload, with [automountServiceAccountToken](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/) disabled.
+
+Why: The namespace default account is shared by every Pod, so any permission granted to it is granted to all of them. NGINX never calls the Kubernetes API, so a mounted token is only attack surface. Workload Identity Federation binds to a named account in Phase 6.
+
+Alternatives: [The namespace default ServiceAccount](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/).
+
+## Workload security
+
+### Pod Security Standards
+
+Decision: [Enforce the baseline standard](https://kubernetes.io/docs/concepts/security/pod-security-admission/) on the `demo` namespace, with `warn` and `audit` set to `restricted`, and all three pinned to `v1.35`.
+
+Why: Baseline blocks the known privilege escalation routes today. Restricted cannot be enforced while the workload runs as root, so it reports instead of blocking and becomes the enforced level once Phase 5 delivers a non-root image. Pinning the version stops a cluster upgrade from changing enforcement without a repository change.
+
+Alternatives: [Enforce restricted immediately](https://kubernetes.io/docs/concepts/security/pod-security-standards/), leave the namespace unlabelled, or add an external policy engine.
+
 ## Infrastructure and configuration
 
 ### Terraform structure

@@ -68,7 +68,7 @@ flowchart TB
 - Complete: private GKE foundation built with modular Terraform.
 - Complete: NGINX Deployment, ClusterIP Service, probes, resources, scaling, self-healing, restart, and rollback validation.
 - Complete: credential-free pull request validation, required on `main`.
-- Next: guard the existing workload with Pod Security Admission, NetworkPolicy, and resource limits.
+- In progress: guarding the existing workload with Pod Security Admission, NetworkPolicy, and resource limits.
 - Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
 - Milestone 2: add an AI-assisted manifest reviewer with deterministic validation before and after every model suggestion.
 
@@ -81,7 +81,7 @@ flowchart TB
 | Identity | Workload Identity Federation, dedicated node service account | [Identity and access](decisions.md#identity-and-access) | [Phase 1](worklog/phase-01-infrastructure.md) |
 | Workload | `demo` namespace, NGINX Deployment, health probes, resource limits, ClusterIP Service | [Infrastructure and configuration](decisions.md#infrastructure-and-configuration) | [Phase 2](worklog/phase-02-nginx-workload.md) |
 | Delivery | Credential-free pull request validation, required checks on `main` | [Delivery](decisions.md#delivery) | [Phase 3](worklog/phase-03-ci.md) |
-| Policy | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 4 |
+| Policy | Pod Security baseline enforced, restricted audited, dedicated ServiceAccount | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
 | Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
 
 ## Documentation
@@ -91,4 +91,5 @@ flowchart TB
 - [Phase 1 infrastructure worklog](worklog/phase-01-infrastructure.md)
 - [Phase 2 workload worklog](worklog/phase-02-nginx-workload.md)
 - [Phase 3 CI worklog](worklog/phase-03-ci.md)
+- [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
 - [kubectl command reference](reference/kubectl-commands.md)

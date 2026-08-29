@@ -42,7 +42,7 @@ Documentation: [Terraform automation](https://developer.hashicorp.com/terraform/
 
 ### Phase 4: Guard the existing workload
 
-**Status:** Next
+**Status:** In progress
 
 - Add a `ResourceQuota` and `LimitRange` to the existing namespace.
 - Enforce the Pod Security Baseline.
