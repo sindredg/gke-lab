@@ -92,4 +92,5 @@ flowchart TB
 - [Phase 2 workload worklog](worklog/phase-02-nginx-workload.md)
 - [Phase 3 CI worklog](worklog/phase-03-ci.md)
 - [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
+- [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)
