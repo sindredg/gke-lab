@@ -1,0 +1,21 @@
+# Supplies default resource values for containers that doesn't declare their own, so Pods are not rejected once a ResourceQuota is in place.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: demo-defaults
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  limits:
+    - type: Container
+
+      # Applied as container's limits when no other are declared.
+      default:
+        cpu: 250m
+        memory: 128Mi
+
+      # Applied as container's requests when no other are declared.
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi

@@ -1,0 +1,20 @@
+# Caps the total resources every Pod in the namespace can reserve and consume.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: demo-budget
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  hard:
+    # Total reserved capacity, which the scheduler counts against nodes.
+    requests.cpu: "1"
+    requests.memory: 1Gi
+
+    # Total ceiling the namespace can burst to.
+    limits.cpu: "2"
+    limits.memory: 2Gi
+
+    # Object count, independent of resource size.
+    pods: "10"

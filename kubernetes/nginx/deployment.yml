@@ -27,6 +27,7 @@ spec:
         app.kubernetes.io/name: nginx
         app.kubernetes.io/part-of: k8-lab
     spec:
+      serviceAccountName: nginx
       automountServiceAccountToken: false
 
       securityContext:
