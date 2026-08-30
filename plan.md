@@ -42,7 +42,7 @@ Documentation: [Terraform automation](https://developer.hashicorp.com/terraform/
 
 ### Phase 4: Guard the existing workload
 
-**Status:** In progress
+**Status:** Complete
 
 - Add a `ResourceQuota` and `LimitRange` to the existing namespace.
 - Enforce the Pod Security Baseline.
@@ -52,7 +52,7 @@ Documentation: [Terraform automation](https://developer.hashicorp.com/terraform/
 - Add a dedicated Kubernetes ServiceAccount.
 - Keep unnecessary service account token mounts disabled.
 
-**Exit criteria:** Required traffic works. Privileged workloads, excessive resource requests, and unauthorized network traffic are rejected.
+**Exit criteria met:** Required traffic works. Privileged Pods and oversized resource requests are rejected at admission, and egress outside the declared paths is dropped. Recording the denial of an unlabelled client remains open in the Phase 4 worklog.
 
 Documentation: [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/), [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/), [LimitRange](https://kubernetes.io/docs/concepts/policy/limit-range/), [ResourceQuota](https://kubernetes.io/docs/concepts/policy/resource-quotas/)
 
@@ -171,4 +171,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Implement Phase 4 and guard the existing NGINX workload with Pod Security Admission, NetworkPolicy, and resource limits.
+Implement Phase 5 and replace the public NGINX image with a project-owned non-root image, built and scanned, published to Artifact Registry, and deployed by digest. That also closes the `restricted` gap left open by Phase 4.

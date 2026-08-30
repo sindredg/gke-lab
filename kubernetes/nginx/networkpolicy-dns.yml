@@ -8,17 +8,25 @@ metadata:
     app.kubernetes.io/part-of: k8-lab
 spec:
   podSelector: {}
+
   policyTypes:
     - Egress
+
   egress:
-    # One list item with two selectors means AND: kube-dns Pods, in kube-system.
+    # NodeLocal DNSCache answers first, kube-dns when it is bypassed.
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
           podSelector:
-            matchLabels:
-              k8s-app: kube-dns
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values:
+                  - kube-dns
+                  - node-local-dns
+
+      # Answers too large for UDP are retried over TCP.
       ports:
         - protocol: UDP
           port: 53

@@ -1,7 +1,7 @@
 # Worklog: Phase 4 Workload Guardrails
 
-Date: 2026-08-29  
-Status: In progress
+Date: 2026-08-29 to 2026-08-31  
+Status: Complete
 
 ## Goal
 
@@ -206,7 +206,115 @@ Result: usage returned to two Pods, 100m CPU requested, and 500m CPU limited. `q
 
 The LimitRange only sets defaults. It does not set a minimum or maximum for each container, which made it possible to test the quota separately. With a maximum in place, the LimitRange would have rejected the test Pod first. A shared namespace should normally use both controls.
 
+## Slice 3: Network isolation
+
+Status: Complete
+
+### Implemented
+
+- Added a `default-deny` NetworkPolicy that selects every Pod in the namespace for both directions.
+- Added an `allow-dns` policy that permits egress to the cluster DNS Pods on port 53.
+- Added `nginx-allow-http`, which admits traffic to the NGINX Pods from Pods labelled `nginx-client`.
+- Added `nginx-client-allow-egress`, which lets those same clients open the connection.
+- Left the NGINX Pods with no egress allowance, because the workload makes no outbound connections.
+
+### Why the application path needs two policies
+
+A connection is checked twice. The dataplane evaluates the sender's egress rules and the receiver's ingress rules separately, and both have to permit it. Once `default-deny` selects every Pod for egress, allowing ingress on the NGINX Pods is not enough on its own; the client is stopped before its packet leaves.
+
+Enforcement comes from GKE Dataplane V2, which is already enabled. No cluster change was needed.
+
+### Baseline
+
+The namespace held no policies before this slice, so the same commands were recorded first as a control. Without a recorded success, a later failure proves nothing.
+
+```bash
+kubectl get networkpolicy -n demo
+```
+
+![No policies in the demo namespace](../images/netpol-baseline-none.png)
+
+```bash
+kubectl run client -n demo --image=nicolaka/netshoot --command -- sleep infinity
+```
+
+![Client Pod created with a restricted warning](../images/netpol-client-pod.png)
+
+The Pod was admitted and reported four `restricted` violations, which is the `warn` label behaving as configured in Slice 1.
+
+```bash
+kubectl exec -n demo -it client -- bash
+curl -i http://nginx
+```
+
+![NGINX reachable before any policy exists](../images/netpol-baseline-allowed.png)
+
+```bash
+curl -I https://cloud.google.com
+```
+
+![The internet reachable before any policy exists](../images/netpol-baseline-egress.png)
+
+Result: any Pod in the namespace could reach the workload, and the workload could reach the entire internet through Cloud NAT. Both are the Kubernetes default, and both are what this slice closes.
+
+```bash
+cat /etc/resolv.conf
+```
+
+![Resolver configuration inside the Pod](../images/netpol-resolv-conf.png)
+
+`resolv.conf` names the DNS server and the suffixes to try. It is not a list of what a Pod is allowed to resolve. `ndots:5` is why the short name `nginx` is tried as `nginx.demo.svc.cluster.local` first.
+
+### Validation
+
+Status: Passed
+
+Allow rules are applied before the deny so that no Pod loses DNS in between.
+
+```bash
+kubectl apply -f kubernetes/nginx/networkpolicy-dns.yml
+kubectl apply -f kubernetes/nginx/networkpolicy-nginx.yml
+kubectl apply -f kubernetes/nginx/networkpolicy-default-deny.yml
+kubectl get networkpolicy -n demo
+```
+
+![Four policies in the demo namespace](../images/netpol-policies-applied.png)
+
+`POD-SELECTOR` reads `<none>` for `default-deny` and `allow-dns`. That means no selector terms, which selects every Pod, not none.
+
+```bash
+kubectl get pod client -n demo --show-labels
+```
+
+![Client Pod carrying the nginx-client label](../images/netpol-client-labelled.png)
+
+```bash
+curl -m 5 http://cloud.google.com
+curl -I http://nginx
+```
+
+![Application traffic allowed and internet egress denied](../images/netpol-result.png)
+
+Result: the labelled client reached NGINX and received `200 OK`, and the same Pod could not reach the internet. The failure is `curl: (28) Connection timed out`, not `(7) Connection refused`, because a policy denial silently drops the packet rather than rejecting it.
+
+Both NGINX Pods stayed `Running` with zero restarts throughout, which confirms the kubelet health probes still reach them. Probe traffic originates on the node rather than from a Pod, and Dataplane V2 permits it without a rule.
+
+### Getting there took a working DNS failure
+
+Applying these policies removed cluster DNS from the whole namespace, and the first version of `allow-dns` did not restore it. The diagnosis is recorded separately in the [troubleshooting log](../troubleshooting.md#dns-stopped-resolving-after-the-default-deny).
+
+### Deliberate omissions
+
+The NGINX Pods have no egress rule at all. Serving static content requires no outbound connection, so the workload cannot open one. This will need revisiting in Phase 5, when the image is replaced, and in Phase 7, when load balancer traffic arrives from outside the namespace.
+
+Clients are selected by Pod label rather than by namespace. That keeps the rule readable while the only client lives in `demo`, and it will need a `namespaceSelector` once something outside the namespace has to reach the Service.
+
+### Open item
+
+The denial half of the application path is not yet recorded. Removing the `nginx-client` label from a running Pod should turn the same request into a timeout without restarting anything, and restoring the label should turn it back. That evidence is still to be captured.
+
 ## Known gaps
 
 - The workload still runs as root, so it cannot satisfy the `restricted` standard. Phase 5 replaces it with a non-root image, after which `enforce` can be raised.
 - `audit` findings are written to the Google Cloud audit log and have not been reviewed yet.
+- Network policy denials are not logged. Every diagnosis in this phase was made by testing from inside a Pod, which works but does not scale. Dataplane V2 policy logging is the tool for this and has not been enabled.

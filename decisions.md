@@ -114,6 +114,20 @@ Why: Baseline blocks the known privilege escalation routes today. Restricted can
 
 Alternatives: [Enforce restricted immediately](https://kubernetes.io/docs/concepts/security/pod-security-standards/), leave the namespace unlabelled, or add an external policy engine.
 
+### Namespace network isolation
+
+Decision: [Deny all Pod traffic in the `demo` namespace by default](https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-ingress-and-all-egress-traffic), then allow cluster DNS for every Pod and HTTP to the NGINX Pods from Pods labelled `nginx-client`.
+
+Why: A namespace with no policy lets any Pod in the cluster reach the workload and lets the workload reach anything, including the internet through Cloud NAT. Denying first makes every allowed path a reviewable line in this repository, and a Pod added later is isolated on creation rather than after someone remembers to write a policy for it. Both ends of the application path are declared because the dataplane checks the sender's egress and the receiver's ingress separately.
+
+Alternatives: Leave the namespace open and rely on Pod Security alone, allow all egress and restrict only ingress, or select clients by namespace instead of by Pod label.
+
+Enforcement comes from [GKE Dataplane V2](https://cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2), already enabled through `datapath_provider = "ADVANCED_DATAPATH"`. The legacy `network_policy` block is deliberately absent because Dataplane V2 enforces policy itself.
+
+The DNS rule allows both `kube-dns` and `node-local-dns` Pods. [NodeLocal DNSCache](https://cloud.google.com/kubernetes-engine/docs/how-to/nodelocal-dns-cache) answers on the kube-dns cluster IP but runs as its own Pod with the label `k8s-app: node-local-dns`, so a rule naming only `kube-dns` selects a Pod that never receives the query. Allowing both keeps the rule correct whether or not the cache is present.
+
+The rule cannot name the kube-dns Service address instead. Dataplane V2 rewrites a Service IP to a backend Pod before policy is evaluated, so an `ipBlock` naming that address matches nothing. NetworkPolicy selects Pods, never Services.
+
 ## Infrastructure and configuration
 
 ### Terraform structure
