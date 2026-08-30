@@ -1,0 +1,16 @@
+# Denies all Pod traffic in the namespace so every allowed path has to be declared.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  # Empty selector selects every Pod in the namespace, including later added Pods.
+  podSelector: {}
+
+  # Naming both directions with no matching rules below denies both directions.
+  policyTypes:
+    - Ingress
+    - Egress
