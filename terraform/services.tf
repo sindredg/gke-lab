@@ -1,9 +1,11 @@
 # Defines the Google Cloud APIs required to create and operate the initial GKE platform.
 locals {
   required_services = toset([
+    "artifactregistry.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
+    "containerscanning.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",

@@ -27,3 +27,8 @@ output "node_service_account_email" {
   description = "Email address of the GKE node service account."
   value       = module.gke.node_service_account_email
 }
+
+output "registry_url" {
+  description = "URL of the private image repository."
+  value       = module.registry.registry_url
+}

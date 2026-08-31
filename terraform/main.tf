@@ -39,3 +39,20 @@ module "gke" {
 
   depends_on = [module.network]
 }
+
+# Creates the private image repository and grants the nodes read access to it.
+module "registry" {
+  source = "./modules/registry"
+
+  project_id                 = var.project_id
+  region                     = var.region
+  repository_id              = "k8-lab"
+  node_service_account_email = module.gke.node_service_account_email
+
+  resource_labels = {
+    managed_by  = "terraform"
+    environment = "dev"
+  }
+
+  depends_on = [google_project_service.required]
+}

@@ -128,6 +128,44 @@ The DNS rule allows both `kube-dns` and `node-local-dns` Pods. [NodeLocal DNSCac
 
 The rule cannot name the kube-dns Service address instead. Dataplane V2 rewrites a Service IP to a backend Pod before policy is evaluated, so an `ipBlock` naming that address matches nothing. NetworkPolicy selects Pods, never Services.
 
+## Images and supply chain
+
+### Image registry
+
+Decision: Publish images to a regional [Artifact Registry](https://cloud.google.com/artifact-registry/docs/integrate-gke) repository in the cluster region, created by Terraform alongside the cluster.
+
+Why: A project-owned repository removes the runtime dependency on Docker Hub and its rate limits, and puts the images under the same access control as the rest of the platform. Matching the cluster region keeps pulls off the cross-region path, which costs both latency on every node scale-up and egress charges.
+
+Alternatives: Continue pulling public images at deploy time, use a multi-region repository, or use the deprecated Container Registry.
+
+### Tag immutability
+
+Decision: Set `immutable_tags` on the repository, and deploy by digest rather than by tag.
+
+Why: A tag is a label that can be repointed, so the same manifest can deploy different bytes on different days. A digest is derived from the content and cannot. Immutable tags enforce at the registry what deploying by digest achieves at the manifest, so neither depends on discipline.
+
+Cost: The repository rejects a push to a tag that already exists, which rules out a moving `latest`. Delivery has to tag each build uniquely, by commit SHA.
+
+Alternatives: Rely on convention alone, or allow mutable tags and pin only in the manifest.
+
+### Registry retention
+
+Decision: Delete untagged images after seven days, and keep the ten most recent versions regardless.
+
+Why: Rebuilding content that already exists orphans the previous image, which loses its tag but continues to occupy billable storage. Without a policy, storage grows without bound. The KEEP rule takes precedence over the DELETE rule, so recent images survive even while untagged.
+
+Alternatives: Retain everything, or delete on a fixed schedule with no protection for recent images.
+
+### Registry access for nodes
+
+Decision: Grant `roles/artifactregistry.reader` to the node service account, scoped to this repository rather than to the project.
+
+Why: Image pulls use the node identity. The kubelet fetches the image before the container exists, so Workload Identity is not available at that point and cannot be used for pulls. Scoping the binding to one repository keeps the nodes from reading every repository the project may later hold.
+
+The binding is required rather than a precaution. [`roles/container.defaultNodeServiceAccount`](https://cloud.google.com/iam/docs/roles-permissions/container), already held by the node account, grants five permissions covering logging, monitoring, and autoscaling metrics, and none for Artifact Registry. Pulls fail without this binding. Guidance stating that nodes can pull without extra roles describes the Compute Engine default service account, which receives broad automatic grants; Phase 1 replaced that account with a dedicated one.
+
+Alternatives: Grant the role at project level.
+
 ## Infrastructure and configuration
 
 ### Terraform structure
