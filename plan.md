@@ -52,7 +52,7 @@ Documentation: [Terraform automation](https://developer.hashicorp.com/terraform/
 - Add a dedicated Kubernetes ServiceAccount.
 - Keep unnecessary service account token mounts disabled.
 
-**Exit criteria met:** Required traffic works. Privileged Pods and oversized resource requests are rejected at admission, and egress outside the declared paths is dropped. Recording the denial of an unlabelled client remains open in the Phase 4 worklog.
+**Exit criteria met:** Required traffic works. Privileged Pods and oversized resource requests are rejected at admission. An unlabelled client is denied by name and by address, and egress outside the declared paths is dropped.
 
 Documentation: [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/), [NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/), [LimitRange](https://kubernetes.io/docs/concepts/policy/limit-range/), [ResourceQuota](https://kubernetes.io/docs/concepts/policy/resource-quotas/)
 

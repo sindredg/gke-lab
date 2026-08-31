@@ -283,35 +283,102 @@ kubectl get networkpolicy -n demo
 `POD-SELECTOR` reads `<none>` for `default-deny` and `allow-dns`. That means no selector terms, which selects every Pod, not none.
 
 ```bash
-kubectl get pod client -n demo --show-labels
-```
-
-![Client Pod carrying the nginx-client label](../images/netpol-client-labelled.png)
-
-```bash
 curl -m 5 http://cloud.google.com
 curl -I http://nginx
 ```
 
 ![Application traffic allowed and internet egress denied](../images/netpol-result.png)
 
-Result: the labelled client reached NGINX and received `200 OK`, and the same Pod could not reach the internet. The failure is `curl: (28) Connection timed out`, not `(7) Connection refused`, because a policy denial silently drops the packet rather than rejecting it.
-
-Both NGINX Pods stayed `Running` with zero restarts throughout, which confirms the kubelet health probes still reach them. Probe traffic originates on the node rather than from a Pod, and Dataplane V2 permits it without a rule.
+Result: the labelled client reached NGINX and received `200 OK`, and the same Pod could not reach the internet.
 
 ### Getting there took a working DNS failure
 
 Applying these policies removed cluster DNS from the whole namespace, and the first version of `allow-dns` did not restore it. The diagnosis is recorded separately in the [troubleshooting log](../troubleshooting.md#dns-stopped-resolving-after-the-default-deny).
+
+### Failure test
+
+Removing the label from the running Pod is the whole test. Nothing is restarted and no policy is edited.
+
+```bash
+kubectl label pod client -n demo nginx-client-
+kubectl get pod client -n demo --show-labels
+```
+
+![Client Pod with the nginx-client label removed](../images/netpol-client-unlabelled.png)
+
+```bash
+kubectl exec -n demo -it client -- bash
+curl -I http://nginx
+```
+
+![Connection to NGINX refused by name](../images/netpol-denied-by-name.png)
+
+Result: `curl: (28) Failed to connect to nginx:80`. The name still resolved, so `allow-dns` is unaffected and the block is on the connection itself. This is a different failure from the `(6) Could not resolve host` seen during the DNS fault, and the wording is what separates them.
+
+The same request by address removes DNS from the test entirely.
+
+```bash
+kubectl get svc nginx -n demo
+```
+
+![The NGINX Service address](../images/netpol-service-ip.png)
+
+```bash
+curl -I http://34.118.237.10
+```
+
+![Connection to the Service address refused](../images/netpol-denied-by-ip.png)
+
+Result: identical failure with no name lookup anywhere in the request. The denial is the policy.
+
+Both attempts took over two minutes to fail because no timeout was set. A denial drops the packet silently, so `curl` waits out its own connect timeout rather than receiving a refusal. `-m 5` caps that.
+
+### Recovery
+
+```bash
+kubectl label pod client -n demo nginx-client=true
+kubectl get pod client -n demo --show-labels
+```
+
+![The label restored on the running Pod](../images/netpol-client-relabelled.png)
+
+```bash
+curl -I http://nginx
+curl -I http://34.118.237.10
+```
+
+![Both paths returning 200 after the label is restored](../images/netpol-allowed-both-paths.png)
+
+Result: both paths returned `200 OK` five seconds apart, on a Pod that was never restarted and stayed at zero restarts throughout. Policy is recomputed from current labels, so a label change takes effect on a running Pod within about a second.
+
+### Egress
+
+```bash
+curl -m 6 -I http://cloud.google.com
+curl -m 6 -I https://cloud.google.com
+```
+
+![Internet egress denied on both ports](../images/netpol-egress-denied.png)
+
+Result: both timed out. The same commands returned `HTTP/2 200` during the baseline, so Cloud NAT egress is now closed for this namespace on both HTTP and HTTPS.
+
+### Cleanup
+
+```bash
+kubectl delete pod client -n demo
+kubectl describe resourcequota demo-budget -n demo
+kubectl get pods -n demo -o wide
+```
+
+![Budget released and the workload untouched](../images/netpol-quota-restored.png)
+
+Result: the namespace returned to two Pods, 100m CPU and 128Mi requested. Both NGINX Pods are two days old with zero restarts, which is the evidence that the kubelet health probes kept reaching them through the default deny for the whole exercise. Probe traffic originates on the node rather than from a Pod, and Dataplane V2 permits it without a rule.
 
 ### Deliberate omissions
 
 The NGINX Pods have no egress rule at all. Serving static content requires no outbound connection, so the workload cannot open one. This will need revisiting in Phase 5, when the image is replaced, and in Phase 7, when load balancer traffic arrives from outside the namespace.
 
 Clients are selected by Pod label rather than by namespace. That keeps the rule readable while the only client lives in `demo`, and it will need a `namespaceSelector` once something outside the namespace has to reach the Service.
-
-### Open item
-
-The denial half of the application path is not yet recorded. Removing the `nginx-client` label from a running Pod should turn the same request into a timeout without restarting anything, and restoring the label should turn it back. That evidence is still to be captured.
 
 ## Known gaps
 
