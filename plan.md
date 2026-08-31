@@ -58,6 +58,8 @@ Documentation: [Pod Security Standards](https://kubernetes.io/docs/concepts/secu
 
 ### Phase 5: Custom image and Artifact Registry
 
+**Status:** In progress. The private repository exists; the image does not.
+
 - Turn the existing NGINX workload into a small project frontend.
 - Build a non-root container image.
 - Create Artifact Registry with Terraform.
@@ -171,4 +173,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Implement Phase 5 and replace the public NGINX image with a project-owned non-root image, built and scanned, published to Artifact Registry, and deployed by digest. That also closes the `restricted` gap left open by Phase 4.
+Continue Phase 5. The registry exists, so the next slice builds a non-root image that listens on 8080, which then moves the container port through the Deployment and both NetworkPolicies and allows Pod Security to enforce `restricted`.

@@ -69,7 +69,7 @@ flowchart TB
 - Complete: NGINX Deployment, ClusterIP Service, probes, resources, scaling, self-healing, restart, and rollback validation.
 - Complete: credential-free pull request validation, required on `main`.
 - Complete: workload guardrails, with Pod Security Admission, a namespace resource budget, and default-deny NetworkPolicies.
-- Next: a project-owned non-root image published to Artifact Registry and deployed by digest.
+- In progress: a project-owned non-root image published to Artifact Registry and deployed by digest. The private repository exists; nothing has been built yet.
 - Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
 - Milestone 2: add an AI-assisted manifest reviewer with deterministic validation before and after every model suggestion.
 
@@ -83,6 +83,7 @@ flowchart TB
 | Workload | `demo` namespace, NGINX Deployment, health probes, resource limits, ClusterIP Service | [Infrastructure and configuration](decisions.md#infrastructure-and-configuration) | [Phase 2](worklog/phase-02-nginx-workload.md) |
 | Delivery | Credential-free pull request validation, required checks on `main` | [Delivery](decisions.md#delivery) | [Phase 3](worklog/phase-03-ci.md) |
 | Policy | Pod Security baseline enforced, restricted audited, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
+| Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
 | Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
 
 ## Documentation
@@ -93,6 +94,7 @@ flowchart TB
 - [Phase 2 workload worklog](worklog/phase-02-nginx-workload.md)
 - [Phase 3 CI worklog](worklog/phase-03-ci.md)
 - [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
+- [Phase 5 custom image worklog](worklog/phase-05-custom-image.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)

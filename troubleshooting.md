@@ -179,6 +179,60 @@ Believing that the cache was host-networked led to a recommendation to disable N
 
 [Dataplane V2 policy logging](https://cloud.google.com/kubernetes-engine/docs/how-to/dataplane-v2#using-network-policy) answers this directly by naming the denied connection. This cluster does not have it enabled, and the Phase 4 worklog records that as a gap.
 
+## A Terraform plan proposes the same change after every apply
+
+Phase 5, Slice 1.
+
+**Issue:** Every `terraform plan` proposes to unset `enable_private_endpoint` on the cluster, and applying it changes nothing. The next plan proposes it again.
+
+![The same modification proposed after a successful apply](images/endpoint-permadiff.png)
+
+The apply reported success and the plan above was taken afterwards. `0 to add, 1 to change` on a run where nothing had been edited.
+
+**Cause:** The configuration never declares the field, and GKE derives it from `control_plane_endpoints_config.ip_endpoints_config.enabled = false`. Terraform reads `true` from the API, finds nothing in the configuration, and resolves the difference in favour of the configuration. The API then ignores the write because the value is derived, so the next refresh reads `true` again.
+
+**Fix:** Declare the value the infrastructure already has, so the configuration and the API agree.
+
+```hcl
+private_cluster_config {
+  enable_private_nodes    = true
+  enable_private_endpoint = true
+}
+```
+
+![A clean plan after declaring the value](images/endpoint-plan-clean.png)
+
+### Checking exposure rather than reading it
+
+The cluster description reports a public address, which reads alarming.
+
+```bash
+gcloud container clusters describe k8-lab --zone europe-north1-a \
+  --format="yaml(privateClusterConfig,controlPlaneEndpointsConfig,endpoint)"
+```
+
+![Endpoint configuration reported by GKE](images/endpoint-cluster-config.png)
+
+`publicEndpoint` is reported whether or not the endpoint serves traffic. Reachability is governed by `ipEndpointsConfig.enabled`, which is `false`, and the `endpoint` field holds the DNS name rather than an address. Connecting settles it.
+
+```bash
+curl -k --max-time 5 https://35.228.170.226/version
+```
+
+![The public address accepting no connection](images/endpoint-not-reachable.png)
+
+Result: `curl: (28)`, a timeout rather than a refusal, so nothing is listening. The posture recorded in the Phase 1 decision holds, and the only real fault was the recurring diff.
+
+### Why it matters beyond the noise
+
+The diff appeared in the first plan run after Phase 1, alongside an unrelated change. A plan that always carries one expected modification trains the reader to skim, which is how an unintended change to a security control eventually gets applied without anyone reading it. This one governs control plane exposure.
+
+`publicEndpoint` in the cluster description is reported whether or not the endpoint serves traffic. Reachability is governed by `ipEndpointsConfig.enabled`, so the address alone is not evidence of exposure. Confirm by connecting to it rather than by reading it.
+
+### The general rule
+
+A plan diff on something no one edited means the configuration is silent about a value the API has an opinion on. State the value. The same shape appears wherever an API normalises input, including durations returned in seconds when the configuration was written in days.
+
 ## A Pod restart does not reload network policy
 
 **Issue:** A policy or label change appears not to take effect, and restarting the Pod does not help.

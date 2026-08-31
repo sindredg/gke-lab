@@ -25,6 +25,10 @@ resource "google_container_cluster" "main" {
 
   private_cluster_config {
     enable_private_nodes = true
+
+    # Derived by GKE from the disabled IP endpoints below. Declared here so a
+    # plan does not propose unsetting it on every run.
+    enable_private_endpoint = true
   }
 
   control_plane_endpoints_config {
