@@ -156,6 +156,22 @@ Why: Rebuilding content that already exists orphans the previous image, which lo
 
 Alternatives: Retain everything, or delete on a fixed schedule with no protection for recent images.
 
+### Base image
+
+Decision: Build on [`nginxinc/nginx-unprivileged`](https://github.com/nginx/docker-nginx-unprivileged) rather than reconfiguring the standard NGINX image to drop privileges.
+
+Why: The image already runs as a non-root user and writes its cache, temporary files, and PID to paths that user owns. Converting the standard image means finding each of those paths and correcting it, and a miss produces a container that starts and then fails on the first request rather than at build time. The upstream image is maintained against the same NGINX releases, so the version stays pinned to the same line the workload already runs.
+
+Alternatives: Reconfigure the standard NGINX image, or build from a distroless base with a different server.
+
+### Listening port
+
+Decision: Serve on port 8080 inside the container, and keep the Service on port 80.
+
+Why: Binding a port below 1024 requires `CAP_NET_BIND_SERVICE`, and the `restricted` Pod Security standard requires dropping all capabilities. The two cannot both hold, so the container port moves. The Service keeps port 80 and reaches the container through the named port `http`, so nothing that calls the Service changes.
+
+Cost: The NetworkPolicy rules name the container port, not the Service port, so both have to move with it. That coupling is deliberate and is why the policies name a port at all.
+
 ### Registry access for nodes
 
 Decision: Grant `roles/artifactregistry.reader` to the node service account, scoped to this repository rather than to the project.

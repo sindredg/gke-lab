@@ -293,7 +293,7 @@ Result: the labelled client reached NGINX and received `200 OK`, and the same Po
 
 ### Getting there took a working DNS failure
 
-Applying these policies removed cluster DNS from the whole namespace, and the first version of `allow-dns` did not restore it. The diagnosis is recorded separately in the [troubleshooting log](../troubleshooting.md#dns-stopped-resolving-after-the-default-deny).
+Applying these policies removed cluster DNS from the whole namespace, and the first version of `allow-dns` did not restore it. The diagnosis is recorded separately in the [troubleshooting log](../troubleshooting.md#dns-stops-resolving-after-the-default-deny).
 
 ### Failure test
 
