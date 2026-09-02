@@ -58,7 +58,7 @@ Documentation: [Pod Security Standards](https://kubernetes.io/docs/concepts/secu
 
 ### Phase 5: Custom image and Artifact Registry
 
-**Status:** In progress. The private repository exists; the image does not.
+**Status:** Complete
 
 - Turn the existing NGINX workload into a small project frontend.
 - Build a non-root container image.
@@ -66,7 +66,7 @@ Documentation: [Pod Security Standards](https://kubernetes.io/docs/concepts/secu
 - Scan the image and deploy it by immutable digest.
 - Validate image pulls from the private node pool.
 
-**Exit criteria:** The existing workload runs a project-owned image from Artifact Registry by digest.
+**Exit criteria met:** The workload runs a project-owned, non-root image pulled from Artifact Registry by digest. The container port moved to 8080 through the Deployment and both NetworkPolicies, and Pod Security enforces `restricted`, closing the gap Phase 4 left open.
 
 Documentation: [Artifact Registry with GKE](https://cloud.google.com/artifact-registry/docs/integrate-gke), [Artifact Analysis](https://cloud.google.com/artifact-analysis/docs/container-scanning-overview), [GKE container security](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster#container_security)
 
@@ -173,4 +173,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Continue Phase 5. The registry exists, so the next slice builds a non-root image that listens on 8080, which then moves the container port through the Deployment and both NetworkPolicies and allows Pod Security to enforce `restricted`.
+Begin Phase 6. The image now ships by digest, but building and pushing it is still a manual step on a workstation, which is what let an arm64-only image reach an amd64 cluster. Configure Workload Identity Federation for GitHub Actions so delivery builds for the node architecture, pushes, and waits for the rollout without a stored key.

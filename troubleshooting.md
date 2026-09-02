@@ -235,3 +235,45 @@ default_type text/plain;
 ```
 
 The status and the body were correct throughout, so a check asserting only `200` would not have caught it.
+
+### An image pull fails with NotFound although the digest exists
+
+**Issue:** The Deployment referenced an image by digest that `gcloud artifacts docker images list` had just printed, and the pods stayed in `ImagePullBackOff`.
+
+```
+failed to resolve reference "...k8-lab/nginx@sha256:a0388fda...": not found
+```
+
+**Cause:** Two separate faults, one after the other, both reported as `NotFound`.
+
+First, the repository path was wrong. The image was pushed to `k8-lab/frontend`, and the manifest named `k8-lab/nginx`. A digest resolves within a repository, so a correct digest under the wrong path is simply absent.
+
+Second, once the path was corrected, the pull still failed. The image had been built with a bare `docker build` on an Apple Silicon workstation, which publishes an arm64-only index. The nodes are amd64, so the index held no manifest they could run.
+
+**Fix:** Correct the path, then rebuild for both platforms and reference the new index digest.
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 --push -t "$REGISTRY/frontend:$SHA-multiarch" app/
+```
+
+`immutable_tags` refused to move `2bb5f3a` onto the rebuild, which is the policy working rather than obstructing: the tag still names the bytes it originally named. The rebuild went out under a new tag.
+
+#### Why the error message is unhelpful
+
+Artifact Registry returns `NotFound` for a missing repository, a missing digest, and a caller without read access alike, so that it does not leak whether a private repository exists. The message therefore cannot distinguish a typo from a permissions gap, and reading it as one wastes time on the other.
+
+The platform mismatch is a third case behind the same message. containerd is more specific when it gets that far, so the node's own log is worth reading before the pod events:
+
+```bash
+kubectl describe pod <pod> -n demo | sed -n '/Events:/,$p'
+```
+
+`no match for platform in manifest` is the phrase that separates it from the other two.
+
+#### What to check first next time
+
+1. Confirm the repository path, not just the digest. `gcloud artifacts docker images list "$REGISTRY/<image>"` fails loudly on a path that does not exist.
+2. Check the platforms the index actually holds. `docker manifest inspect` lists them, and a single-entry index built on an arm workstation is the common case.
+3. Only then look at IAM. A pull uses the node service account, not the identity that ran the successful `gcloud` command a moment earlier.
+
+The general rule: an identity that can read something says nothing about whether a different identity can, and a registry that resolves a reference says nothing about whether the node can execute what it finds.

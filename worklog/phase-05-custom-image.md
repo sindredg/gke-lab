@@ -1,7 +1,7 @@
 # Worklog: Phase 5 Custom Image and Artifact Registry
 
 Date: 2026-08-31  
-Status: In progress
+Status: Complete
 
 ## Goal
 
@@ -170,13 +170,113 @@ Result: one `Content-Type: text/plain`, and the body unchanged.
 
 The status and body were correct throughout, so a check that only asserted `200` would have passed. Reading the whole response is what surfaced it. The entry in the [troubleshooting log](../troubleshooting.md#an-nginx-response-carries-the-same-header-twice) records the directive difference.
 
-## Remaining slices
+## Slice 3: Publish to the repository
 
-- Slice 3: push it to the repository under a commit-specific tag, and read the vulnerability scan.
-- Slice 4: deploy by digest, move the container port through the Deployment and both NetworkPolicies, and raise Pod Security enforcement to `restricted`.
+Status: Complete
+
+### Implemented
+
+- Authenticated Docker against the registry host through the gcloud credential helper, so no key material is stored.
+- Tagged the image with the short commit that built it, rather than a moving name like `latest`.
+- Pushed it to the `frontend` repository path and read back the digest the registry assigned.
+- Read the vulnerability scan Artifact Analysis produced on push.
+
+### Why the tag is a commit
+
+```bash
+git rev-parse --short HEAD
+```
+
+![The commit the build came from](../images/registry-commit-tag.png)
+
+A tag has to answer one question: which source produced these bytes. A commit answers it exactly, and `immutable_tags` on the repository means the answer cannot later be repointed at a different build.
+
+### Authenticating without a key
+
+```bash
+gcloud auth configure-docker europe-north1-docker.pkg.dev
+```
+
+![The credential helper registered for the registry host](../images/registry-docker-credentials.png)
+
+The helper writes no credential to disk. Docker calls gcloud for a short-lived token on each push, so there is no long-lived key to leak or rotate.
+
+### Push
+
+```bash
+docker images "$REGISTRY/frontend"
+```
+
+![The image tagged locally before the push](../images/registry-local-image.png)
+
+```bash
+docker push "$REGISTRY/frontend:$SHA"
+```
+
+![The push completing](../images/registry-push.png)
+
+### Validation
+
+Status: Passed
+
+```bash
+gcloud artifacts repositories list
+```
+
+![The repository Terraform created](../images/registry-repository-list.png)
+
+```bash
+gcloud artifacts docker images list "$REGISTRY/frontend" --include-tags
+```
+
+![The published image, its digest, and its tag](../images/registry-image-digest.png)
+
+Result: the image is present under the `2bb5f3a` tag, and the registry reports the digest that Slice 4 deploys.
+
+### Reading the scan
+
+```bash
+gcloud artifacts docker images describe "$REGISTRY/frontend:$SHA" --show-package-vulnerability
+```
+
+![Two high severity findings](../images/registry-vulnerability-counts.png)
+
+Result: two HIGH findings, both inherited from the base image rather than introduced by this build. They are recorded rather than acted on, because closing them means waiting for an upstream release. The value of the scan here is that the count is now visible on every push instead of unknown.
+
+## Slice 4: Deploy by digest
+
+Status: Complete
+
+### Implemented
+
+- Pointed the Deployment at the published image by digest, keeping the tag beside it for a reader.
+- Moved the container to port 8080 and carried that port through both NetworkPolicy rules, which name the container port rather than the Service port.
+- Left the Service unchanged, because `targetPort` resolves the named port.
+- Raised Pod Security enforcement from `baseline` to `restricted`, which the non-root image now satisfies.
+
+### The first push could not run on the nodes
+
+The digest resolved in the registry and still failed to pull. The image had been built with a bare `docker build` on an Apple Silicon workstation, which produces an arm64-only index, and the nodes are amd64.
+
+Rebuilding for both platforms produced a new digest. `immutable_tags` refused to move `2bb5f3a` onto it, so the rebuild went out as `2bb5f3a-multiarch`. The policy behaved exactly as intended: the tag still names the bytes it originally named.
+
+The [troubleshooting log](../troubleshooting.md#an-image-pull-fails-with-notfound-although-the-digest-exists) records the diagnosis, including why the registry reports this as `NotFound`.
+
+### Validation
+
+Status: Not yet recorded
+
+```bash
+kubectl apply -f kubernetes/nginx/
+kubectl get pods -n demo
+kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
+Both replicas should run the multi-architecture digest, and no pod should remain from the ReplicaSet that ran the public image.
 
 ## Known gaps
 
-- Nothing has been pushed to the repository yet. The image exists only on a workstation.
-- The workload still runs the public root image, so the `restricted` gap from Phase 4 remains open.
+- The Slice 4 rollout was verified on the workstation but the output was not captured, so the validation above is unevidenced.
+- The image carries two HIGH findings inherited from its base image, pending an upstream release.
 - Deployment is still a manual `kubectl apply` from a workstation. Phase 6 replaces it.
+- Nothing enforces that a pushed image is built for the node architecture. Phase 6 builds in CI, which removes the workstation as a variable.
