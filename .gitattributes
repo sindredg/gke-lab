@@ -1,0 +1,7 @@
+# Stores every text file with LF, and checks it out with LF on every platform.
+# Without this, a file edited on Windows and a file edited on Linux differ on
+# every line, and a one-line change reads as a rewrite.
+* text=auto eol=lf
+
+# Leaves binary files untouched.
+*.png binary
