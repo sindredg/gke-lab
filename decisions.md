@@ -108,11 +108,13 @@ Alternatives: [The namespace default ServiceAccount](https://kubernetes.io/docs/
 
 ### Pod Security Standards
 
-Decision: [Enforce the baseline standard](https://kubernetes.io/docs/concepts/security/pod-security-admission/) on the `demo` namespace, with `warn` and `audit` set to `restricted`, and all three pinned to `v1.35`.
+Decision: [Enforce the restricted standard](https://kubernetes.io/docs/concepts/security/pod-security-admission/) on the `demo` namespace, with `warn` and `audit` at the same level, and all three pinned to `v1.35`.
 
-Why: Baseline blocks the known privilege escalation routes today. Restricted cannot be enforced while the workload runs as root, so it reports instead of blocking and becomes the enforced level once Phase 5 delivers a non-root image. Pinning the version stops a cluster upgrade from changing enforcement without a repository change.
+Why: Restricted is the strongest of the three standards and rejects the workload the project no longer runs. Pinning the version stops a cluster upgrade from changing enforcement without a repository change.
 
-Alternatives: [Enforce restricted immediately](https://kubernetes.io/docs/concepts/security/pod-security-standards/), leave the namespace unlabelled, or add an external policy engine.
+Phase 4 enforced `baseline` because the workload ran as root and `restricted` would have rejected it. That constraint is gone: the Phase 5 image runs as UID 101 and declares the fields the standard requires, so the level was raised rather than left reporting indefinitely. A standard set to report and never enforced is a standard nobody obeys.
+
+Alternatives: Remain on `baseline`, leave the namespace unlabelled, or add an external policy engine.
 
 ### Namespace network isolation
 
@@ -171,6 +173,16 @@ Decision: Serve on port 8080 inside the container, and keep the Service on port 
 Why: Binding a port below 1024 requires `CAP_NET_BIND_SERVICE`, and the `restricted` Pod Security standard requires dropping all capabilities. The two cannot both hold, so the container port moves. The Service keeps port 80 and reaches the container through the named port `http`, so nothing that calls the Service changes.
 
 Cost: The NetworkPolicy rules name the container port, not the Service port, so both have to move with it. That coupling is deliberate and is why the policies name a port at all.
+
+### Image reference in the manifest
+
+Decision: Reference the image by digest rather than by tag, keeping the tag alongside it for readability.
+
+Why: A digest is derived from the image content, so a manifest naming one deploys exactly those bytes for as long as it exists. A tag is a label the registry could in principle move, and reading a manifest tells you nothing about which build a tag pointed at on a given day.
+
+Cost: A digest is unreadable, and nothing in the manifest says which commit produced it. The tag beside it carries that, and Phase 6 removes the manual step by having delivery write the digest.
+
+Alternatives: Deploy by tag and rely on the repository's immutable tags, or deploy by tag and accept the ambiguity.
 
 ### Registry access for nodes
 
