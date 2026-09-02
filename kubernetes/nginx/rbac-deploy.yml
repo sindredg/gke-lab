@@ -1,0 +1,43 @@
+# Grants the delivery pipeline exactly the verbs a rollout needs in this namespace, and nothing anywhere else in the cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: deploy
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+rules:
+  # Update the image and read rollout progress.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+
+  # kubectl rollout status reads the ReplicaSets behind the Deployment.
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+
+  # The smoke test creates one throwaway Pod and reads its result.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+# Binds the Google service account to that Role. On GKE a Google identity is a valid RBAC subject, named by its email under the User kind.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: deploy
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+subjects:
+  - kind: User
+    name: k8-lab-deploy@example-security-lab.iam.gserviceaccount.com
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: deploy
+  apiGroup: rbac.authorization.k8s.io

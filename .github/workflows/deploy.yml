@@ -1,0 +1,119 @@
+# Builds, publishes, and rolls out the frontend image without a stored key.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+# id-token: write lets the runner request a signed OIDC token. Without it,
+# authentication cannot start.
+permissions:
+  contents: read
+  id-token: write
+
+# A running deploy is left to finish rather than cancelled.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  REGION: europe-north1
+  ZONE: europe-north1-a
+  PROJECT_ID: example-security-lab
+  CLUSTER: k8-lab
+  NAMESPACE: demo
+  DEPLOYMENT: nginx
+  CONTAINER: nginx
+  IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/frontend
+
+jobs:
+  deliver:
+    name: Build, push, and roll out
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Trades the OIDC token for short-lived credentials. No key involved.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Authenticate Docker against Artifact Registry
+        run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      # platforms pins the node architecture. The run id keeps the tag unique,
+      # because the repository refuses to move an existing tag.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: app
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}-${{ github.run_id }}.${{ github.run_attempt }}
+
+      # The cluster has no IP endpoint, so credentials come via the DNS one.
+      - name: Get cluster credentials
+        uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.ZONE }}
+          use_dns_endpoint: true
+
+      # The digest is what deploys. The tag above is only for a reader.
+      - name: Roll out the new digest
+        run: |
+          echo "Deploying ${IMAGE}@${{ steps.build.outputs.digest }}"
+          kubectl set image "deployment/$DEPLOYMENT" \
+            "$CONTAINER=${IMAGE}@${{ steps.build.outputs.digest }}" \
+            -n "$NAMESPACE"
+
+      # maxUnavailable is 0, so a Pod that never goes Ready fails here.
+      - name: Wait for the rollout
+        run: kubectl rollout status "deployment/$DEPLOYMENT" -n "$NAMESPACE" --timeout=180s
+
+      # The label satisfies the NetworkPolicy; the securityContext satisfies
+      # the restricted Pod Security standard.
+      - name: Smoke test from inside the cluster
+        run: |
+          kubectl run "smoke-${{ github.run_id }}" \
+            -n "$NAMESPACE" \
+            --image=curlimages/curl:8.11.1 \
+            --labels=nginx-client=true \
+            --restart=Never --rm --attach --quiet \
+            --overrides='{
+              "spec": {
+                "containers": [{
+                  "name": "smoke",
+                  "image": "curlimages/curl:8.11.1",
+                  "command": ["curl","-sSf","--max-time","5","http://nginx/healthz"],
+                  "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "runAsNonRoot": true,
+                    "capabilities": { "drop": ["ALL"] },
+                    "seccompProfile": { "type": "RuntimeDefault" }
+                  }
+                }]
+              }
+            }'
+
+      - name: Report the deployed image
+        run: |
+          kubectl get "deployment/$DEPLOYMENT" -n "$NAMESPACE" \
+            -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'

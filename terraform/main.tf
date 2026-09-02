@@ -56,3 +56,15 @@ module "registry" {
 
   depends_on = [google_project_service.required]
 }
+
+# Federates GitHub Actions into the project and creates the delivery identity.
+module "delivery" {
+  source = "./modules/delivery"
+
+  project_id        = var.project_id
+  region            = var.region
+  repository_id     = "k8-lab"
+  github_repository = "sindredg/k8-lab"
+
+  depends_on = [google_project_service.required, module.registry]
+}

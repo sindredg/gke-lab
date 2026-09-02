@@ -6,10 +6,12 @@ locals {
     "compute.googleapis.com",
     "container.googleapis.com",
     "containerscanning.googleapis.com",
+    "iamcredentials.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
     "serviceusage.googleapis.com",
+    "sts.googleapis.com",
   ])
 }
 
