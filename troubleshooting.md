@@ -277,3 +277,107 @@ kubectl describe pod <pod> -n demo | sed -n '/Events:/,$p'
 3. Only then look at IAM. A pull uses the node service account, not the identity that ran the successful `gcloud` command a moment earlier.
 
 The general rule: an identity that can read something says nothing about whether a different identity can, and a registry that resolves a reference says nothing about whether the node can execute what it finds.
+
+## Phase 6: Keyless application delivery
+
+### A federated token exchange fails with ECONNRESET
+
+**Issue:** The `google-github-actions/auth` step failed on the first delivery run, after having written its credential configuration.
+
+```text
+failed to generate Google Cloud federated token for
+//iam.googleapis.com/projects/222222222222/locations/global/workloadIdentityPools/github/providers/github-oidc:
+read ECONNRESET
+```
+
+![The authenticate step failing on the token exchange](images/delivery-auth-econnreset.png)
+
+**Cause:** A transport failure, not an authorization failure. The connection to the Security Token Service was reset mid-request. Re-running the same commit with no changes succeeded.
+
+**Fix:** Re-run the job. If it fails identically twice, check that `sts.googleapis.com` and `iamcredentials.googleapis.com` are enabled and that the provider path names the right project number.
+
+```bash
+gcloud services list --enabled | grep -E 'sts|iamcredentials'
+gcloud projects describe PROJECT_ID --format='value(projectNumber)'
+```
+
+#### Why the distinction matters
+
+A rejected token reads differently: `Unable to acquire impersonated credentials`, or a 403 naming the credential as rejected. Those mean the attribute condition, the `principalSet` binding, or the repository name is wrong, and they are worth hours of Terraform reading. `ECONNRESET` means none of that was ever reached, and reading it as an authorization problem sends you to inspect configuration that is already correct.
+
+The general rule: separate "the request did not arrive" from "the request arrived and was refused" before forming any theory. The two have no causes in common.
+
+### A container will not start because its user is a name rather than a number
+
+**Issue:** The smoke test Pod was admitted and its image pulled successfully, then the container never started. `kubectl run --attach` reported only a timeout.
+
+```text
+error: timed out waiting for the condition
+```
+
+![The smoke test step failing without a reason](images/delivery-smoke-step-failed.png)
+
+**Cause:** Visible only in the namespace events, not in the step log.
+
+```bash
+kubectl get events -n demo --sort-by=.lastTimestamp | tail -20
+```
+
+![The kubelet refusing to verify the container user](images/delivery-smoke-user-error.png)
+
+```text
+Error: container has runAsNonRoot and image has non-numeric user (curl_user),
+cannot verify user is non-root
+```
+
+`curlimages/curl` declares its user as a name. The kubelet enforces `runAsNonRoot` by checking that the UID is not 0, and it cannot resolve a username into a UID, because that mapping lives in the container's `/etc/passwd`, which the kubelet does not read. It refuses to start rather than guess.
+
+**Fix:** State the UID explicitly alongside the flag. `curl_user` is UID 100.
+
+```json
+"securityContext": {
+  "runAsNonRoot": true,
+  "runAsUser": 100
+}
+```
+
+#### The step hid its own cause
+
+The original step used `kubectl run --attach --rm`, which waits for the Pod to reach Running and reports a bare timeout when it does not. The rewrite waits on the Pod's phase and dumps `kubectl describe` on failure, so the run log names the cause instead of the reader having to reconstruct it from events afterwards.
+
+```bash
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$POD" -n demo --timeout=90s \
+  || { kubectl describe "pod/$POD" -n demo; exit 1; }
+```
+
+Dropping `--attach` removed two other problems at once: a race where a container exiting in under a second finishes before kubectl observes it Running, and a dependency on the `pods/attach` subresource that the pipeline's Role does not grant.
+
+#### What to check first next time
+
+1. Read the events, not the step log. A Pod that never starts produces its reason there.
+2. Separate "not admitted" from "admitted but not started". Admission rejections are immediate and name the policy; a start failure follows a successful pull.
+3. Check whether the image declares a numeric user. `docker inspect --format '{{.Config.User}}' IMAGE` answers it, and anything non-numeric is incompatible with a bare `runAsNonRoot`.
+
+### A pull request shows no changes although the fix is committed
+
+**Issue:** A branch that broke `app/default.conf` and then restored it produced a pull request GitHub reported as having no changes, while `main` still carried the break.
+
+**Cause:** GitHub computes a pull request's diff from the merge base, not from the target branch's tip. The earlier commit on that branch had already been squash-merged, which rewrote it onto `main` under a new hash, so the merge base stayed at the branch's original starting point. From there the branch broke a file and restored it: a net change of nothing.
+
+**Fix:** Rebuild the branch on the current tip and replay only the intended commit.
+
+```bash
+git fetch origin
+git checkout -B fix/restore-healthz origin/main
+git cherry-pick COMMIT
+git push -u origin fix/restore-healthz
+```
+
+#### Why this matters beyond the confusing display
+
+Squash-merging that empty pull request would have produced an empty commit and left the break in place. The pull request was not merely rendering oddly; merging it would not have fixed anything.
+
+Two rules follow, and both come from squash-merging specifically. Under a merge-commit strategy the shared history stays a genuine ancestor and neither problem arises.
+
+- Never branch from a branch. Start every branch from `origin/main` by naming it: `git checkout -b NAME origin/main`.
+- Never reuse a branch after its pull request merged. Under squashing a branch is single-use, because its commits now exist on `main` under different hashes.

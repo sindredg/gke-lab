@@ -72,13 +72,15 @@ Documentation: [Artifact Registry with GKE](https://cloud.google.com/artifact-re
 
 ### Phase 6: Keyless application delivery
 
+**Status:** Complete
+
 - Configure Workload Identity Federation for GitHub Actions.
 - Use a dedicated, least-privilege pipeline identity.
 - Restrict trust to the intended repository and deployment context.
 - Build, push, deploy, wait for rollout, and run a smoke test.
 - Stop the workflow when rollout validation fails.
 
-**Exit criteria:** GitHub deploys the workload without a service account key and reports the rollout result.
+**Exit criteria met:** A push to `main` builds, publishes, and rolls out the image with no stored key. Trust is scoped to this repository by attribute condition, the pipeline identity holds a namespaced Role rather than a project role, and a rollout that does not become Ready stops the workflow before the smoke test runs.
 
 Documentation: [Workload Identity Federation for deployment pipelines](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines), [pipeline service account practices](https://cloud.google.com/iam/docs/best-practices-for-using-service-accounts-in-deployment-pipelines)
 
@@ -173,4 +175,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Begin Phase 6. The image now ships by digest, but building and pushing it is still a manual step on a workstation, which is what let an arm64-only image reach an amd64 cluster. Configure Workload Identity Federation for GitHub Actions so delivery builds for the node architecture, pushes, and waits for the rollout without a stored key.
+Begin Phase 7. Delivery is automated and the workload runs a project-owned image, but the Service is still reachable only from inside the cluster. Enable the Gateway API, publish the workload through an external Gateway with managed TLS, and keep the Service internal.

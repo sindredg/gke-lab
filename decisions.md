@@ -288,6 +288,54 @@ Why: One cluster and one workload do not yet justify another continuously runnin
 
 Alternatives: [Argo CD](https://argo-cd.readthedocs.io/en/stable/), [Flux](https://fluxcd.io/flux/), or manual deployment.
 
+### Pipeline authentication
+
+Decision: Authenticate GitHub Actions through [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines), and create no user-managed service account keys.
+
+Why: A downloaded key is a permanent bearer credential. Anyone who reads it is the pipeline until someone notices and rotates it, and nothing in the key records where it was used. A federated token is minted per run, expires in minutes, and carries the repository, workflow, and ref that requested it.
+
+Cost: Federation is harder to reason about than a key, and its failure modes are less obvious. The [troubleshooting log](troubleshooting.md#a-federated-token-exchange-fails-with-econnreset) records the first one encountered.
+
+Alternatives: A service account key in a GitHub secret, or a self-hosted runner holding an attached identity.
+
+### Federation trust boundary
+
+Decision: Restrict the OIDC provider with an `attribute_condition` on `assertion.repository`, and bind impersonation to a `principalSet://` naming that same attribute.
+
+Why: The provider trusts GitHub's issuer, and every repository on GitHub receives tokens from that issuer. Without a condition, a validly signed token from any repository is accepted, including one an attacker creates. The condition is what narrows "signed by GitHub" to "signed by GitHub, for this repository".
+
+`principalSet` rather than `principal` binds every workflow in the repository rather than one exact subject. The branch and workflow will change over this project's life; the repository will not.
+
+Alternatives: Scope trust to a branch or environment as well, which is stricter and breaks on every branch rename.
+
+### Pipeline authorization
+
+Decision: Grant the pipeline identity `roles/container.clusterViewer` at the project, and a namespaced Kubernetes `Role` in `demo` for everything it actually does.
+
+Why: Google IAM decides whether the pipeline can reach the cluster; Kubernetes RBAC decides what it may do inside. Splitting them keeps the project-level grant to discovery only. The Role has no `create` or `delete` on Deployments, no access to Secrets, and no reach outside `demo`, and it is short enough that a reviewer can check it in seconds.
+
+Cost: The Role must be applied by a human before the first run, because the pipeline cannot create its own permissions. That bootstrapping step is the property that stops the pipeline widening its own access.
+
+Alternatives: `roles/container.developer`, which is one line of Terraform and grants read and write on every object in every cluster in the project.
+
+### Delivery workflow separation
+
+Decision: Deliver from a second workflow rather than adding credentials to `ci.yml`.
+
+Why: The validation workflow's claim is that it holds `contents: read` and cannot reach the project at all. Adding `id-token: write` would erase that for every pull request, including ones from forks. The claim is worth more than one fewer file.
+
+Alternatives: A single workflow with conditional steps, or a reusable workflow called by both.
+
+### Image reference at deploy time
+
+Decision: Have the pipeline set the Deployment's image to the digest it just built, rather than committing the digest back to the repository.
+
+Why: One source of change and no commit loop. The workflow needs no write access to the repository.
+
+Cost: The digest in `kubernetes/nginx/deployment.yml` no longer matches what runs. Git describes the workload's shape; the cluster holds the current version. A controller reconciling from git closes this, and the [deferred decision](#deferred-decision-records) on Argo CD and Flux is where that is settled.
+
+Alternatives: Commit the digest back to `main`, or substitute a placeholder at deploy time.
+
 ## Project and process
 
 ### Project focus

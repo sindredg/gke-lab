@@ -84,6 +84,7 @@ flowchart TB
 | Delivery | Credential-free pull request validation, required checks on `main` | [Delivery](decisions.md#delivery) | [Phase 3](worklog/phase-03-ci.md) |
 | Policy | Pod Security baseline enforced, restricted audited, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
 | Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
+| Deployment | Keyless GitHub Actions delivery, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
 | Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
 
 ## Documentation
@@ -95,6 +96,8 @@ flowchart TB
 - [Phase 3 CI worklog](worklog/phase-03-ci.md)
 - [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
 - [Phase 5 custom image worklog](worklog/phase-05-custom-image.md)
+- [Phase 6 keyless delivery worklog](worklog/phase-06-keyless-delivery.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)
+- [IAM and Workload Identity Federation reference](reference/iam-and-federation.md)
