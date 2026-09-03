@@ -91,12 +91,13 @@ jobs:
       # The label satisfies the NetworkPolicy; the securityContext satisfies
       # the restricted Pod Security standard.
       - name: Smoke test from inside the cluster
+        env:
+          POD: smoke-${{ github.run_id }}
         run: |
-          kubectl run "smoke-${{ github.run_id }}" \
-            -n "$NAMESPACE" \
+          kubectl run "$POD" -n "$NAMESPACE" \
             --image=curlimages/curl:8.11.1 \
             --labels=nginx-client=true \
-            --restart=Never --rm --attach --quiet \
+            --restart=Never \
             --overrides='{
               "spec": {
                 "containers": [{
@@ -106,6 +107,7 @@ jobs:
                   "securityContext": {
                     "allowPrivilegeEscalation": false,
                     "runAsNonRoot": true,
+                    "runAsUser": 100,
                     "capabilities": { "drop": ["ALL"] },
                     "seccompProfile": { "type": "RuntimeDefault" }
                   }
@@ -113,7 +115,14 @@ jobs:
               }
             }'
 
-      - name: Report the deployed image
-        run: |
-          kubectl get "deployment/$DEPLOYMENT" -n "$NAMESPACE" \
-            -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded \
+                 "pod/$POD" -n "$NAMESPACE" --timeout=90s; then
+            echo "--- smoke pod did not succeed ---"
+            kubectl describe "pod/$POD" -n "$NAMESPACE"
+            kubectl logs "$POD" -n "$NAMESPACE" || true
+            kubectl delete "pod/$POD" -n "$NAMESPACE" --ignore-not-found
+            exit 1
+          fi
+
+          kubectl logs "$POD" -n "$NAMESPACE"
+          kubectl delete "pod/$POD" -n "$NAMESPACE" --ignore-not-found
