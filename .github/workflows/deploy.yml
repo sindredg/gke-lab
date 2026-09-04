@@ -77,17 +77,16 @@ jobs:
           use_dns_endpoint: true
 
       # The digest is what deploys. The tag above is only for a reader.
-      # Sets the image and IMAGE_DIGEST in one patch, so the digest on the page matches the one running.
-      - name: Roll out the new digest
+      # Applies the manifest rather than patching the image, so a change to deployment.yml reaches the cluster in the same rollout.
+      - name: Apply the Deployment with the new digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           echo "Deploying ${IMAGE}@${DIGEST}"
-          PATCH=$(printf \
-            '{"spec":{"template":{"spec":{"containers":[{"name":"%s","image":"%s@%s","env":[{"name":"IMAGE_DIGEST","value":"%s"}]}]}}}}' \
-            "$CONTAINER" "$IMAGE" "$DIGEST" "$DIGEST")
-          kubectl patch "deployment/$DEPLOYMENT" -n "$NAMESPACE" \
-            --type=strategic -p "$PATCH"
+          kubectl set image -f kubernetes/nginx/deployment.yml --local -o yaml \
+            "$CONTAINER=${IMAGE}@${DIGEST}" \
+            | kubectl set env --local -f - -o yaml IMAGE_DIGEST="$DIGEST" \
+            | kubectl apply -f -
 
       # maxUnavailable is 0, so a Pod that never goes Ready fails here.
       - name: Wait for the rollout

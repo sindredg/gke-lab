@@ -311,6 +311,23 @@ A rejected token reads differently: `Unable to acquire impersonated credentials`
 
 The general rule: separate "the request did not arrive" from "the request arrived and was refused" before forming any theory. The two have no causes in common.
 
+### A merged manifest change never reaches the cluster
+
+**Issue:** The page rendered `unknown` for every Pod field although `deployment.yml` declared them, the pull request had merged, and the rollout had succeeded.
+
+**Cause:** The deploy workflow built the image, patched it onto the Deployment, and waited. It never applied `kubernetes/`. A patch changes only the fields it names, so `env`, probes, resources and replicas merge to `main` and are silently dropped. CI validates the file against the schema, not whether anything applies it.
+
+```bash
+kubectl get deploy nginx -n demo \
+  -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}{"\n"}{end}'
+```
+
+Only `IMAGE_DIGEST` came back, the single name the patch set. The two values that did render were the ones that never depended on the manifest: the uid is computed in the container, and the digest is what the patch writes.
+
+**Fix:** The pipeline now renders the digest into the manifest and applies it, so the image and every other field arrive in one rollout.
+
+Applying `deployment.yml` by hand would also have worked, but it carries a digest that is stale by design, so it would have rolled the image back at the same time. Check what the cluster holds rather than what the file says, because a green pipeline only proves the image moved.
+
 ### A container will not start because its user is a name rather than a number
 
 **Issue:** The smoke test Pod was admitted and its image pulled successfully, then the container never started. `kubectl run --attach` reported only a timeout.
