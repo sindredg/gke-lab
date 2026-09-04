@@ -1,0 +1,19 @@
+# Points the load balancer's health check at /healthz instead of /, so the check doesnt depend on page content. Mirrors the Kubernetes probes.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: nginx
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8080
+        requestPath: /healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: nginx

@@ -68,3 +68,14 @@ module "delivery" {
 
   depends_on = [google_project_service.required, module.registry]
 }
+
+# Reserves the public address the external Gateway attaches to.
+module "gateway" {
+  source = "./modules/gateway"
+
+  project_id   = var.project_id
+  address_name = "k8-lab-gateway"
+  domain       = var.domain
+
+  depends_on = [google_project_service.required]
+}

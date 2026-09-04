@@ -340,11 +340,11 @@ Alternatives: Commit the digest back to `main`, or substitute a placeholder at d
 
 ### Project focus
 
-Decision: Build a secure GKE workload delivery platform, with an AI-assisted manifest reviewer as a later reference workload.
+Decision: Build a secure GCP hosted Kubernetes workload platform. Host an intresting custom workload on it.
 
 Why: Keeps cloud and Kubernetes engineering as the primary work while providing a concrete workload to prove the platform.
 
-Alternatives: Build an [application-first AI service](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview) or a dedicated self-hosted AI platform.
+Options: Build an [application-first AI service](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview) or a dedicated self-hosted AI platform.
 
 ### First platform milestone
 

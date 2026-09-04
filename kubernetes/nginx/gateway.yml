@@ -1,0 +1,34 @@
+# The public entry point. GKE reconciles this into a global external Application Load Balancer attached to the reserved address.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: external
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+  annotations:
+    # Certificates come from this Certificate Manager map rather than from a Secret, so renewal is Google's job and no key material is in the repo.
+    networking.gke.io/certmap: k8-lab-gateway-cert-map
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+
+  # Refers to the reserved address by its Google Cloud name, so Terraform owns the address and this manifest only points at it.
+  addresses:
+    - type: NamedAddress
+      value: k8-lab-gateway
+
+  listeners:
+    # Kept only to redirect. nginx-https-redirect attaches here.
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    - name: https
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Same

@@ -60,7 +60,12 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Validate manifests against the Kubernetes schemas
-        run: kubeconform -strict -summary -verbose kubernetes/
+        run: |
+          kubeconform -strict -summary -verbose \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -ignore-missing-schemas \
+            kubernetes/
 
       - name: Report kube-linter findings (advisory)
         run: |

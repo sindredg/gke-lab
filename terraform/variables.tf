@@ -19,3 +19,8 @@ variable "zone" {
   type        = string
   default     = "europe-north1-a"
 }
+
+variable "domain" {
+  description = "The domain name for the Gateway and SSL certificate"
+  type        = string
+}

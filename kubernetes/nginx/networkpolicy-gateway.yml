@@ -1,0 +1,27 @@
+# Allows traffic and health checks from Google Cloud's fixed load balancer IP ranges.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nginx-allow-gateway
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nginx
+
+  policyTypes:
+    - Ingress
+
+  ingress:
+    # Uses ipBlock to target external Google IPs instead of internal Pods.
+    - from:
+        - ipBlock:
+            cidr: 130.211.0.0/22
+        - ipBlock:
+            cidr: 35.191.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080

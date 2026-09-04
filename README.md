@@ -64,14 +64,14 @@ flowchart TB
 
 ## Status
 
-- Focus: secure workload delivery on GKE, with the AI reviewer as a later reference workload.
+- Focus: secure platform and workload delivery on GKE
 - Complete: private GKE foundation built with modular Terraform.
 - Complete: NGINX Deployment, ClusterIP Service, probes, resources, scaling, self-healing, restart, and rollback validation.
 - Complete: credential-free pull request validation, required on `main`.
 - Complete: workload guardrails, with Pod Security Admission, a namespace resource budget, and default-deny NetworkPolicies.
-- In progress: a project-owned non-root image published to Artifact Registry and deployed by digest. The private repository exists; nothing has been built yet.
+- Complete: a project-owned non-root image published to Artifact Registry and deployed by digest. The private repository exists; nothing has been built yet.
+- In-progres: public facing gateway, custom .com domain (complete) and secure tls 1.3 connectivity (troubleshooting in-progress)
 - Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
-- Milestone 2: add an AI-assisted manifest reviewer with deterministic validation before and after every model suggestion.
 
 ## Platform capabilities
 
@@ -85,6 +85,7 @@ flowchart TB
 | Policy | Pod Security baseline enforced, restricted audited, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
 | Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
 | Deployment | Keyless GitHub Actions delivery, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
+| Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS in progress | [Delivery](decisions.md#delivery) | [Phase 7](worklog/phase-07-gateway-tls.md) |
 | Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
 
 ## Documentation
@@ -97,6 +98,7 @@ flowchart TB
 - [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
 - [Phase 5 custom image worklog](worklog/phase-05-custom-image.md)
 - [Phase 6 keyless delivery worklog](worklog/phase-06-keyless-delivery.md)
+- [Phase 7 gateway and TLS worklog](worklog/phase-07-gateway-tls.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)

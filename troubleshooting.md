@@ -244,6 +244,10 @@ The status and the body were correct throughout, so a check asserting only `200`
 failed to resolve reference "...k8-lab/nginx@sha256:a0388fda...": not found
 ```
 
+![The rollout holding at one of two new replicas](images/registry-rollout-stalled.png)
+
+`maxUnavailable: 0` turns a failed pull into a stalled rollout rather than an outage: the new Pod never becomes Ready, so the old Pods are never terminated. `kubectl rollout status` reports only that the rollout has not finished, never why.
+
 **Cause:** Two separate faults, one after the other, both reported as `NotFound`.
 
 First, the repository path was wrong. The image was pushed to `k8-lab/frontend`, and the manifest named `k8-lab/nginx`. A digest resolves within a repository, so a correct digest under the wrong path is simply absent.
@@ -381,3 +385,205 @@ Two rules follow, and both come from squash-merging specifically. Under a merge-
 
 - Never branch from a branch. Start every branch from `origin/main` by naming it: `git checkout -b NAME origin/main`.
 - Never reuse a branch after its pull request merged. Under squashing a branch is single-use, because its commits now exist on `main` under different hashes.
+
+## Phase 7: Gateway and managed TLS
+
+### A Gateway provisions cleanly and every backend is unhealthy
+
+**Issue:** The Gateway reported `Accepted` and `Programmed`, the reserved address answered, and every request returned `502`. Both Pods appeared in the endpoint group with the correct IPs and port, and both were `UNHEALTHY`.
+
+![Both endpoints unhealthy on port 8080](images/gateway-backends-unhealthy.png)
+
+**Cause:** The namespace runs a default-deny NetworkPolicy. Load balancer health checks and forwarded requests both arrive from Google's infrastructure rather than from a Pod, so no `podSelector` rule can match them and the default deny drops every one.
+
+![Four policies, none admitting the load balancer](images/gateway-netpol-before.png)
+
+**Fix:** Admit Google's published ranges with an `ipBlock` rule.
+
+```yaml
+ingress:
+  - from:
+      - ipBlock:
+          cidr: 130.211.0.0/22
+      - ipBlock:
+          cidr: 35.191.0.0/16
+    ports:
+      - protocol: TCP
+        port: 8080
+```
+
+![Both endpoints healthy after the policy](images/gateway-backends-healthy.png)
+
+#### Why no Pod selector can express this
+
+`podSelector` matches senders by label, which requires the sender to be a Pod the API server knows about. `ipBlock` matches by source address, which is the only way to name a sender outside the cluster. Neither form can express the other, so a namespace that denies by default needs both kinds of rule once it is published.
+
+The ranges are Google's, not this project's, and every Google Cloud customer's load balancer traffic originates there. The rule still earns its place: it admits those proxies to one port on one set of Pods and nothing else.
+
+#### Nothing in the Gateway's status says so
+
+`kubectl describe gateway` reports the Gateway healthy throughout, because the Gateway is healthy. The fault is one layer further in, and only `get-health` on the backend service shows it.
+
+```bash
+for b in $(gcloud compute backend-services list --global --format="value(name)"); do
+  echo "== $b"; gcloud compute backend-services get-health "$b" --global
+done
+```
+
+GKE generates backend service names, so they are discovered rather than known. A Gateway also creates default 404 and 500 services, so expect more backends than routes.
+
+### A managed certificate stays in PROVISIONING
+
+**Issue:** A Certificate Manager certificate remained `PROVISIONING` indefinitely, and HTTPS failed with `SSL_ERROR_SYSCALL` rather than a certificate error.
+
+**Cause:** Two separate faults, neither visible in the top-level state.
+
+The first was a wrong value in Terraform. The `domain` variable held `sidnrg.com` rather than `sindrg.com`, so the certificate, the DNS authorization, and the map entry were all created for a domain nobody owns. The reason appeared only in `managed.authorizationAttemptInfo`:
+
+```text
+domain: sidnrg.com
+failureReason: CONFIG
+issues:
+- CNAME_MISMATCH
+```
+
+The `CNAME` in the DNS provider was correct for that wrong name, because it had been copied faithfully from Terraform's output. Reading the record against the zone would never have found it.
+
+The second was staleness after the fix. `domain` is immutable on a DNS authorization and a managed certificate, so correcting it replaced both, and replacement issues a new authorization with a new target.
+
+![Three resources replaced](images/gateway-domain-fix-apply.png)
+
+![The expected target and the served target differing](images/gateway-cname-mismatch.png)
+
+**Fix:** Compare the two values directly rather than checking that a record exists.
+
+```bash
+gcloud certificate-manager dns-authorizations describe NAME \
+  --format="value(dnsResourceRecord.name,dnsResourceRecord.data)"
+dig +short _acme-challenge.DOMAIN CNAME
+```
+
+The served value began `c016c223`, from the destroyed authorization; the expected value began `fbee38d7`. A record that exists and resolves is not the same as a record that matches.
+
+#### Why HTTPS fails at the transport layer
+
+`SSL_ERROR_SYSCALL` means nothing answered on 443. GKE does not stand up an HTTPS frontend without a usable certificate, so the listener exists in the Gateway spec while the load balancer has nothing to serve. An untrusted or mismatched certificate produces a *verify* error instead, which is a different fault at a different layer.
+
+![The connection refused before any handshake](images/gateway-https-refused.png)
+
+#### A second failure, with the domain and the record both correct
+
+Status: Open
+
+After the domain was corrected and the record updated, a later attempt failed again:
+
+```yaml
+authorizationAttemptInfo:
+- attemptTime: '2026-09-04T01:50:18Z'
+  domain: sindrg.com
+  failureReason: CONFIG
+  state: FAILED
+provisioningIssue:
+  reason: AUTHORIZATION_ISSUE
+```
+
+This one reads differently from the first. The `sidnrg` failure carried a `troubleshooting` block naming `CNAME_MISMATCH` and the record it wanted; this one carries neither. Certificate Manager names the mismatch explicitly when the record is the fault, so its absence argues the CNAME is not what failed. The attempt also ran about three hours after the record was corrected, so the right value was available to it.
+
+That leaves the issuer rather than the record as the next candidate. A CAA record names which certificate authorities may issue for a domain, and one that omits Google's fails issuance with a configuration error and no CNAME complaint. Cloudflare adds CAA records automatically for domains using its own SSL, so a zone can carry them without anyone having written one.
+
+```bash
+NS=$(dig +short DOMAIN NS | head -1)
+
+# Is an issuer restriction in place?
+dig +short @"$NS" DOMAIN CAA
+
+# Does the record still match?
+gcloud certificate-manager dns-authorizations describe NAME \
+  --format="value(dnsResourceRecord.data)"
+dig +short @"$NS" _acme-challenge.DOMAIN CNAME
+
+# Anything recorded on the authorization itself
+gcloud certificate-manager dns-authorizations describe NAME --format=yaml
+```
+
+| Result | Meaning |
+| --- | --- |
+| CAA records present, none naming `pki.goog` | Google Trust Services is barred from issuing. Add `0 issue "pki.goog"` or remove the restriction. |
+| No CAA records | Not the cause; any authority may issue. |
+| The two CNAME values differ | A mismatch after all, despite the missing `issues` block. |
+| Values match and no CAA | Neither candidate; read the authorization YAML before guessing further. |
+
+Query the authoritative nameserver rather than a resolver. A cached negative answer on CAA reads as "no restriction" when one exists, which would rule out the likeliest cause on false evidence.
+
+Worth confirming at the same time that `_acme-challenge` is not proxied by the DNS provider. A proxied CNAME returns the provider's addresses instead of the target name, which fails validation without ever looking like a mismatch.
+
+#### What to check first next time
+
+1. Read `managed.authorizationAttemptInfo`, not `managed.state`. The state says stuck; the attempt says why.
+2. Confirm the `domains` list holds the domain you own. A certificate for the wrong name fails identically to a missing DNS record.
+3. Compare the expected authorization target against what DNS serves, character by character.
+4. Check for CAA records before assuming the fault is the challenge record. A `CONFIG` failure carrying no `troubleshooting` block points away from the CNAME.
+5. Separate a transport failure from a verify failure before forming any theory about the certificate.
+
+### A certificate cannot be replaced while its map entry references it
+
+**Issue:** `terraform apply -replace=module.gateway.google_certificate_manager_certificate.default` planned the certificate as a replacement and the map entry as an in-place update, then failed on the first step.
+
+```text
+Error: googleapi: Error 400: can't delete certificate that is referenced by
+a CertificateMapEntry or other resources
+  "type": "RESOURCE_STILL_IN_USE"
+```
+
+**Cause:** A replacement destroys before it creates, and Certificate Manager refuses to delete a certificate any map entry still points at. Nothing drops the reference, because the entry was only being updated.
+
+The earlier replacement, when `domain` was corrected, did not hit this. `hostname` on the map entry is immutable too, so changing the domain replaced the entry as well, and Terraform destroys dependents first. The deadlock appears only when the certificate is replaced *alone*.
+
+**Fix:** Replace both, and the dependency graph orders it correctly: the entry is destroyed, then the certificate, then both are recreated.
+
+```bash
+terraform -chdir=terraform apply \
+  -replace=module.gateway.google_certificate_manager_certificate_map_entry.default \
+  -replace=module.gateway.google_certificate_manager_certificate.default
+```
+
+#### What put the certificate up for replacement in the first place
+
+The plan changed a field nobody had edited.
+
+```text
+~ dns_authorizations = [
+    ~ "projects/222222222222/locations/global/dnsAuthorizations/k8-lab-gateway-dns-auth"
+   -> "projects/example-security-lab/locations/global/dnsAuthorizations/k8-lab-gateway-dns-auth",
+  ]
+```
+
+Both name the same authorization. The left is the project number, which is how Certificate Manager stores a reference and therefore what refreshes into state; the right is the project ID, which is what `google_certificate_manager_dns_authorization.default.id` builds from `var.project_id`. The two never converge, and because the whole `managed` block is immutable, every plan proposes a replacement — each one landing on the error above.
+
+The module now writes the reference in the form the API returns, so config and state agree:
+
+```hcl
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
+dns_authorizations = [
+  "projects/${data.google_project.this.number}/locations/global/dnsAuthorizations/${google_certificate_manager_dns_authorization.default.name}",
+]
+```
+
+Referencing `.name` keeps the implicit dependency, so the authorization is still created first. A plan that proposes a replacement nobody asked for is a bug in the configuration, not a step to approve: read the changed field before typing `yes`, and check whether the two values are the same thing written differently.
+
+### GatewayClasses appear in waves
+
+**Issue:** After enabling the Gateway API, `kubectl get gatewayclass` returned only layer 4 classes, and `gke-l7-global-external-managed` was absent.
+
+![Only the passthrough and persistent classes present](images/gateway-classes-partial.png)
+
+**Cause:** GKE installs the classes progressively. The L4 set from `persistent-ip-controller` registers before the L7 set from `networking.gke.io/gateway`.
+
+**Fix:** Wait. The L7 classes appeared about twenty minutes later with no further action.
+
+![The L7 classes accepted](images/gateway-classes.png)
+
+The diagnostic is the CONTROLLER column rather than the names: no row carrying `networking.gke.io/gateway` means the L7 controller has not registered yet. If the classes never appear, confirm the HTTP load balancing add-on is enabled, since the L7 classes depend on it.

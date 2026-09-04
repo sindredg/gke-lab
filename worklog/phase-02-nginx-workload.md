@@ -51,6 +51,10 @@ One selected NGINX Pod in GKE
 
 ![NGINX rollout completed](../images/nginx-rollout.png)
 
+`kubectl get deployments -n demo`
+
+![The Deployment reporting two of two replicas ready](../images/nginx-deployment-ready.png)
+
 `kubectl get pods -n demo -o wide`
 
 ![Two healthy NGINX Pods](../images/nginx-pods.png)
@@ -64,6 +68,12 @@ One selected NGINX Pod in GKE
 ![NGINX reached through local port forwarding](../images/nginx-local-test.png)
 
 Result: rollout succeeded, both Pods are healthy, the Service selected both Pods, and NGINX responded locally.
+
+`kubectl get events -n demo`
+
+![Scheduling, image pull, container start, and ReplicaSet scaling](../images/nginx-lifecycle-events.png)
+
+The events record the chain in order: the Deployment scales a ReplicaSet, the ReplicaSet creates Pods, the scheduler assigns each to a node, and the kubelet pulls the image and starts the container. Each object in that chain is visible separately, which is what makes a stall at any step diagnosable.
 
 ## Self-healing test
 
@@ -127,7 +137,9 @@ Result: revision 2 replaced the Pods gradually, then rollback restored revision 
 
 `kubectl rollout history deployment/nginx -n demo`
 
-History recorded two Deployment revisions.
+![Two recorded Deployment revisions](../images/nginx-rollout-history.png)
+
+History recorded two Deployment revisions, which is what `rollout undo` restores from.
 
 ## Next
 

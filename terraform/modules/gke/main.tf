@@ -41,6 +41,11 @@ resource "google_container_cluster" "main" {
     }
   }
 
+  # Installs the Gateway API CRDs and starts the controller that reconciles them into Google Cloud load balancers.
+  gateway_api_config {
+    channel = "CHANNEL_STANDARD"
+  }
+
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }

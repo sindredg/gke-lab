@@ -86,13 +86,15 @@ Documentation: [Workload Identity Federation for deployment pipelines](https://c
 
 ### Phase 7: Gateway and HTTPS
 
+**Status:** In progress. HTTP delivery through the Gateway is complete; the managed certificate is still issuing.
+
 - Enable GKE Gateway API.
 - Create an external Gateway and HTTPRoute.
 - Reserve a static IP.
 - Add DNS and managed TLS after the domain decision.
 - Keep workload Services private.
 
-**Exit criteria:** The workload is reachable through the Gateway while its Service remains internal.
+**Exit criteria:** The workload is reachable through the Gateway while its Service remains internal. Reachability over HTTP is demonstrated; the TLS half and the Service-stayed-private evidence are outstanding.
 
 Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api), [deploy a Gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways), [secure a Gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway)
 
@@ -175,4 +177,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Begin Phase 7. Delivery is automated and the workload runs a project-owned image, but the Service is still reachable only from inside the cluster. Enable the Gateway API, publish the workload through an external Gateway with managed TLS, and keep the Service internal.
+Finish Phase 7. The managed certificate is authorizing against the corrected domain; once it reaches `ACTIVE`, record the HTTPS response, the redirect, and the evidence that the Service stayed `ClusterIP`.
