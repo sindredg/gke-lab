@@ -16,5 +16,4 @@ ENV NGINX_ENVSUBST_FILTER="^(POD_|NODE_|IMAGE_|RUNTIME_)"
 EXPOSE 8080
 
 LABEL org.opencontainers.image.title="k8-lab frontend" \
-      org.opencontainers.image.source="https://github.com/sindredg/k8-lab" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.source="https://github.com/sindredg/k8-lab"

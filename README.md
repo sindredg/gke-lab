@@ -1,5 +1,7 @@
 # Secure GKE Workload Platform
 
+A secure, publicly reachable Kubernetes platform on Google Cloud, built and documented one phase at a time, for engineers who want to see how a private cluster, keyless delivery, workload guardrails and managed TLS fit together in practice.
+
 ## Live
 
 [sindrg.com](https://sindrg.com)
@@ -80,9 +82,11 @@ flowchart TB
 - Complete: NGINX Deployment, ClusterIP Service, probes, resources, scaling, self-healing, restart, and rollback validation.
 - Complete: credential-free pull request validation, required on `main`.
 - Complete: workload guardrails, with Pod Security Admission, a namespace resource budget, and default-deny NetworkPolicies.
-- Complete: a project-owned non-root image published to Artifact Registry and deployed by digest. The private repository exists; nothing has been built yet.
+- Complete: a project-owned non-root image published to Artifact Registry and deployed by digest.
+- Complete: keyless delivery through Workload Identity Federation, with a namespaced pipeline Role and a gated rollout.
 - Complete: a public Gateway on a custom domain, with managed TLS and an HTTP to HTTPS redirect, while the workload Service stays internal.
-- Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
+- Milestone 1: complete apart from the last step. The workload is guarded, the image is project owned and deployed by digest, delivery is keyless, and the workload is public through Gateway API.
+- Next: observability, the one remaining gap. Phase 8 adds the health dashboard, one actionable alert, and the failure tests that close Milestone 1.
 
 ## Platform capabilities
 

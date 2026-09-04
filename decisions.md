@@ -452,7 +452,7 @@ Alternatives: None within NetworkPolicy. Filtering by caller belongs to Cloud Ar
 
 ### Project focus
 
-Decision: Build a secure GCP hosted Kubernetes workload platform. Host an intresting custom workload on it.
+Decision: Build a secure GCP hosted Kubernetes workload platform. Host an interesting custom workload on it.
 
 Why: Keeps cloud and Kubernetes engineering as the primary work while providing a concrete workload to prove the platform.
 
