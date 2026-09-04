@@ -70,7 +70,7 @@ flowchart TB
 - Complete: credential-free pull request validation, required on `main`.
 - Complete: workload guardrails, with Pod Security Admission, a namespace resource budget, and default-deny NetworkPolicies.
 - Complete: a project-owned non-root image published to Artifact Registry and deployed by digest. The private repository exists; nothing has been built yet.
-- In-progres: public facing gateway, custom .com domain (complete) and secure tls 1.3 connectivity (troubleshooting in-progress)
+- Complete: a public Gateway on a custom domain, with managed TLS and an HTTP to HTTPS redirect, while the workload Service stays internal.
 - Milestone 1: guard the existing NGINX workload, publish a custom image, add keyless delivery, expose it through Gateway API, and prove it with monitoring and failure tests.
 
 ## Platform capabilities
@@ -85,7 +85,7 @@ flowchart TB
 | Policy | Pod Security baseline enforced, restricted audited, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
 | Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
 | Deployment | Keyless GitHub Actions delivery, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
-| Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS in progress | [Delivery](decisions.md#delivery) | [Phase 7](worklog/phase-07-gateway-tls.md) |
+| Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS, HTTP to HTTPS redirect | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
 | Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
 
 ## Documentation

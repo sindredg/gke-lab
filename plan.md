@@ -86,7 +86,7 @@ Documentation: [Workload Identity Federation for deployment pipelines](https://c
 
 ### Phase 7: Gateway and HTTPS
 
-**Status:** In progress. HTTP delivery through the Gateway is complete; the managed certificate is still issuing.
+**Status:** Complete
 
 - Enable GKE Gateway API.
 - Create an external Gateway and HTTPRoute.
@@ -94,7 +94,7 @@ Documentation: [Workload Identity Federation for deployment pipelines](https://c
 - Add DNS and managed TLS after the domain decision.
 - Keep workload Services private.
 
-**Exit criteria:** The workload is reachable through the Gateway while its Service remains internal. Reachability over HTTP is demonstrated; the TLS half and the Service-stayed-private evidence are outstanding.
+**Exit criteria:** The workload is reachable through the Gateway while its Service remains internal. Met: `https://sindrg.com` returns `200` on a Google Trust Services certificate, port 80 redirects to it, and the Service is still `ClusterIP` with no external address, reached through a network endpoint group.
 
 Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs/concepts/gateway-api), [deploy a Gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/deploying-gateways), [secure a Gateway](https://cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway)
 
@@ -177,4 +177,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Finish Phase 7. The managed certificate is authorizing against the corrected domain; once it reaches `ACTIVE`, record the HTTPS response, the redirect, and the evidence that the Service stayed `ClusterIP`.
+Begin Phase 8. Build the workload health dashboard and one actionable availability alert, then trigger the alert deliberately and record the recovery.

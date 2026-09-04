@@ -336,6 +336,98 @@ Cost: The digest in `kubernetes/nginx/deployment.yml` no longer matches what run
 
 Alternatives: Commit the digest back to `main`, or substitute a placeholder at deploy time.
 
+## Ingress and TLS
+
+### Gateway API rather than Ingress
+
+Decision: Publish through a `Gateway` on `gke-l7-global-external-managed` rather than an Ingress object.
+
+Why: Routing is expressed in the API rather than in annotations. A redirect, a hostname and a backend are typed fields, so the configuration says what it does and CI can check its shape. Gateway API is also where GKE's load balancer features are being added, and Ingress is where they are not.
+
+Cost: The GKE extensions are proprietary CRDs. `HealthCheckPolicy` has no public schema, so `kubeconform` skips it with `-ignore-missing-schemas` and CI validates everything except the one file most likely to be wrong.
+
+Alternatives: An Ingress with GKE annotations, which is better documented and worse to read.
+
+### The load balancer addresses Pods, not the Service
+
+Decision: Let the Gateway controller build a network endpoint group and leave the `nginx` Service `ClusterIP`.
+
+Why: This is what allows both halves of the phase to hold at once. The load balancer reaches Pod IP and port pairs directly, and the Service is used only to work out which Pods belong in the group. Publishing the workload therefore changes the path into the cluster rather than the exposure of the Service.
+
+Cost: The hop the load balancer makes is invisible to Kubernetes. A Pod is reachable from Google's proxies whether or not any Service would route to it, so Pod-level policy is the only thing standing between the internet and the container.
+
+Alternatives: `LoadBalancer` or `NodePort`, both of which publish the Service itself and forfeit the claim.
+
+### A reserved address owned by Terraform
+
+Decision: Reserve a global external address in Terraform and have the `Gateway` name it through `addresses.type: NamedAddress`.
+
+Why: The address outlives any Gateway object using it. DNS points at a value Terraform owns, so deleting and recreating the Gateway does not change where the domain resolves, and the manifest carries a name rather than an IP.
+
+Cost: One more resource, and a reserved address bills whether or not a load balancer is attached.
+
+Alternatives: Let the controller allocate an ephemeral address, which changes on recreation and makes the DNS record a moving target.
+
+### Certificates through a map rather than a Secret
+
+Decision: Attach certificates with the `networking.gke.io/certmap` annotation, pointing at a Certificate Manager map.
+
+Why: Renewal is Google's problem and no key material is in the repository. The map is indirection that earns itself: one Gateway can serve several certificates chosen by hostname, and swapping a certificate is an entry change rather than a Gateway change.
+
+Cost: Three resources where a Secret is one, and `hostname` on a map entry is immutable, so changing the name a certificate serves replaces the entry.
+
+Alternatives: A TLS Secret listed in the listener, which puts renewal and private keys back on us.
+
+### DNS authorization rather than load balancer authorization
+
+Decision: Prove domain control with a DNS authorization.
+
+Why: It decouples issuance from the cutover. A valid certificate can exist before the domain points anywhere, so the certificate is not blocked on DNS and DNS is not blocked on the certificate. Load balancer authorization checks the live load balancer at that name, which requires the cutover to have already happened.
+
+Cost: One extra record, permanently, because renewal re-checks it.
+
+Alternatives: Load balancer authorization, which needs no record and orders the work the wrong way round.
+
+### DNS authorization record type
+
+Decision: Issue the managed certificate against a `PER_PROJECT_RECORD` DNS authorization, validating at `_acme-challenge_<hash>.sindrg.com` rather than the default `_acme-challenge.sindrg.com`.
+
+Why: Cloudflare serves its own hidden `TXT` records at `_acme-challenge` for Universal SSL. A name holding both a `CNAME` and a `TXT` answers `TXT` queries from the `TXT` set alone, so validation never followed the `CNAME` to Google and the certificate failed with `CONFIG` on every attempt. A per-project label is not contested by anything.
+
+Cost: The challenge record's name is generated rather than predictable, so it cannot be written before the authorization exists. `type` is immutable, so changing it later replaces the authorization, the certificate and the map entry together.
+
+Alternatives: Disable Cloudflare's Universal SSL, which removes the conflicting records but is console state rather than configuration and may be reprovisioned. Move DNS to Cloud DNS, which removes the conflict and the registrar's edge features with it.
+
+### Redirect to HTTPS at the load balancer
+
+Decision: Answer plain HTTP with a `301` from a second `HTTPRoute` attached to the HTTP listener, rather than redirecting in NGINX.
+
+Why: No request reaches a Pod in clear text. Google answers on port 80 and the container never sees an unencrypted request, so the redirect cannot be lost by changing the image or its configuration.
+
+Cost: Two routes and a listener kept open only to redirect. The main route binds to `sectionName: https`, so it cannot attach until the HTTPS listener exists.
+
+Alternatives: Redirect inside NGINX, which lets clear-text requests into the Pod, or close port 80, which breaks anyone typing the bare domain.
+
+### Health checks against /healthz
+
+Decision: Point the load balancer's health check at `/healthz` on port 8080 through a `HealthCheckPolicy`, mirroring the Kubernetes probes.
+
+Why: The default check fetches `/`, so the backend's health becomes a property of the page's content. A dedicated endpoint keeps the check about whether the server is serving.
+
+Cost: A GKE-proprietary CRD with no public schema, so CI cannot validate it. A wrong field here surfaces as unhealthy backends rather than a failed apply.
+
+Alternatives: Accept the default check on `/`, which passes for the wrong reasons and fails for them too.
+
+### Admitting Google's proxies by address range
+
+Decision: Allow ingress to the Pods from `130.211.0.0/22` and `35.191.0.0/16` with an `ipBlock`.
+
+Why: The default-deny policy from Phase 4 drops the health checks, and no `podSelector` can express the source, because Google's proxies are not Pods and hold no identity in the cluster. An address range is the only form the API can state.
+
+Cost: The coarsest control that works. Every Google Cloud customer's proxies originate in those ranges, so this admits a network location rather than a caller.
+
+Alternatives: None within NetworkPolicy. Filtering by caller belongs to Cloud Armor, which is a phase of its own.
+
 ## Project and process
 
 ### Project focus

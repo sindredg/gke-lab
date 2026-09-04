@@ -473,57 +473,75 @@ The served value began `c016c223`, from the destroyed authorization; the expecte
 
 #### A second failure, with the domain and the record both correct
 
-Status: Open
+Status: Resolved
 
-After the domain was corrected and the record updated, a later attempt failed again:
+After the domain was corrected and the record updated, every later attempt still failed the same way:
 
 ```yaml
-authorizationAttemptInfo:
 - attemptTime: '2026-09-04T01:50:18Z'
   domain: sindrg.com
   failureReason: CONFIG
   state: FAILED
-provisioningIssue:
-  reason: AUTHORIZATION_ISSUE
 ```
 
-This one reads differently from the first. The `sidnrg` failure carried a `troubleshooting` block naming `CNAME_MISMATCH` and the record it wanted; this one carries neither. Certificate Manager names the mismatch explicitly when the record is the fault, so its absence argues the CNAME is not what failed. The attempt also ran about three hours after the record was corrected, so the right value was available to it.
+Unlike the `sidnrg` failure, this one carried no `troubleshooting` block and no `CNAME_MISMATCH`, which argued the record was not at fault. It was, but not in a way any single query showed.
 
-That leaves the issuer rather than the record as the next candidate. A CAA record names which certificate authorities may issue for a domain, and one that omits Google's fails issuance with a configuration error and no CNAME complaint. Cloudflare adds CAA records automatically for domains using its own SSL, so a zone can carry them without anyone having written one.
+**Cause:** Cloudflare serves its own hidden `TXT` records at `_acme-challenge.sindrg.com` for Universal SSL. A name holding both a `CNAME` and a `TXT` violates RFC 1034, and Cloudflare resolves the conflict by answering `TXT` queries from the `TXT` set alone. Validation asks for `TXT`, so it never saw the `CNAME` and never followed it to Google. The records are absent from the Cloudflare dashboard, which listed three records and no `TXT` among them.
+
+Asking for one type at a time is what exposes it:
+
+| Query | Answer |
+| --- | --- |
+| `CNAME` | the authorization target, correct |
+| `A` | the same `CNAME`, followed correctly |
+| `TXT` | two Cloudflare tokens, no `CNAME` |
 
 ```bash
-NS=$(dig +short DOMAIN NS | head -1)
-
-# Is an issuer restriction in place?
-dig +short @"$NS" DOMAIN CAA
-
-# Does the record still match?
-gcloud certificate-manager dns-authorizations describe NAME \
-  --format="value(dnsResourceRecord.data)"
-dig +short @"$NS" _acme-challenge.DOMAIN CNAME
-
-# Anything recorded on the authorization itself
-gcloud certificate-manager dns-authorizations describe NAME --format=yaml
+for t in CNAME A TXT; do
+  curl -s "https://dns.google/resolve?name=_acme-challenge.DOMAIN&type=$t"
+done
 ```
 
-| Result | Meaning |
-| --- | --- |
-| CAA records present, none naming `pki.goog` | Google Trust Services is barred from issuing. Add `0 issue "pki.goog"` or remove the restriction. |
-| No CAA records | Not the cause; any authority may issue. |
-| The two CNAME values differ | A mismatch after all, despite the missing `issues` block. |
-| Values match and no CAA | Neither candidate; read the authorization YAML before guessing further. |
+Query over DoH rather than with `dig`. A network that intercepts port 53 answers from a resolver of its own, and `dig @NS` then returns a recursive answer wearing an authoritative one's clothes. The giveaway is a nameserver resolving a target it holds no zone for.
 
-Query the authoritative nameserver rather than a resolver. A cached negative answer on CAA reads as "no restriction" when one exists, which would rule out the likeliest cause on false evidence.
+**Fix:** Move Google off the contested label. `PER_PROJECT_RECORD` validates at `_acme-challenge_<hash>.<domain>`, which nothing else claims.
 
-Worth confirming at the same time that `_acme-challenge` is not proxied by the DNS provider. A proxied CNAME returns the provider's addresses instead of the target name, which fails validation without ever looking like a mismatch.
+```hcl
+resource "google_certificate_manager_dns_authorization" "default" {
+  domain = var.domain
+  type   = "PER_PROJECT_RECORD"
+}
+```
+
+`type` is immutable, so this replaces the authorization and issues a new target: the DNS record has to be rewritten with both a new name and a new value. Deleting the old `_acme-challenge` record afterwards confirms the diagnosis, because the two `TXT` values remain with no user record left at that name.
+
+![The certificate authorized and active](images/gateway-cert-active.png)
+
+Disabling Cloudflare's Universal SSL is the other fix. It is a console setting rather than configuration, and Cloudflare may reprovision the records, so it was not chosen.
+
+#### A failure that predates the fix reads like a live one
+
+The first status check after the record was corrected still said `FAILED`, which looked like the fix had not worked:
+
+![A stale failure recorded three seconds after the certificate was created](images/gateway-cert-shadowed-failure.png)
+
+The timestamps settle it. The attempt ran three seconds after the certificate was created, before the DNS record existed:
+
+```bash
+gcloud certificate-manager certificates describe NAME --location=global \
+  --format='value(createTime,managed.authorizationAttemptInfo[0].attemptTime)'
+```
+
+`authorizationAttemptInfo` records the last attempt rather than a live verdict, and Certificate Manager retries on an unhurried timer. Recreating the certificate forces a fresh attempt instead of waiting for one.
 
 #### What to check first next time
 
 1. Read `managed.authorizationAttemptInfo`, not `managed.state`. The state says stuck; the attempt says why.
-2. Confirm the `domains` list holds the domain you own. A certificate for the wrong name fails identically to a missing DNS record.
-3. Compare the expected authorization target against what DNS serves, character by character.
-4. Check for CAA records before assuming the fault is the challenge record. A `CONFIG` failure carrying no `troubleshooting` block points away from the CNAME.
-5. Separate a transport failure from a verify failure before forming any theory about the certificate.
+2. Compare `attemptTime` against the moment the record was fixed. A failure older than the fix is history, not a symptom.
+3. Query the challenge name for `CNAME`, `A` and `TXT` separately. A type that answers differently means another record shares the name.
+4. Confirm the `domains` list holds the domain you own. A certificate for the wrong name fails identically to a missing DNS record.
+5. Check CAA records. Empty here, so not the cause, but a zone omitting `pki.goog` fails the same way.
+6. Separate a transport failure from a verify failure before forming any theory about the certificate.
 
 ### A certificate cannot be replaced while its map entry references it
 
@@ -546,6 +564,26 @@ terraform -chdir=terraform apply \
   -replace=module.gateway.google_certificate_manager_certificate_map_entry.default \
   -replace=module.gateway.google_certificate_manager_certificate.default
 ```
+
+#### The same deadlock one level down
+
+Changing the authorization's `type` hit the identical constraint from the other side:
+
+```text
+Error: googleapi: Error 400: can't delete dns authorization that is
+referenced by a certificate
+  "type": "RESOURCE_STILL_IN_USE"
+```
+
+The certificate's `managed` block is immutable, so the reference cannot be dropped in place and the certificate has to go down with it. Replacing all three resolves the order: the entry is destroyed, then the certificate, then the authorization.
+
+```bash
+terraform -chdir=terraform apply \
+  -replace=module.gateway.google_certificate_manager_certificate_map_entry.default \
+  -replace=module.gateway.google_certificate_manager_certificate.default
+```
+
+The authorization needs no `-replace` of its own, because the changed `type` already forces one. Read the count before approving: three replacements means a new challenge record and DNS work, two means the existing record still stands.
 
 #### What put the certificate up for replacement in the first place
 

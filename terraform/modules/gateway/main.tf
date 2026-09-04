@@ -16,6 +16,9 @@ resource "google_certificate_manager_dns_authorization" "default" {
   project = var.project_id
   name    = "${var.address_name}-dns-auth"
   domain  = var.domain
+
+  # The default, FIXED_RECORD, validates at _acme-challenge.<domain>. Cloudflare already serves its own hidden TXT records there for Universal SSL, and a name holding both a CNAME and a TXT answers TXT queries from the TXT set alone, so the CNAME to Google is never followed and every attempt fails with CONFIG. PER_PROJECT_RECORD moves validation to _acme-challenge_<hash>.<domain>, which nothing else claims.
+  type = "PER_PROJECT_RECORD"
 }
 
 # Google issues this and renews it before expiry. Nothing to rotate by hand.

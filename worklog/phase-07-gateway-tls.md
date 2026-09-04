@@ -247,7 +247,7 @@ The main route is bound to `sectionName: https`, so it could not attach until th
 
 ### Validation
 
-Status: Pending
+Status: Complete
 
 ```bash
 gcloud certificate-manager certificates describe k8-lab-gateway-cert --format=yaml
@@ -255,46 +255,70 @@ gcloud certificate-manager certificates describe k8-lab-gateway-cert --format=ya
 
 ![The certificate authorizing against the correct domain](../images/gateway-cert-authorizing.png)
 
-Result so far: `domains: sindrg.com`, `state: PROVISIONING`. The `CNAME` was corrected and resolves to the expected target.
+Correcting the domain moved the certificate to `domains: sindrg.com`, `state: PROVISIONING`, with the `CNAME` resolving to the expected target.
 
-A later attempt, roughly three hours after that correction, failed again:
+A later attempt, roughly three hours after that correction, failed again, and kept failing. The cause was Cloudflare: it serves hidden `TXT` records at `_acme-challenge.sindrg.com` for its own Universal SSL, and a name carrying both a `CNAME` and a `TXT` answers `TXT` queries from the `TXT` set alone. Validation asks for `TXT`, so it never followed the `CNAME` to Google. The records do not appear in the Cloudflare dashboard.
 
-```yaml
-- attemptTime: '2026-09-04T01:50:18Z'
-  domain: sindrg.com
-  failureReason: CONFIG
-  state: FAILED
-```
+Switching the authorization to `PER_PROJECT_RECORD` moves validation to `_acme-challenge_<hash>.sindrg.com`, a label nothing else claims. `type` is immutable, so this replaced the authorization, the certificate and the map entry, and the DNS record was rewritten with a new name and a new target. The [troubleshooting log](../troubleshooting.md#a-second-failure-with-the-domain-and-the-record-both-correct) carries the queries that isolate it.
 
-This failure carries no `troubleshooting` block and no `CNAME_MISMATCH`, unlike the first one, which argues the challenge record is not the fault this time. A CAA record restricting which authorities may issue is the next candidate, and the [troubleshooting log](../troubleshooting.md#a-managed-certificate-stays-in-provisioning) carries the checks that separate the possibilities.
+The certificate reached `ACTIVE` shortly after.
 
-Outstanding, to be recorded when the certificate reaches `ACTIVE`:
+![The certificate active and authorized](../images/gateway-cert-active.png)
+
+The evidence the phase was waiting on:
 
 ```bash
-curl -sI http://sindrg.com  | grep -i '^HTTP\|^location'
-curl -sI https://sindrg.com | grep -i '^HTTP'
-curl -sv https://sindrg.com 2>&1 | grep -E 'subject:|issuer:'
+curl -I https://sindrg.com
+curl -I https://sindrg.com/healthz
+curl -I http://sindrg.com/
+echo | openssl s_client -connect sindrg.com:443 -servername sindrg.com 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
 ```
 
-Expected: a `301` to HTTPS, then `HTTP/2 200`, with the certificate issued by Google Trust Services for `sindrg.com`. No further apply is needed; GKE configures the HTTPS frontend once the certificate is usable.
+![HTTP/2 200 over TLS](../images/gateway-https-200.png)
+
+![The health endpoint over TLS](../images/gateway-https-healthz.png)
+
+![HTTP redirected to HTTPS](../images/gateway-http-redirect.png)
+
+`via: 1.1 google` confirms the response came through the load balancer rather than anything else answering for the name, and port 80 returns `301` to `https://sindrg.com:443/` from the redirect route.
+
+The certificate on the wire:
+
+```text
+subject=CN = sindrg.com
+issuer=C = US, O = Google Trust Services, CN = WR3
+notBefore=Sep  4 12:17:24 2026 GMT
+notAfter=Dec  3 13:13:19 2026 GMT
+```
+
+![The browser reporting a valid certificate](../images/gateway-browser-secure.png)
+
+No apply was needed once the certificate became usable. GKE configured the HTTPS frontend on its own.
 
 ## Slice 4: Prove the Service stayed private
 
-Status: Pending
+Status: Complete
 
-Publicly reachable is now demonstrated. The other half of the exit criteria is the claim a reader will doubt, and it is recorded here as outstanding:
+Publicly reachable is demonstrated. The other half of the exit criteria is the claim a reader will doubt.
 
 ```bash
 kubectl get svc nginx -n demo -o jsonpath='{.spec.type}{"  externalIPs="}{.spec.externalIPs}{"\n"}'
 kubectl get svcneg -n demo -o wide
 ```
 
-Expected: `ClusterIP` with no external address, and a `ServiceNetworkEndpointGroup` listing the Pod endpoints the load balancer sends to. An unlabelled Pod must also still time out against the Service, confirming Phase 4's isolation survived going public.
+```text
+ClusterIP  externalIPs=
+NAME                                   AGE
+k8s1-0bf1ac7c-demo-nginx-80-49b21201   19h
+```
+
+The Service holds no external address. Traffic reaches the Pods through the `ServiceNetworkEndpointGroup` the Gateway controller manages, so the load balancer addresses Pod endpoints directly and the Service is never published. Going public changed the path into the cluster, not the exposure of the workload.
 
 ## Known gaps
 
-- The managed certificate has not yet reached `ACTIVE`, so HTTPS, the redirect, and the certificate evidence are unrecorded.
 - The Gateway admits Google's health check ranges by source address. Every Google Cloud customer's proxies originate there, so this is the coarsest control that works rather than identity.
 - Nothing rate-limits or filters requests. Cloud Armor is the answer and is a phase of its own.
-- The certificate covers the apex only. `www.sindrg.com` has no record and is not in the certificate's domain list.
+- The certificate covers the apex only. `www.sindrg.com` is absent from the certificate, the map entry `hostname` and the route `hostnames`, so adding it is a four-part change rather than a DNS record.
+- The zone still carries Cloudflare's hidden `_acme-challenge` `TXT` records. They are harmless now that validation uses a per-project label, but they will break any future authorization that uses the default `FIXED_RECORD` type.
 - `HealthCheckPolicy` is not schema-validated in CI. It is a GKE-proprietary CRD with no public schema, so `-ignore-missing-schemas` skips it.
