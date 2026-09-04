@@ -1,0 +1,33 @@
+server {
+    # A non-root process cannot bind a port below 1024.
+    listen 8080;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Probe target that stays valid whatever the page content becomes.
+    location = /healthz {
+        access_log off;
+
+        # Sets the type rather than appending a second Content-Type header.
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+
+        # Replaces the placeholders in index.html with this Pod's facts. envsubst filled in the ${...} values at startup.
+        sub_filter '__POD_NAME__'      '${POD_NAME}';
+        sub_filter '__POD_NAMESPACE__' '${POD_NAMESPACE}';
+        sub_filter '__POD_IP__'        '${POD_IP}';
+        sub_filter '__NODE_NAME__'     '${NODE_NAME}';
+        sub_filter '__RUNTIME_UID__'   '${RUNTIME_UID}';
+        sub_filter '__IMAGE_DIGEST__'  '${IMAGE_DIGEST}';
+        sub_filter_once off;
+
+        # Prevents caching, so a reload can land on the other replica and show it.
+        add_header Cache-Control "no-store" always;
+    }
+}

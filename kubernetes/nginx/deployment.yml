@@ -38,12 +38,33 @@ spec:
 
       containers:
         - name: nginx
-          # Deployed by digest, so this manifest names one fixed set of bytes.
-          # The tag is the commit that built it, kept for readers only. The
-          # first push of 2bb5f3a was arm64-only and could not run on the
-          # amd64 nodes; 2bb5f3a-multiarch rebuilds the same source for both.
+          # Deployed by digest, so this manifest names one fixed set of bytes. The tag is the commit that built it, kept for readers only.
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/frontend:2bb5f3a-multiarch@sha256:9f95c44c693fe186af2785917a8476fe5cfed5baad6a7b03a39e7312f65d0195
           imagePullPolicy: IfNotPresent
+
+          # The page reports the Pod answering the request, so these are read from the running Pod instead of being written into the image.
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+            # The downward API cannot read the image, so the pipeline sets this in the same patch that sets the image.
+            # The value here matches the digest above, for an apply that doesnt go through the pipeline.
+            - name: IMAGE_DIGEST
+              value: sha256:9f95c44c693fe186af2785917a8476fe5cfed5baad6a7b03a39e7312f65d0195
 
           securityContext:
             allowPrivilegeEscalation: false

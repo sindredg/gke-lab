@@ -194,6 +194,16 @@ The binding is required rather than a precaution. [`roles/container.defaultNodeS
 
 Alternatives: Grant the role at project level.
 
+### The page reports the Pod serving it
+
+Decision: Render the Pod name, namespace, Pod IP, node, uid and image digest into the page from the running container, rather than describing them in prose.
+
+Why: The rest of the page makes claims a reader cannot check. Non-root and deployed-by-digest are the two most load-bearing, and both become verifiable when the container states them about itself. The uid is read with `id -u` rather than copied from the Pod spec, so it reports what the container is rather than what it was asked to be. The downward API supplies the Pod facts; the image digest cannot come from it, so the pipeline sets it in the same patch that sets the image, and the two cannot drift.
+
+Cost: The page publishes internal names to the internet. Acceptable for a lab whose purpose is to be inspected, and wrong for a production service. The HTML is no longer static, `sub_filter` runs on every response, and `Cache-Control: no-store` keeps a reload landing on the other replica visible.
+
+Alternatives: Serve the facts as a JSON endpoint, which keeps the page static and puts the evidence where nobody looks. State nothing, which is what a production service should do.
+
 ## Infrastructure and configuration
 
 ### Terraform structure

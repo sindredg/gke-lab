@@ -1,9 +1,16 @@
 # Secure GKE Workload Platform
 
+## Live
+
+[sindrg.com](https://sindrg.com)
+
+## Architecture
+
 ```mermaid
 flowchart TB
     User(["User"])
     Developer(["Developer"])
+    DNS["Cloudflare DNS<br/>sindrg.com"]
 
     subgraph Delivery["Infrastructure and delivery"]
         Terraform["Terraform"]
@@ -11,7 +18,8 @@ flowchart TB
     end
 
     subgraph GCP["Google Cloud"]
-        Ingress["Cloud DNS<br/>HTTPS load<br/>balancer"]
+        Ingress["Global external<br/>Application Load Balancer<br/>reserved address"]
+        Certs["Certificate Manager<br/>managed TLS"]
         Registry["Artifact Registry"]
         Identity["Workload<br/>Identity<br/>Federation"]
         Services["Pub/Sub<br/>Vertex AI<br/>Result store"]
@@ -30,13 +38,16 @@ flowchart TB
         end
     end
 
-    User --> Ingress
-    Ingress --> Routes
-    Routes --> Workloads
+    User --> DNS
+    DNS --> Ingress
+    Certs -. terminates TLS .-> Ingress
+    Ingress -- "Pod IPs via NEG" --> Workloads
+    Routes -. configures .-> Ingress
     Guardrails -. protects .-> Workloads
     Developer --> Terraform
     Developer --> GitHub
     Terraform --> ControlPlane
+    GitHub -. federates .-> Identity
     GitHub -. builds .-> Registry
     GitHub -. deploys .-> ControlPlane
     Registry -. images .-> Workloads

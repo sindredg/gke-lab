@@ -1,0 +1,11 @@
+#!/bin/sh
+# The NGINX entrypoint sources this file rather than running it, so these exports reach envsubst.
+# Reading the uid from the process means the page shows what the container actually runs as.
+export RUNTIME_UID="$(id -u)"
+
+# Every variable needs a default. Without one, envsubst leaves ${NAME} in place, nginx treats it as its own variable, and startup fails.
+export POD_NAME="${POD_NAME:-unknown}"
+export POD_NAMESPACE="${POD_NAMESPACE:-unknown}"
+export POD_IP="${POD_IP:-unknown}"
+export NODE_NAME="${NODE_NAME:-unknown}"
+export IMAGE_DIGEST="${IMAGE_DIGEST:-unknown}"
