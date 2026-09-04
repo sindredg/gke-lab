@@ -1,6 +1,6 @@
 # Secure GKE Workload Platform
 
-A secure, publicly reachable Kubernetes platform on Google Cloud, built and documented one phase at a time, for engineers who want to see how a private cluster, keyless delivery, workload guardrails and managed TLS fit together in practice.
+A secure, publicly reachable Kubernetes platform on Google Cloud, built and documented one phase at a time, for those who want to see how a private cluster, keyless delivery, workload guardrails and managed TLS fit together in practice.
 
 ## Live
 
