@@ -53,12 +53,9 @@
 
       h2 {
         margin: 0;
-        font-family: system-ui, sans-serif;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: var(--faded);
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--ink);
       }
 
       .note {
@@ -90,54 +87,36 @@
         overflow-wrap: anywhere;
       }
 
-      .lede {
-        margin: 1.5rem 0 0;
-        font-size: 1.3rem;
-        line-height: 1.45;
-      }
-
-      .lede b { color: var(--gold); font-weight: 400; }
-
-      .visit {
-        display: inline-block;
-        margin: 2rem 0 0;
-        padding: 0.7rem 1.4rem;
-        border: 1px solid var(--rule);
-        border-radius: 2px;
-        color: var(--ink);
-        text-decoration: none;
-      }
-
-      .visit:hover, .visit:focus-visible {
-        border-color: var(--gold);
-        color: var(--gold);
-      }
-
       footer {
         margin-top: 3rem;
         padding-top: 2.5rem;
         border-top: 1px solid var(--rule);
-        font-family: system-ui, sans-serif;
-        font-size: 0.8rem;
+        color: var(--faded);
       }
 
-      footer a { color: var(--faded); }
-      footer a:hover { color: var(--ink); }
+      footer p { margin: 0 0 0.75rem; }
+      footer p:last-child { margin-bottom: 0; }
+
+      footer a { color: var(--gold); }
+      footer a:hover { text-decoration: none; }
+
+      .repo { font-family: system-ui, sans-serif; font-size: 0.8rem; }
+      .repo a { color: var(--faded); }
+      .repo a:hover { color: var(--ink); }
     </style>
   </head>
   <body>
     <header>
       <h1>k8s by sindre</h1>
-      <p class="strap">A secure GKE workload platform, built and documented one phase at a time.</p>
+      <p class="strap">A secure Kubernetes platform in GKE.</p>
     </header>
 
     <main>
       <section>
         <h2>Serving this response</h2>
         <p class="note">
-          Read from the container answering right now, not written into the page.
-          Two replicas run behind the load balancer, so a reload may be answered
-          by the other one.
+          The container answering this session. A reload may be answered by the
+          other one.
         </p>
         <dl class="facts">
           <dt>Pod</dt>
@@ -155,25 +134,17 @@
         </dl>
       </section>
 
-      <section>
-        <h2>Also on this cluster</h2>
-        <p class="lede">
-          <b>Golden Hour</b> works out sunrise, the golden and blue hours, moon
-          phase and eclipses for 23 places, including the midnight sun and the
-          polar night.
-        </p>
-        <p class="note">
-          Every answer is derived from orbital mechanics rather than fetched, so
-          nothing has to stay up and no key has to be rotated for it to stay
-          correct. It runs here as a second workload, with its own image,
-          identity and network policy, published through the same Gateway.
-        </p>
-        <a class="visit" href="/sky">Open Golden Hour</a>
-      </section>
     </main>
 
     <footer>
-      <a href="https://github.com/sindredg/k8-lab">Repository and worklogs</a>
+      <p>
+        <a href="/sky">sindrg.com/sky</a>: works out sunrise, the golden and blue
+        hours, moon phase and eclipses for 23 places, including midnight sun and
+        the polar night.
+      </p>
+      <p class="repo">
+        <a href="https://github.com/sindredg/k8-lab">Repository and worklogs</a>
+      </p>
     </footer>
   </body>
 </html>
