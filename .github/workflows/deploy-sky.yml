@@ -113,6 +113,37 @@ jobs:
           location: ${{ env.ZONE }}
           use_dns_endpoint: true
 
+      # apply against an object that does not exist is a create, and the Role holds patch only. The manifests in kubernetes/sky/ are applied once by an operator; the Service, HTTPRoute, ServiceAccount, HealthCheckPolicy and NetworkPolicies cannot be created by this pipeline either, so widening the Role would not remove that step. Report the ordering problem as an ordering problem rather than letting kubectl report it as a permissions error.
+      - name: Check the workload exists
+        if: ${{ !inputs.build_only }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" >/dev/null 2>&1; then
+            exit 0
+          fi
+
+          {
+            echo "### Not bootstrapped yet"
+            echo ""
+            echo "The image from this run is published:"
+            echo ""
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo ""
+            echo "But \`deployment/${DEPLOYMENT}\` does not exist in \`${NAMESPACE}\`, and this pipeline can patch workloads rather than create them. An operator applies the manifests once:"
+            echo ""
+            echo '```'
+            echo "kubectl apply -f kubernetes/sky/"
+            echo '```'
+            echo ""
+            echo "Every run after that is an ordinary patch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::deployment/${DEPLOYMENT} does not exist in ${NAMESPACE}. Apply kubernetes/sky/ once as an operator, then re-run. See the run summary."
+          exit 1
+
       # The digest is what deploys. The tag above is only for a reader.
       # The pipeline Role holds patch and not create, so the Deployment has to exist already: the manifests in kubernetes/sky/ are applied once by an operator, and the pipeline only ever updates the image after that.
       - name: Apply the Deployment with the new digest

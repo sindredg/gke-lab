@@ -53,6 +53,21 @@ spec:
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky@sha256:7af41229bb716ba3586cbb4887c0f9f13575724cf586ae8fc35b0403956f7851
           imagePullPolicy: IfNotPresent
 
+          # Repeats the image's own command to add one flag. uvicorn logs every
+          # request by default, and the only requests here are probes: two
+          # readiness checks every five seconds, two liveness checks every ten,
+          # and the load balancer's own health checks. With WORKLOADS logging
+          # enabled that is billed ingest and a dashboard panel full of noise.
+          # The nginx workload solves the same problem with access_log off.
+          args:
+            - uvicorn
+            - app.src.main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8080"
+            - --no-access-log
+
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

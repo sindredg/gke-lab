@@ -12,8 +12,13 @@ spec:
     requests.cpu: "1"
     requests.memory: 1Gi
 
-    # Total ceiling the namespace can burst to.
-    limits.cpu: "2"
+    # Total ceiling the namespace can burst to. Steady state is 1500m across
+    # both workloads, and each rollout adds one surge Pod. Two rollouts at once
+    # reach 2250m, which a ceiling of 2 rejects: with maxUnavailable 0 the
+    # second rollout then stalls rather than failing, which is the hardest
+    # shape of problem to recognise. Only requests are scheduled, so a burst
+    # ceiling above one node's capacity still bounds the namespace.
+    limits.cpu: "3"
     limits.memory: 2Gi
 
     # Object count, independent of resource size.

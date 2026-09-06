@@ -33,7 +33,7 @@ spec:
         - name: sky
           port: 80
 
-    # Requested by the page the rule above returns, so these arrive unchanged. /health and /version are not routed: the load balancer reaches /health directly through the HealthCheckPolicy.
+    # Requested by the page the rule above returns, so these arrive unchanged. No rule sends /health or /version here, but the rewrite above still reaches them as /sky/health and /sky/version: stripping a prefix exposes every path behind it. The load balancer uses /health through the HealthCheckPolicy rather than through any of these rules.
     - matches:
         - path:
             type: PathPrefix
