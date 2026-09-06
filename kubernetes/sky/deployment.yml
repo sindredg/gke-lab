@@ -1,11 +1,11 @@
-# Runs and maintains two healthy Golden Hour replicas.
+# Runs and maintains two healthy sky replicas.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: golden-hour
+  name: sky
   namespace: demo
   labels:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
   replicas: 2
@@ -13,7 +13,7 @@ spec:
 
   selector:
     matchLabels:
-      app.kubernetes.io/name: golden-hour
+      app.kubernetes.io/name: sky
 
   strategy:
     type: RollingUpdate
@@ -24,10 +24,10 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: golden-hour
+        app.kubernetes.io/name: sky
         app.kubernetes.io/part-of: k8-lab
     spec:
-      serviceAccountName: golden-hour
+      serviceAccountName: sky
       automountServiceAccountToken: false
 
       # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
@@ -37,7 +37,7 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: golden-hour
+              app.kubernetes.io/name: sky
 
       securityContext:
         runAsNonRoot: true
@@ -47,10 +47,10 @@ spec:
           type: RuntimeDefault
 
       containers:
-        - name: golden-hour
-          # Built from sindredg/aca-prod at a pinned commit and published to this project's registry, because the upstream pipeline publishes to Azure Container Registry, which this cluster cannot pull from.
+        - name: sky
+          # Built from sindredg/aca-prod at a pinned commit and published to this project's registry, because the upstream pipeline publishes to Azure Container Registry, which this cluster cannot pull from. The application calls itself Golden Hour; here it is named for the path it serves.
           # The pipeline replaces this with the digest it just built. Commit the digest here after the first run, as with the nginx Deployment.
-          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/golden-hour:9393211
+          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky:9393211
           imagePullPolicy: IfNotPresent
 
           securityContext:

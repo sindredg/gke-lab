@@ -2,15 +2,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: golden-hour-allow-gateway
+  name: sky-allow-gateway
   namespace: demo
   labels:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: golden-hour
+      app.kubernetes.io/name: sky
 
   policyTypes:
     - Ingress
@@ -26,19 +26,19 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# Allows labelled clients in the namespace to reach the Golden Hour Pods, which is what the pipeline's smoke test is.
+# Allows labelled clients in the namespace to reach the sky Pods, which is what the pipeline's smoke test is.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: golden-hour-allow-http
+  name: sky-allow-http
   namespace: demo
   labels:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: golden-hour
+      app.kubernetes.io/name: sky
 
   policyTypes:
     - Ingress
@@ -47,7 +47,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              golden-hour-client: "true"
+              sky-client: "true"
       ports:
         - protocol: TCP
           port: 8080
@@ -56,14 +56,14 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: golden-hour-client-allow-egress
+  name: sky-client-allow-egress
   namespace: demo
   labels:
     app.kubernetes.io/part-of: k8-lab
 spec:
   podSelector:
     matchLabels:
-      golden-hour-client: "true"
+      sky-client: "true"
 
   policyTypes:
     - Egress
@@ -72,7 +72,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: golden-hour
+              app.kubernetes.io/name: sky
       ports:
         - protocol: TCP
           port: 8080

@@ -1,4 +1,4 @@
-# Builds Golden Hour from its own repository at a pinned commit, publishes it here, and rolls it out.
+# Builds the sky workload from the application's own repository at a pinned commit, publishes it here, and rolls it out.
 name: Deploy sky
 
 on:
@@ -31,9 +31,9 @@ env:
   PROJECT_ID: example-security-lab
   CLUSTER: k8-lab
   NAMESPACE: demo
-  DEPLOYMENT: golden-hour
-  CONTAINER: golden-hour
-  IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/golden-hour
+  DEPLOYMENT: sky
+  CONTAINER: sky
+  IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky
 
   # The application source. Upstream publishes to Azure Container Registry, which this cluster cannot pull from, so the image is rebuilt here from a pinned commit. Bumping this line is how the workload takes an upstream change.
   UPSTREAM_REPOSITORY: https://github.com/sindredg/aca-prod.git
@@ -139,14 +139,14 @@ jobs:
         run: |
           kubectl run "$POD" -n "$NAMESPACE" \
             --image=curlimages/curl:8.11.1 \
-            --labels=golden-hour-client=true \
+            --labels=sky-client=true \
             --restart=Never \
             --overrides='{
               "spec": {
                 "containers": [{
                   "name": "smoke",
                   "image": "curlimages/curl:8.11.1",
-                  "command": ["curl","-sSf","--max-time","5","http://golden-hour/health"],
+                  "command": ["curl","-sSf","--max-time","5","http://sky/health"],
                   "securityContext": {
                     "allowPrivilegeEscalation": false,
                     "runAsNonRoot": true,

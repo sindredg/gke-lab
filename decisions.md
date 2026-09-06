@@ -222,7 +222,7 @@ Alternatives: Serve the facts as a JSON endpoint, which keeps the page static an
 
 ### Application source for the second workload
 
-Decision: Build the Golden Hour image here, from [sindredg/aca-prod](https://github.com/sindredg/aca-prod) at a commit pinned in the workflow, rather than vendoring its source or pulling its published image.
+Decision: Build the sky image here, from [sindredg/aca-prod](https://github.com/sindredg/aca-prod) at a commit pinned in the workflow, rather than vendoring its source or pulling its published image.
 
 Why: Upstream publishes to Azure Container Registry, which this cluster has no credentials for and should not be given any. Rebuilding from a pinned commit keeps the image project-owned, private, and digest-deployed like every other image here, while leaving the application's own repository authoritative. The pin is the review boundary: taking an upstream change is a one-line commit that CI and a rollout then have to accept.
 
@@ -474,7 +474,7 @@ Alternatives: None within NetworkPolicy. Filtering by caller belongs to Cloud Ar
 
 ### A second workload published at a path
 
-Decision: Serve Golden Hour at `/sky` on the existing hostname, routing `/sky` with its prefix rewritten away and routing `/api` and `/static` to it unchanged.
+Decision: Serve the sky workload at `/sky` on the existing hostname, routing `/sky` with its prefix rewritten away and routing `/api` and `/static` to it unchanged.
 
 Why: The application is not prefix aware. Its page asks for `/static/app.js` and its script fetches `/api/places`, both absolute, so the prefix cannot be confined to `/sky` without changing the application. Gateway API matches the longest prefix first, so these rules take precedence over the project page's `/` without either route referring to the other. `/health` and `/version` are deliberately left unrouted; the load balancer reaches `/health` through the HealthCheckPolicy instead.
 

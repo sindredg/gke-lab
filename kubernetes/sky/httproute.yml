@@ -1,13 +1,13 @@
-# Publishes Golden Hour at /sky on the same hostname as the project page.
+# Publishes the sky workload at /sky on the same hostname as the project page.
 #
 # The application asks for its assets and data at absolute paths, so /static and /api are routed to it as well. Gateway API matches the longest prefix first, which is why these rules win over the nginx route's / without either route knowing about the other.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: golden-hour
+  name: sky
   namespace: demo
   labels:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
   parentRefs:
@@ -30,7 +30,7 @@ spec:
               type: ReplacePrefixMatch
               replacePrefixMatch: /
       backendRefs:
-        - name: golden-hour
+        - name: sky
           port: 80
 
     # Requested by the page the rule above returns, so these arrive unchanged. /health and /version are not routed: the load balancer reaches /health directly through the HealthCheckPolicy.
@@ -42,5 +42,5 @@ spec:
             type: PathPrefix
             value: /static
       backendRefs:
-        - name: golden-hour
+        - name: sky
           port: 80

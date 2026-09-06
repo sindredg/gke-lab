@@ -2,7 +2,7 @@
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: golden-hour
+  name: sky
   namespace: demo
   labels:
     app.kubernetes.io/part-of: k8-lab
@@ -16,4 +16,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: golden-hour
+    name: sky

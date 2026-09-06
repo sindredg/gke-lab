@@ -1,17 +1,17 @@
-# Provides a stable private address for the Golden Hour Pods.
+# Provides a stable private address for the sky Pods.
 apiVersion: v1
 kind: Service
 metadata:
-  name: golden-hour
+  name: sky
   namespace: demo
   labels:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
   type: ClusterIP
 
   selector:
-    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/name: sky
 
   ports:
     - name: http
