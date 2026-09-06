@@ -5,70 +5,175 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>k8s by sindre</title>
     <style>
-      :root { color-scheme: light dark; }
+      /* Dark only, so the palette is stated once rather than swapped. The
+         values are Golden Hour's dark set, so the two pages read as one site.
+         color-scheme keeps the scrollbar and form chrome dark to match. */
+      :root {
+        color-scheme: dark;
+        --paper: #14120f;
+        --ink: #ece4d6;
+        --faded: #948a7c;
+        --rule: #302b23;
+        --gold: #e0a253;
+      }
+
+      * { box-sizing: border-box; }
+
       body {
         margin: 0;
-        font: 16px/1.6 system-ui, sans-serif;
+        padding: 0 6vw 5rem;
+        background: var(--paper);
+        color: var(--ink);
+        font: 1rem/1.6 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
       }
-      main { max-width: 34rem; margin: 0 auto; padding: 3rem 2rem 4rem; }
-      h1 { margin: 0 0 0.5rem; font-size: 1.5rem; }
-      h2 { margin: 2.5rem 0 0.25rem; font-size: 1rem; }
-      p { margin: 0 0 1rem; }
-      dt { font-weight: 600; }
-      dd { margin: 0 0 0.5rem; }
-      a { color: inherit; }
-      .note { opacity: 0.7; font-size: 0.875rem; }
-      .button {
-        display: inline-block;
-        margin: 0.5rem 0 0;
-        padding: 0.6rem 1.1rem;
-        border: 1px solid currentColor;
-        border-radius: 0.375rem;
-        text-decoration: none;
+
+      header { padding: 4.5rem 0 2.5rem; }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.6rem, 7vw, 4.4rem);
+        font-weight: 400;
+        letter-spacing: -0.02em;
+      }
+
+      .strap {
+        margin: 0.4rem 0 0;
+        color: var(--faded);
+        font-style: italic;
+        font-size: 1.15rem;
+      }
+
+      main { max-width: 62rem; }
+
+      section {
+        margin-top: 3rem;
+        padding-top: 2.5rem;
+        border-top: 1px solid var(--rule);
+      }
+
+      h2 {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        font-size: 0.7rem;
         font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--faded);
       }
-      .button:hover, .button:focus-visible { background: currentColor; }
-      .button:hover span, .button:focus-visible span { color: Canvas; }
-      .facts { margin: 1rem 0 0; }
-      .facts dt { font-weight: 400; opacity: 0.7; font-size: 0.875rem; }
-      .facts dd {
-        margin: 0 0 0.75rem;
+
+      .note {
+        margin: 1.25rem 0 0;
+        color: var(--faded);
+        font-style: italic;
+      }
+
+      .facts {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.5rem 1.75rem;
+        margin: 2rem 0 0;
+      }
+
+      dt {
+        color: var(--faded);
+        font-family: system-ui, sans-serif;
+        font-size: 0.8rem;
+        letter-spacing: 0.04em;
+      }
+
+      /* Machine values, so they are set in a face where every character is
+         distinguishable and a digest can wrap without hiding a difference. */
+      dd {
+        margin: 0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.875rem;
+        font-size: 0.9rem;
         overflow-wrap: anywhere;
       }
+
+      .lede {
+        margin: 1.5rem 0 0;
+        font-size: 1.3rem;
+        line-height: 1.45;
+      }
+
+      .lede b { color: var(--gold); font-weight: 400; }
+
+      .visit {
+        display: inline-block;
+        margin: 2rem 0 0;
+        padding: 0.7rem 1.4rem;
+        border: 1px solid var(--rule);
+        border-radius: 2px;
+        color: var(--ink);
+        text-decoration: none;
+      }
+
+      .visit:hover, .visit:focus-visible {
+        border-color: var(--gold);
+        color: var(--gold);
+      }
+
+      footer {
+        margin-top: 3rem;
+        padding-top: 2.5rem;
+        border-top: 1px solid var(--rule);
+        font-family: system-ui, sans-serif;
+        font-size: 0.8rem;
+      }
+
+      footer a { color: var(--faded); }
+      footer a:hover { color: var(--ink); }
     </style>
   </head>
   <body>
-    <main>
+    <header>
       <h1>k8s by sindre</h1>
-      <p>A secure GKE workload platform, built and documented one phase at a time.</p>
+      <p class="strap">A secure GKE workload platform, built and documented one phase at a time.</p>
+    </header>
 
-      <p><a class="button" href="/sky"><span>Sky</span></a></p>
-      <p class="note">A sunlight planner sharing this cluster with this page. Sunrise, golden hour, and moon phases, derived rather than fetched.</p>
+    <main>
+      <section>
+        <h2>Serving this response</h2>
+        <p class="note">
+          Read from the container answering right now, not written into the page.
+          Two replicas run behind the load balancer, so a reload may be answered
+          by the other one.
+        </p>
+        <dl class="facts">
+          <dt>Pod</dt>
+          <dd>__POD_NAME__</dd>
+          <dt>Namespace</dt>
+          <dd>__POD_NAMESPACE__</dd>
+          <dt>Pod IP</dt>
+          <dd>__POD_IP__</dd>
+          <dt>Node</dt>
+          <dd>__NODE_NAME__</dd>
+          <dt>Running as uid</dt>
+          <dd>__RUNTIME_UID__</dd>
+          <dt>Image digest</dt>
+          <dd>__IMAGE_DIGEST__</dd>
+        </dl>
+      </section>
 
-      <h2>Serving this response</h2>
-      <p class="note">
-        Read from the container answering right now, not written into the page.
-        Two replicas run behind the load balancer, so a reload may be answered
-        by the other one.
-      </p>
-      <dl class="facts">
-        <dt>Pod</dt>
-        <dd>__POD_NAME__</dd>
-        <dt>Namespace</dt>
-        <dd>__POD_NAMESPACE__</dd>
-        <dt>Pod IP</dt>
-        <dd>__POD_IP__</dd>
-        <dt>Node</dt>
-        <dd>__NODE_NAME__</dd>
-        <dt>Running as uid</dt>
-        <dd>__RUNTIME_UID__</dd>
-        <dt>Image digest</dt>
-        <dd>__IMAGE_DIGEST__</dd>
-      </dl>
-
-      <p><a href="https://github.com/sindredg/k8-lab">Repository and worklogs</a></p>
+      <section>
+        <h2>Also on this cluster</h2>
+        <p class="lede">
+          <b>Golden Hour</b> works out sunrise, the golden and blue hours, moon
+          phase and eclipses for 23 places, including the midnight sun and the
+          polar night.
+        </p>
+        <p class="note">
+          Every answer is derived from orbital mechanics rather than fetched, so
+          nothing has to stay up and no key has to be rotated for it to stay
+          correct. It runs here as a second workload, with its own image,
+          identity and network policy, published through the same Gateway.
+        </p>
+        <a class="visit" href="/sky">Open Golden Hour</a>
+      </section>
     </main>
+
+    <footer>
+      <a href="https://github.com/sindredg/k8-lab">Repository and worklogs</a>
+    </footer>
   </body>
 </html>
