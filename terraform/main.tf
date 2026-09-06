@@ -79,3 +79,16 @@ module "gateway" {
 
   depends_on = [google_project_service.required]
 }
+
+# Watches the published site from outside Google's network, and gives an incident somewhere to start.
+module "observability" {
+  source = "./modules/observability"
+
+  project_id   = var.project_id
+  domain       = var.domain
+  alert_email  = var.alert_email
+  cluster_name = module.gke.cluster_name
+  namespace    = "demo"
+
+  depends_on = [google_project_service.required, module.gke, module.gateway]
+}

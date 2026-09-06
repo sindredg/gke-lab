@@ -19,6 +19,22 @@ resource "google_container_cluster" "main" {
     channel = "REGULAR"
   }
 
+  # Both blocks below state what GKE is already doing by default. They are here so the telemetry scope is a recorded choice rather than an inherited one, which means a plan that proposes a change is reporting that the default was not what was assumed.
+
+  # Container stdout is the largest ingest line on a cluster this size and Cloud Logging bills it, so WORKLOADS is a cost decision, not a free one. The control-plane components (API_SERVER, SCHEDULER, CONTROLLER_MANAGER) stay off: useful for "who changed this object", noisy and billable for everything else.
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS", "WORKLOADS"]
+  }
+
+  # Workload metrics come from Managed Service for Prometheus rather than the legacy per-workload components. Advanced datapath observability is a separate toggle with its own cost and answers no question this platform is asking yet.
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+
+    managed_prometheus {
+      enabled = true
+    }
+  }
+
   ip_allocation_policy {
     cluster_secondary_range_name = var.pod_secondary_range_name
   }

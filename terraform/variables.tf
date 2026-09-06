@@ -24,3 +24,13 @@ variable "domain" {
   description = "The domain name for the Gateway and SSL certificate"
   type        = string
 }
+
+variable "alert_email" {
+  description = "Address the availability alert notifies. Kept out of the repository with every other value in tfvars."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.alert_email))
+    error_message = "The alert_email must be a valid email address"
+  }
+}

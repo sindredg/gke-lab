@@ -57,3 +57,18 @@ output "certificate_map_name" {
   description = "Certificate Manager map the Gateway annotation references."
   value       = module.gateway.certificate_map_name
 }
+
+output "uptime_check_id" {
+  description = "Identifier of the public uptime check."
+  value       = module.observability.uptime_check_id
+}
+
+output "alert_policy_name" {
+  description = "Resource name of the availability alert policy."
+  value       = module.observability.alert_policy_name
+}
+
+output "dashboard_id" {
+  description = "Resource name of the workload health dashboard."
+  value       = module.observability.dashboard_id
+}
