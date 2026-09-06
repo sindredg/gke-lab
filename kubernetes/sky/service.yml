@@ -1,0 +1,20 @@
+# Provides a stable private address for the Golden Hour Pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: golden-hour
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  type: ClusterIP
+
+  selector:
+    app.kubernetes.io/name: golden-hour
+
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http

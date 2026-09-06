@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>k8-lab</title>
+    <title>k8s by sindre</title>
     <style>
       :root { color-scheme: light dark; }
       body {
@@ -18,6 +18,17 @@
       dd { margin: 0 0 0.5rem; }
       a { color: inherit; }
       .note { opacity: 0.7; font-size: 0.875rem; }
+      .button {
+        display: inline-block;
+        margin: 0.5rem 0 0;
+        padding: 0.6rem 1.1rem;
+        border: 1px solid currentColor;
+        border-radius: 0.375rem;
+        text-decoration: none;
+        font-weight: 600;
+      }
+      .button:hover, .button:focus-visible { background: currentColor; }
+      .button:hover span, .button:focus-visible span { color: Canvas; }
       .facts { margin: 1rem 0 0; }
       .facts dt { font-weight: 400; opacity: 0.7; font-size: 0.875rem; }
       .facts dd {
@@ -30,16 +41,11 @@
   </head>
   <body>
     <main>
-      <h1>k8-lab</h1>
+      <h1>k8s by sindre</h1>
       <p>A secure GKE workload platform, built and documented one phase at a time.</p>
-      <dl>
-        <dt>Image</dt>
-        <dd>Project owned, non-root, deployed by digest.</dd>
-        <dt>Namespace</dt>
-        <dd>Pod Security enforced, resource budget applied, traffic denied by default.</dd>
-        <dt>Ingress</dt>
-        <dd>Gateway API on a reserved address, managed TLS, Service never published.</dd>
-      </dl>
+
+      <p><a class="button" href="/sky"><span>Golden Hour</span></a></p>
+      <p class="note">A sunlight planner running on this cluster, alongside this page.</p>
 
       <h2>Serving this response</h2>
       <p class="note">

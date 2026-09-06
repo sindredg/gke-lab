@@ -30,6 +30,15 @@ spec:
       serviceAccountName: nginx
       automountServiceAccountToken: false
 
+      # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: nginx
+
       securityContext:
         runAsNonRoot: true
         runAsUser: 101

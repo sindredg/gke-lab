@@ -35,7 +35,7 @@ resource "google_monitoring_uptime_check_config" "public" {
     }
   }
 
-  # Three is the minimum the API accepts once the set is named at all, and more than one region is what the alert below requires before it opens an incident.
+  # Google's prober regions, meaning where the check is requested from. Nothing to do with europe-north1-a, where the workload runs. Three is the minimum the API accepts once the set is named at all, and each named region expands to one or more checker locations, which is what the alert below counts.
   selected_regions = var.uptime_check_regions
 }
 
@@ -58,7 +58,7 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
   severity     = "CRITICAL"
 
   conditions {
-    display_name = "Uptime check failing from more than one region"
+    display_name = "Uptime check failing from more than one checker location"
 
     condition_threshold {
       filter = join(" AND ", [
@@ -67,7 +67,9 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
         "metric.label.check_id = \"${google_monitoring_uptime_check_config.public.uptime_check_id}\"",
       ])
 
-      # Reads as a sentence: count the checker regions currently reporting a failed check, grouped by host. The threshold of 1 is the point of the condition. One region failing is a network path somewhere on the internet, and paging on it is how an alert teaches its reader to dismiss it. Two at once is the site.
+      # The metric carries one series per checker location, so grouping by host and reducing with COUNT_FALSE counts the locations currently reporting a failed check.
+      #
+      # The threshold of 1 therefore means at least two locations. One location failing is a network path somewhere on the internet, and paging on it is how an alert teaches its reader to dismiss it. This costs nothing in detection: one zonal cluster behind one global load balancer has no partial-failure mode, so a real outage fails every location within the same check period.
       aggregations {
         alignment_period     = "1200s"
         per_series_aligner   = "ALIGN_NEXT_OLDER"
@@ -98,7 +100,7 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
     mime_type = "text/markdown"
 
     content = <<-EOT
-      The uptime check for ${var.domain} is failing from more than one region, so the site is not reachable for users. Check in this order, from the workload outwards:
+      The uptime check for ${var.domain} is failing from more than one of Google's checker locations, so the site is not reachable for users rather than unreachable down one network path. Check in this order, from the workload outwards:
 
       1. `kubectl get pods -n ${var.namespace} -o wide` — are the Pods Running and Ready? A rollout that failed readiness leaves the previous version serving, so Pods that are all gone means something removed them.
       2. `kubectl get endpointslices -n ${var.namespace} -l kubernetes.io/service-name=nginx` — does the Service still have endpoints? An empty slice is why the load balancer would return 502.

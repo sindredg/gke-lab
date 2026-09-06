@@ -1,0 +1,171 @@
+# Builds Golden Hour from its own repository at a pinned commit, publishes it here, and rolls it out.
+name: Deploy sky
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kubernetes/sky/**'
+      - '.github/workflows/deploy-sky.yml'
+  workflow_dispatch:
+    inputs:
+      build_only:
+        description: 'Publish the image without deploying it. The pipeline Role holds patch and not create, so the first image has to exist before an operator can apply the manifests.'
+        type: boolean
+        default: false
+
+# id-token: write lets the runner request a signed OIDC token. Without it,
+# authentication cannot start.
+permissions:
+  contents: read
+  id-token: write
+
+# A running deploy is left to finish rather than cancelled.
+concurrency:
+  group: deploy-sky-main
+  cancel-in-progress: false
+
+env:
+  REGION: europe-north1
+  ZONE: europe-north1-a
+  PROJECT_ID: example-security-lab
+  CLUSTER: k8-lab
+  NAMESPACE: demo
+  DEPLOYMENT: golden-hour
+  CONTAINER: golden-hour
+  IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/golden-hour
+
+  # The application source. Upstream publishes to Azure Container Registry, which this cluster cannot pull from, so the image is rebuilt here from a pinned commit. Bumping this line is how the workload takes an upstream change.
+  UPSTREAM_REPOSITORY: https://github.com/sindredg/aca-prod.git
+  UPSTREAM_REF: 9393211dbc7f273e37e968e7a71700f58403227a
+
+jobs:
+  deliver:
+    name: Build, push, and roll out
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Fetched by commit rather than by branch, so the build input is exactly the reviewed one and no token is involved.
+      - name: Fetch the application source at the pinned commit
+        run: |
+          git init upstream
+          git -C upstream remote add origin "$UPSTREAM_REPOSITORY"
+          git -C upstream fetch --depth 1 origin "$UPSTREAM_REF"
+          git -C upstream checkout FETCH_HEAD
+          git -C upstream rev-parse HEAD
+
+      # Trades the OIDC token for short-lived credentials. No key involved.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Authenticate Docker against Artifact Registry
+        run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+
+      # platforms pins the node architecture. The run id keeps the tag unique,
+      # because the repository refuses to move an existing tag.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: upstream
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            SERVICE_VERSION=${{ env.UPSTREAM_REF }}
+          tags: ${{ env.IMAGE }}:${{ env.UPSTREAM_REF }}-${{ github.run_id }}.${{ github.run_attempt }}
+
+      # Bootstrapping: the digest is the only output, and it goes into kubernetes/sky/deployment.yml before the manifests are applied by hand.
+      - name: Report the digest
+        if: ${{ inputs.build_only }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Image published"
+            echo ""
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo ""
+            echo "Put this in kubernetes/sky/deployment.yml, then apply the manifests once."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The cluster has no IP endpoint, so credentials come via the DNS one.
+      - name: Get cluster credentials
+        if: ${{ !inputs.build_only }}
+        uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3.0.0
+        with:
+          cluster_name: ${{ env.CLUSTER }}
+          location: ${{ env.ZONE }}
+          use_dns_endpoint: true
+
+      # The digest is what deploys. The tag above is only for a reader.
+      # The pipeline Role holds patch and not create, so the Deployment has to exist already: the manifests in kubernetes/sky/ are applied once by an operator, and the pipeline only ever updates the image after that.
+      - name: Apply the Deployment with the new digest
+        if: ${{ !inputs.build_only }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "Deploying ${IMAGE}@${DIGEST}"
+          kubectl set image -f kubernetes/sky/deployment.yml --local -o yaml \
+            "$CONTAINER=${IMAGE}@${DIGEST}" \
+            | kubectl apply -f -
+
+      # maxUnavailable is 0, so a Pod that never goes Ready fails here.
+      - name: Wait for the rollout
+        if: ${{ !inputs.build_only }}
+        run: kubectl rollout status "deployment/$DEPLOYMENT" -n "$NAMESPACE" --timeout=180s
+
+      # The label satisfies the NetworkPolicy; the securityContext satisfies
+      # the restricted Pod Security standard.
+      - name: Smoke test from inside the cluster
+        if: ${{ !inputs.build_only }}
+        env:
+          POD: smoke-sky-${{ github.run_id }}
+        run: |
+          kubectl run "$POD" -n "$NAMESPACE" \
+            --image=curlimages/curl:8.11.1 \
+            --labels=golden-hour-client=true \
+            --restart=Never \
+            --overrides='{
+              "spec": {
+                "containers": [{
+                  "name": "smoke",
+                  "image": "curlimages/curl:8.11.1",
+                  "command": ["curl","-sSf","--max-time","5","http://golden-hour/health"],
+                  "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "runAsNonRoot": true,
+                    "runAsUser": 100,
+                    "capabilities": { "drop": ["ALL"] },
+                    "seccompProfile": { "type": "RuntimeDefault" }
+                  }
+                }]
+              }
+            }'
+
+          if ! kubectl wait --for=jsonpath='{.status.phase}'=Succeeded \
+                 "pod/$POD" -n "$NAMESPACE" --timeout=90s; then
+            echo "--- smoke pod did not succeed ---"
+            kubectl describe "pod/$POD" -n "$NAMESPACE"
+            kubectl logs "$POD" -n "$NAMESPACE" || true
+            kubectl delete "pod/$POD" -n "$NAMESPACE" --ignore-not-found
+            exit 1
+          fi
+
+          kubectl logs "$POD" -n "$NAMESPACE"
+          kubectl delete "pod/$POD" -n "$NAMESPACE" --ignore-not-found

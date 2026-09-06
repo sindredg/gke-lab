@@ -44,6 +44,14 @@ Why: Balances release freshness with stability and reduces upgrade disruption.
 
 Alternatives: [Rapid, Stable, or Extended channels](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels).
 
+### Replica placement
+
+Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule set to `ScheduleAnyway`, rather than a required pod anti-affinity rule.
+
+Why: The node pool autoscales from one node, so a required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. A preference spreads the replicas whenever there is somewhere to spread them and costs nothing when there is not. The value shows up during Regular channel node upgrades, which replace nodes underneath a running workload.
+
+Alternatives: Required anti-affinity, a PodDisruptionBudget, or accepting co-located replicas. A PodDisruptionBudget is deferred rather than rejected: on a pool that can scale to one node, `minAvailable` blocks the drain that an automatic node upgrade depends on.
+
 ## Networking
 
 ### VPC and IP allocation
@@ -130,6 +138,14 @@ The DNS rule allows both `kube-dns` and `node-local-dns` Pods. [NodeLocal DNSCac
 
 The rule cannot name the kube-dns Service address instead. Dataplane V2 rewrites a Service IP to a backend Pod before policy is evaluated, so an `ipBlock` naming that address matches nothing. NetworkPolicy selects Pods, never Services.
 
+### Namespace boundary between workloads
+
+Decision: Run the second workload in the existing `demo` namespace rather than giving it one of its own.
+
+Why: The namespace is the unit that carries Pod Security enforcement, the default-deny policies, and the resource budget, and all three already apply to any Pod admitted to `demo`, including later ones. A second namespace would duplicate that scaffolding and add a `ReferenceGrant` so the Gateway could route across the boundary, which is a phase of work rather than a configuration change. Both workloads are owned by the same person and fail together anyway, so the shared blast radius is real but not yet meaningful.
+
+Alternatives: A namespace per workload, which is what genuine multi-tenancy would require, and what a third workload should trigger. Recorded as a gate below.
+
 ## Images and supply chain
 
 ### Image registry
@@ -203,6 +219,14 @@ Why: The rest of the page makes claims a reader cannot check. Non-root and deplo
 Cost: The page publishes internal names to the internet. Acceptable for a lab whose purpose is to be inspected, and wrong for a production service. The HTML is no longer static, `sub_filter` runs on every response, and `Cache-Control: no-store` keeps a reload landing on the other replica visible.
 
 Alternatives: Serve the facts as a JSON endpoint, which keeps the page static and puts the evidence where nobody looks. State nothing, which is what a production service should do.
+
+### Application source for the second workload
+
+Decision: Build the Golden Hour image here, from [sindredg/aca-prod](https://github.com/sindredg/aca-prod) at a commit pinned in the workflow, rather than vendoring its source or pulling its published image.
+
+Why: Upstream publishes to Azure Container Registry, which this cluster has no credentials for and should not be given any. Rebuilding from a pinned commit keeps the image project-owned, private, and digest-deployed like every other image here, while leaving the application's own repository authoritative. The pin is the review boundary: taking an upstream change is a one-line commit that CI and a rollout then have to accept.
+
+Alternatives: Copy the source into this repository, which forks it and makes upstream fixes a manual port; or grant this cluster cross-cloud pull credentials, which trades a supply-chain property for convenience.
 
 ## Infrastructure and configuration
 
@@ -448,6 +472,14 @@ Cost: The coarsest control that works. Every Google Cloud customer's proxies ori
 
 Alternatives: None within NetworkPolicy. Filtering by caller belongs to Cloud Armor, which is a phase of its own.
 
+### A second workload published at a path
+
+Decision: Serve Golden Hour at `/sky` on the existing hostname, routing `/sky` with its prefix rewritten away and routing `/api` and `/static` to it unchanged.
+
+Why: The application is not prefix aware. Its page asks for `/static/app.js` and its script fetches `/api/places`, both absolute, so the prefix cannot be confined to `/sky` without changing the application. Gateway API matches the longest prefix first, so these rules take precedence over the project page's `/` without either route referring to the other. `/health` and `/version` are deliberately left unrouted; the load balancer reaches `/health` through the HealthCheckPolicy instead.
+
+Alternatives: A `sky.` subdomain, which keeps each workload's path namespace whole at the cost of a DNS record and a certificate map entry, and remains the answer if a second application ever wants `/api`. Or patch a vendored copy to be prefix-clean, which forks the application to solve a routing problem.
+
 ## Project and process
 
 ### Project focus
@@ -490,3 +522,4 @@ Create short entries when these decision gates are reached:
 - GitHub Actions versus Argo CD or Flux for continued delivery
 - Standard GKE features versus fleet and multi-cluster components
 - Vertex AI versus self-hosted inference
+- One namespace for every workload versus a namespace per workload, when a third workload or a second owner arrives

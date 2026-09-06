@@ -1,0 +1,106 @@
+# Runs and maintains two healthy Golden Hour replicas.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golden-hour
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: golden-hour
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: golden-hour
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: golden-hour
+        app.kubernetes.io/part-of: k8-lab
+    spec:
+      serviceAccountName: golden-hour
+      automountServiceAccountToken: false
+
+      # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: golden-hour
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: golden-hour
+          # Built from sindredg/aca-prod at a pinned commit and published to this project's registry, because the upstream pipeline publishes to Azure Container Registry, which this cluster cannot pull from.
+          # The pipeline replaces this with the digest it just built. Commit the digest here after the first run, as with the nginx Deployment.
+          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/golden-hour:9393211
+          imagePullPolicy: IfNotPresent
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
+            # The application only reads its own code and writes nothing, so the image stays immutable at runtime.
+            readOnlyRootFilesystem: true
+
+          # A non-root process cannot bind a port below 1024.
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # /health is the application's own endpoint. It is deliberately not published through the HTTPRoute.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # A Python interpreter needs more headroom than NGINX. Two replicas of this plus two of nginx stay inside the namespace budget.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      # The only writable path, so a read-only root filesystem does not break the interpreter.
+      volumes:
+        - name: tmp
+          emptyDir: {}

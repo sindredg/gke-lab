@@ -30,7 +30,7 @@ variable "namespace" {
 }
 
 variable "uptime_check_regions" {
-  description = "Checker regions. At least three are required once the set is named at all."
+  description = "Google's prober regions, where the check is requested from rather than where the workload runs. At least three are required once the set is named at all, and each expands to one or more checker locations."
   type        = list(string)
   default     = ["EUROPE", "USA", "ASIA_PACIFIC"]
 
