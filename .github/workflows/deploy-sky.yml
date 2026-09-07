@@ -35,9 +35,10 @@ env:
   CONTAINER: sky
   IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky
 
-  # The application source. Upstream publishes to Azure Container Registry, which this cluster cannot pull from, so the image is rebuilt here from a pinned commit. Bumping this line is how the workload takes an upstream change.
-  UPSTREAM_REPOSITORY: https://github.com/sindredg/aca-prod.git
-  UPSTREAM_REF: 9393211dbc7f273e37e968e7a71700f58403227a
+  # The application source. The repository publishes no image of its own since its workflows were removed upstream, so the image is built here from a pinned commit. Bumping this line is how the workload takes an upstream change.
+  # Renamed from aca-prod, which still redirects. Named for what it is now.
+  UPSTREAM_REPOSITORY: https://github.com/sindredg/sky.git
+  UPSTREAM_REF: 38b85d0b78b107e08ae4d40455c7a1db1a494f72
 
 jobs:
   deliver:

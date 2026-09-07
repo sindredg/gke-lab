@@ -48,7 +48,7 @@ spec:
 
       containers:
         - name: sky
-          # Built from sindredg/aca-prod at a pinned commit and published to this project's registry, because the upstream pipeline publishes to Azure Container Registry, which this cluster cannot pull from. The application calls itself Golden Hour; here it is named for the path it serves.
+          # Built from sindredg/sky at a pinned commit and published to this project's registry, because the application repository publishes no image of its own. It was renamed from aca-prod, and now calls itself Sky, which matches the path it serves.
           # Built by run 34004725462 from upstream 9393211. The pipeline replaces this with the digest it builds; this value is what an apply outside the pipeline deploys.
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky@sha256:7af41229bb716ba3586cbb4887c0f9f13575724cf586ae8fc35b0403956f7851
           imagePullPolicy: IfNotPresent
