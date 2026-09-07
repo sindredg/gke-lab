@@ -38,7 +38,7 @@ env:
   # The application source. The repository publishes no image of its own since its workflows were removed upstream, so the image is built here from a pinned commit. Bumping this line is how the workload takes an upstream change.
   # Renamed from aca-prod, which still redirects. Named for what it is now.
   UPSTREAM_REPOSITORY: https://github.com/sindredg/sky.git
-  UPSTREAM_REF: 38b85d0b78b107e08ae4d40455c7a1db1a494f72
+  UPSTREAM_REF: e5270058bbc5f0ab367f831cf5df02d8de819bf2
 
 jobs:
   deliver:

@@ -1,0 +1,130 @@
+# Opens the pin bump that deploy-sky.yml would otherwise wait for someone to type.
+#
+# The pin is the point: deploy-sky.yml fetches a commit rather than a branch, so what
+# is built is exactly what was reviewed, and a re-run of an old run rebuilds the same
+# source. Tracking main directly would remove the bumping and that property together.
+# So this proposes the bump and leaves the merge as the review, which is where the
+# decision belonged anyway.
+name: Watch sky
+
+on:
+  schedule:
+    # Early enough that a morning merge deploys within the maintenance window.
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: watch-sky
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Propose the pinned commit
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The application repository is public, so reading its head needs no credential.
+      - name: Read the application's head and the pin
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          workflow=.github/workflows/deploy-sky.yml
+          repository=$(grep -oP 'UPSTREAM_REPOSITORY: https://github.com/\K[^.]+' "$workflow")
+          current=$(grep -oP 'UPSTREAM_REF: \K[0-9a-f]{40}' "$workflow")
+          head=$(gh api "repos/${repository}/commits/main" -q .sha)
+
+          if [ -z "$head" ] || [ ${#head} -ne 40 ]; then
+            echo "::error::could not read the head of ${repository}"
+            exit 1
+          fi
+
+          {
+            echo "repository=${repository}"
+            echo "current=${current}"
+            echo "head=${head}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$current" = "$head" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already pinned to ${head}."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A branch fetches by name; this pipeline fetches by commit, and a commit that
+      # is not reachable from a ref can stop resolving once it is collected. Proposing
+      # one that cannot be fetched would move the failure to the deploy.
+      - name: Check the commit can still be fetched
+        if: steps.read.outputs.changed == 'true'
+        env:
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          git init upstream
+          git -C upstream remote add origin "https://github.com/${REPOSITORY}.git"
+          git -C upstream fetch --depth 1 origin "$HEAD_SHA"
+          git -C upstream checkout FETCH_HEAD
+          test -f upstream/Dockerfile
+
+      - name: Open or update the bump
+        if: steps.read.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          CURRENT: ${{ steps.read.outputs.current }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          branch=bump-sky
+          workflow=.github/workflows/deploy-sky.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+
+          sed -i "s/UPSTREAM_REF: ${CURRENT}/UPSTREAM_REF: ${HEAD_SHA}/" "$workflow"
+          git add "$workflow"
+
+          if git diff --cached --quiet; then
+            echo "Nothing to commit; the branch already carries this pin."
+            exit 0
+          fi
+
+          subject=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" -q '.commit.message' | head -1)
+          git commit -m "ci: pin ${HEAD_SHA:0:7} from the sky repository" \
+                     -m "${subject}" \
+                     -m "Opened by the Watch sky workflow. Merging builds and rolls out."
+          git push --force-with-lease origin "$branch"
+
+          if gh pr view "$branch" --json number >/dev/null 2>&1; then
+            echo "The open pull request now carries ${HEAD_SHA:0:7}."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "ci: pin ${HEAD_SHA:0:7} from the sky repository" \
+            --body "$(printf '%s\n' \
+              "\`${REPOSITORY}\` moved past the commit this cluster builds." \
+              "" \
+              "| | |" \
+              "|---|---|" \
+              "| pinned | [\`${CURRENT:0:7}\`](https://github.com/${REPOSITORY}/commit/${CURRENT}) |" \
+              "| head | [\`${HEAD_SHA:0:7}\`](https://github.com/${REPOSITORY}/commit/${HEAD_SHA}) |" \
+              "" \
+              "[What changed](https://github.com/${REPOSITORY}/compare/${CURRENT}...${HEAD_SHA})" \
+              "" \
+              "Merging builds that commit and rolls it out. The commit was fetched" \
+              "on this run, so it resolves." \
+              "" \
+              "CI does not run on this pull request: it was opened with the workflow" \
+              "token, and GitHub does not raise workflow events from those. The push" \
+              "to main after merging does run it.")"
