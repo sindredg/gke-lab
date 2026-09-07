@@ -66,6 +66,17 @@ variable "max_node_count" {
   }
 }
 
+variable "maintenance_start_time" {
+  description = "UTC start of the daily four-hour window GKE may replace nodes in, as HH:MM."
+  type        = string
+  default     = "01:00"
+
+  validation {
+    condition     = can(regex("^([01][0-9]|2[0-3]):[0-5][0-9]$", var.maintenance_start_time))
+    error_message = "The maintenance start time must be a 24-hour UTC time such as 01:00."
+  }
+}
+
 variable "disk_size_gb" {
   description = "The size of the disk to use for the GKE nodes, in GB."
   type        = number

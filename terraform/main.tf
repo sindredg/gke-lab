@@ -26,9 +26,18 @@ module "gke" {
 
   node_pool_name = "general"
   machine_type   = "e2-standard-2"
-  min_node_count = 1
+
+  # Two is the floor rather than one so a replica has somewhere to land when a node
+  # is drained, which is what lets the disruption budgets hold. At one node both
+  # replicas of a workload share a failure domain and the second replica buys only
+  # rollout continuity.
+  min_node_count = 2
   max_node_count = 3
   disk_size_gb   = 50
+
+  # Node replacements land at night in Helsinki rather than whenever the release
+  # channel reaches this cluster.
+  maintenance_start_time = "01:00"
 
   deletion_protection = true
 

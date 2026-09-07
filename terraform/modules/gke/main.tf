@@ -19,6 +19,16 @@ resource "google_container_cluster" "main" {
     channel = "REGULAR"
   }
 
+  # REGULAR with auto_upgrade means GKE replaces nodes under the workload on its own
+  # schedule. The window does not reduce how often that happens; it decides when, so
+  # a drain is predictable and lands while nobody is reading the page. GKE opens four
+  # hours from this start time, given in UTC.
+  maintenance_policy {
+    daily_maintenance_window {
+      start_time = var.maintenance_start_time
+    }
+  }
+
   # Both blocks below state what GKE is already doing by default. They are here so the telemetry scope is a recorded choice rather than an inherited one, which means a plan that proposes a change is reporting that the default was not what was assumed.
 
   # Container stdout is the largest ingest line on a cluster this size and Cloud Logging bills it, so WORKLOADS is a cost decision, not a free one. The control-plane components (API_SERVER, SCHEDULER, CONTROLLER_MANAGER) stay off: useful for "who changed this object", noisy and billable for everything else.

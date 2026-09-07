@@ -1,0 +1,25 @@
+# Keeps one replica serving while a node is drained.
+#
+# maxUnavailable on the Deployment governs a rollout, which is a change this
+# repository makes on purpose. It says nothing about an eviction, which is what
+# a node upgrade or a repair does to a Pod without asking. Without this budget
+# both replicas can be evicted at once and the workload goes dark for as long as
+# a replacement takes to become ready.
+#
+# The budget only helps where a Pod has somewhere else to go, so the node pool
+# holds a floor of two nodes. On a single node this would stall the drain
+# instead of protecting anything.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sky
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: sky
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  minAvailable: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sky

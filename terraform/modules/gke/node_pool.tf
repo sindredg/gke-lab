@@ -5,7 +5,11 @@ resource "google_container_node_pool" "general" {
   location = var.zone
   cluster  = google_container_cluster.main.name
 
-  initial_node_count = var.min_node_count
+  # Only the size the pool is created at; autoscaling owns the count from then on.
+  # The field forces a new node pool when it changes, so it stays at one rather than
+  # tracking the floor, where raising the floor would replace the pool instead of
+  # resizing it.
+  initial_node_count = 1
 
   autoscaling {
     total_min_node_count = var.min_node_count
