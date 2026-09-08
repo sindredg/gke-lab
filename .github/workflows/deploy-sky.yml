@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'kubernetes/sky/**'
+      - '.github/sky-upstream.ref'
       - '.github/workflows/deploy-sky.yml'
   workflow_dispatch:
     inputs:
@@ -35,10 +36,16 @@ env:
   CONTAINER: sky
   IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky
 
-  # The application source. The repository publishes no image of its own since its workflows were removed upstream, so the image is built here from a pinned commit. Bumping this line is how the workload takes an upstream change.
+  # The application source. The repository publishes no image of its own since its workflows were removed upstream, so the image is built here from a pinned commit.
   # Renamed from aca-prod, which still redirects. Named for what it is now.
   UPSTREAM_REPOSITORY: https://github.com/sindredg/sky.git
-  UPSTREAM_REF: e5270058bbc5f0ab367f831cf5df02d8de819bf2
+
+  # The commit itself lives in .github/sky-upstream.ref rather than on a line here.
+  # GitHub refuses a workflow-token push that touches .github/workflows, and no
+  # permission grants it: the workflow scope exists for personal access tokens only.
+  # Keeping the pin as data is what lets Watch sky propose a bump without this
+  # pipeline having to hold a credential, which is the property it is built around.
+  PIN_FILE: .github/sky-upstream.ref
 
 jobs:
   deliver:
@@ -48,6 +55,16 @@ jobs:
     steps:
       - name: Check out this repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read the pinned commit
+        run: |
+          ref=$(tr -d '[:space:]' < "$PIN_FILE")
+          if ! printf '%s' "$ref" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::$PIN_FILE does not hold a full commit SHA: '$ref'"
+            exit 1
+          fi
+          echo "UPSTREAM_REF=$ref" >> "$GITHUB_ENV"
+          echo "Building ${ref}."
 
       # Fetched by commit rather than by branch, so the build input is exactly the reviewed one and no token is involved.
       - name: Fetch the application source at the pinned commit
