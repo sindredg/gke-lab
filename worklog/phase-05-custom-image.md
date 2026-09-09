@@ -21,18 +21,16 @@ Status: Complete
 
 ### Implemented
 
-- Added a `registry` Terraform module creating a regional Artifact Registry repository in the cluster region.
-- Set `immutable_tags` so the repository refuses to move a tag that already exists.
-- Added cleanup policies that delete untagged images after seven days and protect the ten most recent versions.
-- Granted the node service account `roles/artifactregistry.reader`, scoped to this repository.
-- Enabled the Artifact Registry and Container Scanning APIs.
-- Published the repository path as the `registry_url` output.
+- A `registry` Terraform module creating a regional Artifact Registry repository in the cluster region.
+- `immutable_tags`, so the repository refuses to move a tag that already exists.
+- Cleanup policies deleting untagged images after seven days, protecting the ten most recent versions.
+- `roles/artifactregistry.reader` for the node service account, scoped to this repository.
+- The Artifact Registry and Container Scanning APIs enabled.
+- The repository path published as the `registry_url` output.
 
 ### Why the nodes need an explicit binding
 
 Image pulls use the node identity. The kubelet fetches the image before the container exists, so Workload Identity is not available at that point and cannot be used for pulls.
-
-The node account already holds `roles/container.defaultNodeServiceAccount`, whose name suggests it covers what a node needs.
 
 ```bash
 gcloud iam roles describe roles/container.defaultNodeServiceAccount
@@ -40,7 +38,7 @@ gcloud iam roles describe roles/container.defaultNodeServiceAccount
 
 ![Permissions included in the node role](../images/registry-node-role-permissions.png)
 
-Result: six permissions, covering logging, monitoring, and autoscaling metrics. None for Artifact Registry. Without the repository binding, pulls fail with `ImagePullBackOff`.
+Result: six permissions, covering logging, monitoring, and autoscaling metrics. None for Artifact Registry, so without the repository binding, pulls fail with `ImagePullBackOff`.
 
 Guidance stating that GKE nodes can pull without an extra role describes the Compute Engine default service account, which receives broad automatic grants. Phase 1 replaced that account with a dedicated one, so that guidance does not apply here.
 
@@ -60,9 +58,10 @@ Result: the repository, the repository IAM binding, and the two API enablements 
 
 ### Unexpected change to the cluster
 
-The same plan proposed a modification to the cluster that no one had made, and applying it changed nothing. The diagnosis is recorded in the [troubleshooting log](../troubleshooting.md#a-terraform-plan-proposes-the-same-change-after-every-apply).
+The same plan proposed a modification to the cluster that no one had made, and applying it changed nothing. The diagnosis is in the [troubleshooting log](../troubleshooting.md#a-terraform-plan-proposes-the-same-change-after-every-apply). Two things came out of it:
 
-Two things came out of it. The cluster's control plane exposure was verified by connection rather than by reading a field, and the plan now reports no changes, so a future diff on the cluster will stand out instead of being expected.
+- The cluster's control plane exposure was verified by connection rather than by reading a field.
+- The plan now reports no changes, so a future diff on the cluster will stand out instead of being expected.
 
 ## Slice 2: Non-root image
 
@@ -84,9 +83,9 @@ docker inspect nginxinc/nginx-unprivileged:1.30.4-alpine
 
 ![Base image digest and inherited user](../images/image-base-digest.png)
 
-`RepoDigests` holds the value the `FROM` line now carries. `Config.User` is `101`, which is what the base image contributes and what the rest of this slice depends on.
-
-The `FROM` line keeps the tag next to the digest. The tag is for a reader, the digest is what resolves.
+- `RepoDigests` holds the value the `FROM` line now carries.
+- `Config.User` is `101`, which is what the base image contributes and what the rest of this slice depends on.
+- The `FROM` line keeps the tag beside the digest: the tag is for a reader, the digest is what resolves.
 
 ### Validation
 
@@ -105,7 +104,7 @@ docker run --rm --user 65532 k8-lab-test id
 
 ![The image running as an arbitrary user](../images/image-arbitrary-user.png)
 
-Result: the image runs as UID 101 by default and starts under an arbitrary UID that has no entry in its user database. The second test matters because `restricted` may assign a UID of its own, so the image must not depend on being one specific user.
+Result: the image runs as UID 101 by default and starts under an arbitrary UID with no entry in its user database. The second test matters because `restricted` may assign a UID of its own, so the image must not depend on being one specific user.
 
 ```bash
 docker run -d --name k8-lab-run -p 8080:8080 k8-lab-test
@@ -136,7 +135,7 @@ docker exec k8-lab-run ps aux
 
 ![The master and worker processes owned by nginx](../images/image-processes.png)
 
-Result: the master process and all eight workers run as `nginx`. The standard NGINX image runs its master as root, which is the difference this slice exists to remove. Together with the two identity tests, this is the evidence that lets Slice 4 raise enforcement to `restricted`.
+Result: the master process and all eight workers run as `nginx`. The standard NGINX image runs its master as root, which is the difference this slice exists to remove, and with the two identity tests it is the evidence that lets Slice 4 raise enforcement to `restricted`.
 
 ### Probe traffic stays out of the log
 
@@ -156,9 +155,7 @@ curl -i http://localhost:8080/healthz
 
 ![Two Content-Type headers on the probe response](../images/image-healthz-duplicate-header.png)
 
-The response carries `Content-Type` twice, `application/octet-stream` followed by `text/plain`. `add_header` appends a header rather than replacing one, so the directive added a second value beside the default instead of correcting it.
-
-Fixed by setting the type instead of adding a header.
+The response carries `Content-Type` twice, `application/octet-stream` followed by `text/plain`. `add_header` appends rather than replaces, so the directive added a second value beside the default instead of correcting it. Fixed by setting the type instead:
 
 ```nginx
 default_type text/plain;
@@ -166,9 +163,7 @@ default_type text/plain;
 
 ![A single content type on the probe response](../images/image-healthz.png)
 
-Result: one `Content-Type: text/plain`, and the body unchanged.
-
-The status and body were correct throughout, so a check that only asserted `200` would have passed. Reading the whole response is what surfaced it. The entry in the [troubleshooting log](../troubleshooting.md#an-nginx-response-carries-the-same-header-twice) records the directive difference.
+Result: one `Content-Type: text/plain`, body unchanged. The status and body were correct throughout, so a check asserting only `200` would have passed — reading the whole response is what surfaced it. The [troubleshooting log](../troubleshooting.md#an-nginx-response-carries-the-same-header-twice) records the directive difference.
 
 ## Slice 3: Publish to the repository
 
@@ -189,7 +184,7 @@ git rev-parse --short HEAD
 
 ![The commit the build came from](../images/registry-commit-tag.png)
 
-A tag has to answer one question: which source produced these bytes. A commit answers it exactly, and `immutable_tags` on the repository means the answer cannot later be repointed at a different build.
+A tag has to answer one question: which source produced these bytes. A commit answers it exactly, and `immutable_tags` means the answer cannot later be repointed at a different build.
 
 ### Authenticating without a key
 
@@ -241,7 +236,7 @@ gcloud artifacts docker images describe "$REGISTRY/frontend:$SHA" --show-package
 
 ![Two high severity findings](../images/registry-vulnerability-counts.png)
 
-Result: two HIGH findings, both inherited from the base image rather than introduced by this build. They are recorded rather than acted on, because closing them means waiting for an upstream release. The value of the scan here is that the count is now visible on every push instead of unknown.
+Result: two HIGH findings, both inherited from the base image rather than introduced by this build. They are recorded rather than acted on, because closing them means waiting for an upstream release. The value of the scan here is that the count is visible on every push instead of unknown.
 
 ## Slice 4: Deploy by digest
 
@@ -256,11 +251,15 @@ Status: Complete
 
 ### The first push could not run on the nodes
 
-The digest resolved in the registry and still failed to pull. The image had been built with a bare `docker build` on an Apple Silicon workstation, which produces an arm64-only index, and the nodes are amd64.
+| Step | Outcome |
+| --- | --- |
+| Digest resolved in the registry | pull still failed |
+| Cause | bare `docker build` on Apple Silicon produced an arm64-only index; nodes are amd64 |
+| Rebuild for both platforms | produced a new digest |
+| Retag as `2bb5f3a` | refused by `immutable_tags` |
+| Published as | `2bb5f3a-multiarch` |
 
-Rebuilding for both platforms produced a new digest. `immutable_tags` refused to move `2bb5f3a` onto it, so the rebuild went out as `2bb5f3a-multiarch`. The policy behaved exactly as intended: the tag still names the bytes it originally named.
-
-The [troubleshooting log](../troubleshooting.md#an-image-pull-fails-with-notfound-although-the-digest-exists) records the diagnosis, including why the registry reports this as `NotFound`.
+The policy behaved exactly as intended: the tag still names the bytes it originally named. The [troubleshooting log](../troubleshooting.md#an-image-pull-fails-with-notfound-although-the-digest-exists) records the diagnosis, including why the registry reports this as `NotFound`.
 
 ### Validation
 
@@ -272,7 +271,7 @@ kubectl get pods -n demo
 kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 ```
 
-Both replicas should run the multi-architecture digest, and no pod should remain from the ReplicaSet that ran the public image.
+Both replicas should run the multi-architecture digest, and no Pod should remain from the ReplicaSet that ran the public image.
 
 ## Known gaps
 

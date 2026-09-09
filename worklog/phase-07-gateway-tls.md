@@ -1,7 +1,7 @@
 # Worklog: Phase 7 Gateway and Managed TLS
 
 Date: 2026-09-03  
-Status: In progress. HTTP delivery through the Gateway is complete; the managed certificate is still issuing.
+Status: Complete
 
 ## Goal
 
@@ -9,9 +9,7 @@ Publish the workload on the public internet through a Google load balancer with 
 
 ## The idea the phase turns on
 
-The load balancer does not send traffic through the Service. GKE creates a network endpoint group listing Pod IP and port pairs, and the load balancer reaches those Pods directly. The Service is used only to work out which Pods belong in the group.
-
-That is what lets both halves of the exit criteria hold at once: publicly reachable, and the Service still `ClusterIP`.
+The load balancer does not send traffic through the Service. GKE creates a network endpoint group listing Pod IP and port pairs, and the load balancer reaches those Pods directly, using the Service only to work out which Pods belong in the group. That is what lets both halves of the exit criteria hold at once: publicly reachable, and the Service still `ClusterIP`.
 
 ## Slice 1: Enable the Gateway API
 
@@ -48,9 +46,10 @@ Nineteen minutes later the layer 7 classes had registered under `networking.gke.
 
 ![The L7 classes accepted, including gke-l7-global-external-managed](../images/gateway-classes.png)
 
-Result: `gke-l7-global-external-managed` is `Accepted`. Reading the name as a specification gives the whole configuration — layer 7, global, external, and managed by Google rather than by this project.
+Result: `gke-l7-global-external-managed` is `Accepted`.
 
-The absence of any row carrying the `networking.gke.io/gateway` controller is the signal that the L7 set has not landed yet. Waiting is the correct response; nothing needs reapplying.
+- The name reads as a specification and gives the whole configuration: layer 7, global, external, managed by Google rather than by this project.
+- The absence of any row carrying the `networking.gke.io/gateway` controller is the signal that the L7 set has not landed yet. Waiting is the correct response; nothing needs reapplying.
 
 ## Slice 2: Publish over HTTP
 
@@ -58,10 +57,10 @@ Status: Complete
 
 ### Implemented
 
-- Added a `Gateway` naming the reserved address by its Google Cloud name, so Terraform owns the address and the manifest only points at it.
-- Added an `HTTPRoute` sending traffic to the `nginx` Service.
-- Added a `HealthCheckPolicy` aiming the load balancer's health check at `/healthz` rather than `/`, so the check does not depend on page content.
-- Added a `NetworkPolicy` admitting Google's health check and proxy ranges to port 8080.
+- A `Gateway` naming the reserved address by its Google Cloud name, so Terraform owns the address and the manifest only points at it.
+- An `HTTPRoute` sending traffic to the `nginx` Service.
+- A `HealthCheckPolicy` aiming the load balancer's health check at `/healthz` rather than `/`, so the check does not depend on page content.
+- A `NetworkPolicy` admitting Google's health check and proxy ranges to port 8080.
 
 ```bash
 kubectl apply -f kubernetes/nginx/
@@ -111,9 +110,10 @@ kubectl get netpol -n demo
 
 ![Four policies, none admitting the load balancer](../images/gateway-netpol-before.png)
 
-The cause is Phase 4 working as designed. Health checks arrive from Google's infrastructure rather than from a Pod, so no `podSelector` rule can ever match them and the default deny drops every one. Nothing in the Gateway's own status says so.
+The cause is Phase 4 working as designed:
 
-`ipBlock` matches by source address, which is the only way to name a sender that is not a Pod. Phase 4 used `podSelector` for in-cluster clients; neither form can express the other.
+- Health checks arrive from Google's infrastructure rather than from a Pod, so no `podSelector` rule can ever match them and the default deny drops every one. Nothing in the Gateway's own status says so.
+- `ipBlock` matches by source address, the only way to name a sender that is not a Pod. Phase 4 used `podSelector` for in-cluster clients, and neither form can express the other.
 
 ```bash
 kubectl apply -f kubernetes/nginx/networkpolicy-gateway.yml
@@ -123,7 +123,7 @@ kubectl apply -f kubernetes/nginx/networkpolicy-gateway.yml
 
 ![Both endpoints healthy](../images/gateway-backends-healthy.png)
 
-Result: both endpoints `HEALTHY` on the same IPs and port. The only thing that changed is that Google's proxies are now admitted to one port on one set of Pods.
+Result: both endpoints `HEALTHY` on the same IPs and port. The only change is that Google's proxies are now admitted to one port on one set of Pods.
 
 ### Validation
 
@@ -137,13 +137,11 @@ curl -sI "http://$IP/healthz"
 
 ![Both requests answered through the load balancer](../images/gateway-http-via-google.png)
 
-Result: `200 OK` for the page and for the probe path. The `via: 1.1 google` header is the evidence that the response came through the load balancer rather than from somewhere else.
-
-That header sits ninth in the response, after `last-modified`, `etag`, and `accept-ranges`. A `head -5` truncates it, which reads as a missing header rather than a truncated listing.
+Result: `200 OK` for the page and for the probe path. `via: 1.1 google` is the evidence that the response came through the load balancer rather than from somewhere else — and it sits ninth in the response, after `last-modified`, `etag`, and `accept-ranges`, so a `head -5` truncates it and reads as a missing header.
 
 ## Slice 3: Domain and managed TLS
 
-Status: In progress
+Status: Complete
 
 ### Implemented
 
@@ -156,9 +154,14 @@ Status: In progress
 
 ### Why DNS authorization
 
-A certificate authority will not issue for a name until control of it is proven. DNS authorization proves control with one `CNAME` record that Google checks; load balancer authorization proves it by checking the live load balancer at that name.
+A certificate authority will not issue for a name until control of it is proven.
 
-DNS authorization decouples issuance from the cutover, so a valid certificate can exist before the domain points at anything. The cost is one extra record, permanently, because renewal re-checks it.
+| Method | Proves control by | Cost |
+| --- | --- | --- |
+| DNS authorization | one `CNAME` record Google checks | one extra record, permanently, because renewal re-checks it |
+| Load balancer authorization | checking the live load balancer at that name | issuance cannot precede the cutover |
+
+DNS authorization decouples issuance from the cutover, so a valid certificate can exist before the domain points at anything.
 
 ```bash
 terraform -chdir=terraform apply
@@ -200,9 +203,9 @@ curl -I https://sindrg.com
 
 ![The connection refused at the transport layer](../images/gateway-https-refused.png)
 
-`SSL_ERROR_SYSCALL` is a connection-level failure, not a certificate error. A rejected or mismatched certificate produces a verify error instead. Nothing was listening on 443, because GKE does not stand up an HTTPS frontend without a usable certificate.
-
-The certificate itself reported `PROVISIONING` indefinitely. The reason was only visible in `managed.authorizationAttemptInfo`, not in the top-level state:
+- `SSL_ERROR_SYSCALL` is a connection-level failure, not a certificate error: a rejected or mismatched certificate produces a verify error instead.
+- Nothing was listening on 443, because GKE does not stand up an HTTPS frontend without a usable certificate.
+- The certificate reported `PROVISIONING` indefinitely, and the reason was visible only in `managed.authorizationAttemptInfo`, not in the top-level state:
 
 ```text
 domain: sidnrg.com
@@ -213,15 +216,13 @@ issues:
 
 The Terraform `domain` variable held `sidnrg.com`. The certificate, the DNS authorization, and the map entry had all been created for a domain nobody owns, and the `CNAME` in Cloudflare was correct for that wrong name, because it had been copied faithfully from Terraform's output.
 
-`domain` is immutable on both resources, so correcting it replaced them.
-
 ```bash
 terraform -chdir=terraform apply
 ```
 
 ![Three resources replaced](../images/gateway-domain-fix-apply.png)
 
-Replacement issues a new authorization with a new target, so the record in Cloudflare became stale the moment the apply finished.
+`domain` is immutable on both resources, so correcting it replaced them. Replacement issues a new authorization with a new target, so the record in Cloudflare became stale the moment the apply finished.
 
 ```bash
 gcloud certificate-manager dns-authorizations describe k8-lab-gateway-dns-auth \
@@ -231,9 +232,7 @@ dig +short _acme-challenge.sindrg.com CNAME
 
 ![The expected target and the served target differing](../images/gateway-cname-mismatch.png)
 
-Comparing the two values directly is what identifies a stale record. The served value still began `c016c223`, from the destroyed authorization; the expected value began `fbee38d7`.
-
-The [troubleshooting log](../troubleshooting.md#a-managed-certificate-stays-in-provisioning) records the diagnosis.
+Result: comparing the two values directly is what identifies a stale record. The served value still began `c016c223`, from the destroyed authorization; the expected value began `fbee38d7`. The [troubleshooting log](../troubleshooting.md#a-managed-certificate-stays-in-provisioning) records the diagnosis.
 
 ### The HTTPS listener
 
@@ -247,7 +246,7 @@ The main route is bound to `sectionName: https`, so it could not attach until th
 
 ### Validation
 
-Status: Complete
+Status: Passed
 
 ```bash
 gcloud certificate-manager certificates describe k8-lab-gateway-cert --format=yaml
@@ -255,13 +254,13 @@ gcloud certificate-manager certificates describe k8-lab-gateway-cert --format=ya
 
 ![The certificate authorizing against the correct domain](../images/gateway-cert-authorizing.png)
 
-Correcting the domain moved the certificate to `domains: sindrg.com`, `state: PROVISIONING`, with the `CNAME` resolving to the expected target.
+Correcting the domain moved the certificate to `domains: sindrg.com`, `state: PROVISIONING`, with the `CNAME` resolving to the expected target. A later attempt, roughly three hours on, failed again and kept failing:
 
-A later attempt, roughly three hours after that correction, failed again, and kept failing. The cause was Cloudflare: it serves hidden `TXT` records at `_acme-challenge.sindrg.com` for its own Universal SSL, and a name carrying both a `CNAME` and a `TXT` answers `TXT` queries from the `TXT` set alone. Validation asks for `TXT`, so it never followed the `CNAME` to Google. The records do not appear in the Cloudflare dashboard.
+- Cloudflare serves hidden `TXT` records at `_acme-challenge.sindrg.com` for its own Universal SSL, and they do not appear in its dashboard.
+- A name carrying both a `CNAME` and a `TXT` answers `TXT` queries from the `TXT` set alone, so validation never followed the `CNAME` to Google.
+- `PER_PROJECT_RECORD` moves validation to `_acme-challenge_<hash>.sindrg.com`, a label nothing else claims. `type` is immutable, so this replaced the authorization, the certificate and the map entry, and the DNS record was rewritten with a new name and target.
 
-Switching the authorization to `PER_PROJECT_RECORD` moves validation to `_acme-challenge_<hash>.sindrg.com`, a label nothing else claims. `type` is immutable, so this replaced the authorization, the certificate and the map entry, and the DNS record was rewritten with a new name and a new target. The [troubleshooting log](../troubleshooting.md#a-second-failure-with-the-domain-and-the-record-both-correct) carries the queries that isolate it.
-
-The certificate reached `ACTIVE` shortly after.
+The [troubleshooting log](../troubleshooting.md#a-second-failure-with-the-domain-and-the-record-both-correct) carries the queries that isolate it.
 
 ![The certificate active and authorized](../images/gateway-cert-active.png)
 
@@ -281,9 +280,7 @@ echo | openssl s_client -connect sindrg.com:443 -servername sindrg.com 2>/dev/nu
 
 ![HTTP redirected to HTTPS](../images/gateway-http-redirect.png)
 
-`via: 1.1 google` confirms the response came through the load balancer rather than anything else answering for the name, and port 80 returns `301` to `https://sindrg.com:443/` from the redirect route.
-
-The certificate on the wire:
+Result: `via: 1.1 google` confirms the response came through the load balancer rather than anything else answering for the name, and port 80 returns `301` to `https://sindrg.com:443/` from the redirect route.
 
 ```text
 subject=CN = sindrg.com
@@ -313,7 +310,7 @@ NAME                                   AGE
 k8s1-0bf1ac7c-demo-nginx-80-49b21201   19h
 ```
 
-The Service holds no external address. Traffic reaches the Pods through the `ServiceNetworkEndpointGroup` the Gateway controller manages, so the load balancer addresses Pod endpoints directly and the Service is never published. Going public changed the path into the cluster, not the exposure of the workload.
+Result: the Service holds no external address. Traffic reaches the Pods through the `ServiceNetworkEndpointGroup` the Gateway controller manages, so the load balancer addresses Pod endpoints directly and the Service is never published. Going public changed the path into the cluster, not the exposure of the workload.
 
 ## Known gaps
 

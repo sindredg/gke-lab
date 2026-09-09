@@ -47,29 +47,41 @@ One selected NGINX Pod in GKE
 
 ## Validation
 
-`kubectl rollout status deployment/nginx -n demo`
+```bash
+kubectl rollout status deployment/nginx -n demo
+```
 
 ![NGINX rollout completed](../images/nginx-rollout.png)
 
-`kubectl get deployments -n demo`
+```bash
+kubectl get deployments -n demo
+```
 
 ![The Deployment reporting two of two replicas ready](../images/nginx-deployment-ready.png)
 
-`kubectl get pods -n demo -o wide`
+```bash
+kubectl get pods -n demo -o wide
+```
 
 ![Two healthy NGINX Pods](../images/nginx-pods.png)
 
-`kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx`
+```bash
+kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx
+```
 
 ![NGINX Service endpoints](../images/nginx-endpoints.png)
 
-`kubectl port-forward service/nginx 8080:80 -n demo`
+```bash
+kubectl port-forward service/nginx 8080:80 -n demo
+```
 
 ![NGINX reached through local port forwarding](../images/nginx-local-test.png)
 
 Result: rollout succeeded, both Pods are healthy, the Service selected both Pods, and NGINX responded locally.
 
-`kubectl get events -n demo`
+```bash
+kubectl get events -n demo
+```
 
 ![Scheduling, image pull, container start, and ReplicaSet scaling](../images/nginx-lifecycle-events.png)
 
@@ -77,17 +89,25 @@ The events record the chain in order: the Deployment scales a ReplicaSet, the Re
 
 ## Self-healing test
 
-`kubectl delete pod <pod-name> -n demo`
+```bash
+kubectl delete pod <pod-name> -n demo
+```
 
-`kubectl get pods -n demo --watch`
+```bash
+kubectl get pods -n demo --watch
+```
 
 ![Kubernetes replacing the deleted Pod](../images/nginx-self-healing-watch.png)
 
-`kubectl get deployments,replicasets,pods -n demo -o wide`
+```bash
+kubectl get deployments,replicasets,pods -n demo -o wide
+```
 
 ![Deployment restored to two healthy Pods](../images/nginx-self-healing-result.png)
 
-`kubectl get events -n demo --sort-by=.metadata.creationTimestamp`
+```bash
+kubectl get events -n demo --sort-by=.metadata.creationTimestamp
+```
 
 ![Self-healing lifecycle events](../images/nginx-self-healing-events.png)
 
@@ -97,19 +117,29 @@ Note: one readiness check failed while NGINX was starting. The Pod recovered and
 
 ## Scaling test
 
-`kubectl scale deployment/nginx --replicas=3 -n demo`
+```bash
+kubectl scale deployment/nginx --replicas=3 -n demo
+```
 
-`kubectl get pods -n demo -o wide`
+```bash
+kubectl get pods -n demo -o wide
+```
 
 ![Three healthy NGINX Pods](../images/nginx-scale-three-pods.png)
 
-`kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx`
+```bash
+kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx
+```
 
 ![Service updated to three Pod endpoints](../images/nginx-scale-three-endpoints.png)
 
-`kubectl apply -f kubernetes/nginx/deployment.yml`
+```bash
+kubectl apply -f kubernetes/nginx/deployment.yml
+```
 
-`kubectl get deployments,pods -n demo -o wide`
+```bash
+kubectl get deployments,pods -n demo -o wide
+```
 
 ![YAML restored the Deployment to two replicas](../images/nginx-scale-restored.png)
 
@@ -117,25 +147,37 @@ Result: live scaling added a third Pod and Service endpoint. Reapplying the mani
 
 ## Rolling restart and rollback
 
-`kubectl rollout restart deployment/nginx -n demo`
+```bash
+kubectl rollout restart deployment/nginx -n demo
+```
 
-`kubectl get pods -n demo --watch`
+```bash
+kubectl get pods -n demo --watch
+```
 
 ![NGINX Pods replaced gradually](../images/nginx-rolling-restart-watch.png)
 
-`kubectl get replicasets,pods -n demo -o wide`
+```bash
+kubectl get replicasets,pods -n demo -o wide
+```
 
 ![New ReplicaSet active after restart](../images/nginx-rolling-restart-result.png)
 
-`kubectl rollout undo deployment/nginx -n demo`
+```bash
+kubectl rollout undo deployment/nginx -n demo
+```
 
-`kubectl get replicasets,pods -n demo -o wide`
+```bash
+kubectl get replicasets,pods -n demo -o wide
+```
 
 ![Previous ReplicaSet restored by rollback](../images/nginx-rollback-result.png)
 
 Result: revision 2 replaced the Pods gradually, then rollback restored revision 1 with two healthy Pods.
 
-`kubectl rollout history deployment/nginx -n demo`
+```bash
+kubectl rollout history deployment/nginx -n demo
+```
 
 ![Two recorded Deployment revisions](../images/nginx-rollout-history.png)
 
