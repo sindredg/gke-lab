@@ -24,16 +24,18 @@ flowchart TB
         Certs["Certificate Manager<br/>managed TLS"]
         Registry["Artifact Registry"]
         Identity["Workload<br/>Identity<br/>Federation"]
-        Services["Pub/Sub<br/>Vertex AI<br/>Result store"]
-        Observability["Cloud Logging<br/>Cloud Monitoring"]
+        Uptime["Uptime check<br/>three prober regions"]
+        Observability["Cloud Logging<br/>Cloud Monitoring<br/>dashboard and alert policy"]
+        Notify["Email notification<br/>channel"]
 
         subgraph VPC["Custom VPC"]
             ControlPlane["GKE control plane<br/>DNS-only endpoint"]
 
-            subgraph Cluster["GKE node pool"]
+            subgraph Cluster["GKE node pool, floor of two nodes"]
                 Routes["Gateway and<br/>HTTPRoutes"]
-                Workloads["NGINX frontend<br/>Review API<br/>and worker"]
-                Guardrails["Pod Security<br/>NetworkPolicy<br/>Quotas"]
+                Nginx["nginx<br/>two replicas<br/>serves /"]
+                Sky["sky<br/>two replicas<br/>serves /sky, /api, /static"]
+                Guardrails["Pod Security, NetworkPolicy,<br/>quotas, disruption budgets"]
             end
 
             NAT["Cloud NAT"]
@@ -43,21 +45,25 @@ flowchart TB
     User --> DNS
     DNS --> Ingress
     Certs -. terminates TLS .-> Ingress
-    Ingress -- "Pod IPs via NEG" --> Workloads
+    Certs -. validated by a DNS record .-> DNS
+    Ingress -- "Pod IPs via NEG" --> Nginx
+    Ingress -- "Pod IPs via NEG" --> Sky
     Routes -. configures .-> Ingress
-    Guardrails -. protects .-> Workloads
+    Guardrails -. protects .-> Nginx
+    Guardrails -. protects .-> Sky
     Developer --> Terraform
     Developer --> GitHub
     Terraform --> ControlPlane
     GitHub -. federates .-> Identity
-    GitHub -. builds .-> Registry
+    GitHub -. builds and pushes .-> Registry
     GitHub -. deploys .-> ControlPlane
-    Registry -. images .-> Workloads
+    Registry -. images pulled by nodes .-> Cluster
     ControlPlane --> Cluster
-    Workloads --> NAT
-    Workloads -. telemetry .-> Observability
-    Workloads -. keyless identity .-> Identity
-    Identity --> Services
+    Cluster -- "node egress" --> NAT
+    Cluster -. telemetry .-> Observability
+    Uptime -- "probes /healthz every 60s" --> Ingress
+    Uptime -. the result is the metric .-> Observability
+    Observability -. opens an incident .-> Notify
 
     classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
     classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
@@ -66,8 +72,8 @@ flowchart TB
 
     class User,Developer external
     class Terraform,GitHub delivery
-    class ControlPlane,NAT,Routes,Workloads,Guardrails workload
-    class Ingress,Registry,Identity,Services,Observability managed
+    class ControlPlane,NAT,Routes,Nginx,Sky,Guardrails workload
+    class Ingress,Registry,Identity,Uptime,Observability,Notify managed
 
     style Delivery fill:#211A0D,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
     style GCP fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
