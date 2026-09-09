@@ -11,11 +11,11 @@ Make the platform's health observable and provable: one dashboard that answers w
 
 An availability alert built on served traffic only fires when there is served traffic.
 
-This platform has close to no organic traffic. If both Pods die at three in the morning, a condition on the load balancer's 5xx ratio evaluates an empty series, and stays silent. The dashboard shows a flat line, which looks exactly like a healthy quiet night. "No data" is not "no problem", but a threshold cannot tell them apart.
+This platform has close to no organic traffic. If both Pods die at three in the morning, a condition on the load balancer's 5xx ratio evaluates an empty series and stays silent, and the dashboard shows a flat line that looks exactly like a healthy quiet night. "No data" is not "no problem", but a threshold cannot tell them apart.
 
 So the alert cannot wait for a visitor. The platform has to produce the traffic it alerts on, which is what a Cloud Monitoring uptime check is: a request from outside Google's network, on a fixed period, whose result is itself the metric. The check is both the load and the signal.
 
-That also settles where to measure, and the vantage point decides what the alert can see:
+The vantage point then decides what the alert can see:
 
 | Vantage point | Question it answers | Covers |
 | --- | --- | --- |
@@ -45,7 +45,7 @@ terraform -chdir=terraform plan
 
 ![Four resources to add and one to change](../images/observability-plan.png)
 
-The expectation was an empty diff on the cluster, since both blocks were meant to describe behaviour GKE was already running by default. The plan proposed a change to it instead, which is the plan doing its job: the assumed default was not the configured state. Writing the telemetry scope down turned an inherited setting into a recorded one, and the diff is the evidence that it had never actually been chosen.
+The expectation was an empty diff: both blocks were meant to describe behaviour GKE was already running by default. The plan proposed a change to the cluster instead, which is the plan doing its job — the assumed default was not the configured state. Writing the telemetry scope down turned an inherited setting into a recorded one, and the diff is the evidence it had never been chosen.
 
 ## Slice 2: Uptime check, notification channel, and one alert
 
@@ -118,6 +118,15 @@ Two drills. The first proves the alert, the second closes the rollout row of the
 
 - Scale the workload to zero, record the time to the incident opening, restore it, and record the recovery. Scale-to-zero rather than removing the Gateway or the DNS record: those also produce an outage, but recovery then waits on certificate issuance and DNS propagation, which tests Google's provisioning rather than this platform.
 - Ship a deliberately broken `/healthz` through the pipeline, let the rollout fail on readiness, and restore the previous version. The result worth recording is that the alert should stay silent, because `maxUnavailable: 0` keeps the previous digest serving throughout a failed deployment.
+- Write the first drill up as a short postmortem, from the incident rather than from memory.
+
+### Evidence to capture
+
+Each drill is only worth what it leaves behind, so the screenshots are named before they are taken:
+
+- The workload at zero Pods, and the incident open in Cloud Monitoring, with both times readable.
+- The incident closed and the Pods Ready again.
+- The failed rollout stopping on readiness, and the uptime panel flat across the same window.
 
 ## Slice 5: The numbers
 
@@ -126,6 +135,8 @@ Status: Not started
 - Median deploy duration and the per-step split, plus commit to serving.
 - Time from a configuration change to a Ready workload.
 - A billing snapshot grouped by SKU, with the main cost sources named rather than only the total.
+
+Evidence: the workflow run list with its step timings, and the billing report grouped by SKU rather than a single total.
 
 ## Slice 6: Close Milestone 1
 

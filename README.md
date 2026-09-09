@@ -85,8 +85,10 @@ flowchart TB
 - Complete: a project-owned non-root image published to Artifact Registry and deployed by digest.
 - Complete: keyless delivery through Workload Identity Federation, with a namespaced pipeline Role and a gated rollout.
 - Complete: a public Gateway on a custom domain, with managed TLS and an HTTP to HTTPS redirect, while the workload Service stays internal.
+- Complete: a node floor of two, a disruption budget on each workload, and a nightly maintenance window, so an evicted Pod has somewhere to land.
+- In progress: observability. The telemetry scope, the uptime check, the alert, and the dashboard are built and taking data.
 - Milestone 1: complete apart from the last step. The workload is guarded, the image is project owned and deployed by digest, delivery is keyless, and the workload is public through Gateway API.
-- Next: observability, the one remaining gap. Phase 8 adds the health dashboard, one actionable alert, and the failure tests that close Milestone 1.
+- Next: the Phase 8 failure drills and the cost snapshot, which are what close Milestone 1.
 
 ## Platform capabilities
 
@@ -101,7 +103,8 @@ flowchart TB
 | Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
 | Deployment | Keyless GitHub Actions delivery, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
 | Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS, HTTP to HTTPS redirect | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
-| Observability | Not built yet | [Deferred](decisions.md#deferred-decision-records) | Phase 8 |
+| Observability | Cluster telemetry declared, uptime check on `/healthz`, one alert policy, dashboard as code; failure drills and cost snapshot outstanding | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
+| Resilience | Node floor of two, disruption budgets on both workloads, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
 
 ## Documentation
 
@@ -114,6 +117,8 @@ flowchart TB
 - [Phase 5 custom image worklog](worklog/phase-05-custom-image.md)
 - [Phase 6 keyless delivery worklog](worklog/phase-06-keyless-delivery.md)
 - [Phase 7 gateway and TLS worklog](worklog/phase-07-gateway-tls.md)
+- [Phase 8 observability worklog](worklog/phase-08-observability.md)
+- [Phase 9 surviving a node worklog](worklog/phase-09-resilience.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)

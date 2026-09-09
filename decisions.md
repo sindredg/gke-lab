@@ -22,9 +22,9 @@ Alternatives: [Regional cluster](https://docs.cloud.google.com/kubernetes-engine
 
 ### Node pool
 
-Decision: [One autoscaling general node pool](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/node-pools) with `e2-standard-2` nodes, 50 GB balanced disks, and a total size of one to three nodes.
+Decision: [One autoscaling general node pool](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/node-pools) with `e2-standard-2` nodes, 50 GB balanced disks, and a total size of two to three nodes.
 
-Why: Provides predictable baseline capacity with room to scale.
+Why: Provides predictable baseline capacity with room to scale. The floor is two rather than one so that an evicted Pod has somewhere to land, which is what makes a disruption budget pace a drain instead of blocking it.
 
 Alternatives: [Other machine families](https://docs.cloud.google.com/compute/docs/machine-resource), [Spot VMs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/spot-vms), or [node auto-provisioning](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/node-auto-provisioning).
 
@@ -38,19 +38,19 @@ Alternatives: [Default Compute Engine service account](https://docs.cloud.google
 
 ### Upgrade policy
 
-Decision: [Regular release channel](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels) with node auto-upgrade, auto-repair, and surge upgrades.
+Decision: [Regular release channel](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels) with node auto-upgrade, auto-repair, and surge upgrades, inside a daily [maintenance window](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/maintenance-windows-and-exclusions) at 01:00 UTC.
 
-Why: Balances release freshness with stability and reduces upgrade disruption.
+Why: Balances release freshness with stability and reduces upgrade disruption. The window makes node replacement predictable rather than whenever the channel reaches the cluster, which matters because auto-upgrade and auto-repair evict Pods without asking.
 
 Alternatives: [Rapid, Stable, or Extended channels](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/release-channels).
 
 ### Replica placement
 
-Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule set to `ScheduleAnyway`, rather than a required pod anti-affinity rule.
+Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule set to `ScheduleAnyway`, rather than a required pod anti-affinity rule, paired since Phase 9 with a [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-application/configure-pdb/) of `minAvailable: 1` on each workload.
 
-Why: The node pool autoscales from one node, so a required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. A preference spreads the replicas whenever there is somewhere to spread them and costs nothing when there is not. The value shows up during Regular channel node upgrades, which replace nodes underneath a running workload.
+Why: A required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. The preference survives the floor moving to two, for a second reason: with `maxSkew: 1` across exactly two nodes, `DoNotSchedule` would refuse to reschedule during a drain, because the surviving node would sit at skew 2. The value shows up during Regular channel node upgrades, which replace nodes underneath a running workload.
 
-Alternatives: Required anti-affinity, a PodDisruptionBudget, or accepting co-located replicas. A PodDisruptionBudget is deferred rather than rejected: on a pool that can scale to one node, `minAvailable` blocks the drain that an automatic node upgrade depends on.
+Alternatives: Required anti-affinity, or accepting co-located replicas. The budget was deferred rather than rejected until the node floor rose: on a pool that can scale to one node, `minAvailable` blocks the drain that an automatic node upgrade depends on, so the floor of two and the budgets had to land as one change.
 
 ## Networking
 
@@ -479,6 +479,32 @@ Decision: Serve the sky workload at `/sky` on the existing hostname, routing `/s
 Why: The application is not prefix aware. Its page asks for `/static/app.js` and its script fetches `/api/places`, both absolute, so the prefix cannot be confined to `/sky` without changing the application. Gateway API matches the longest prefix first, so these rules take precedence over the project page's `/` without either route referring to the other. The load balancer reaches `/health` through the HealthCheckPolicy rather than through a route. That is not the same as `/health` being unreachable: rewriting a prefix away exposes everything behind it, so `/sky/health` and `/sky/version` are both public. `/sky/version` returns the upstream commit the image was built from, which is a fact about a public repository rather than a secret, but it is a consequence of the rewrite worth stating rather than discovering.
 
 Alternatives: A `sky.` subdomain, which keeps each workload's path namespace whole at the cost of a DNS record and a certificate map entry, and remains the answer if a second application ever wants `/api`. Or patch a vendored copy to be prefix-clean, which forks the application to solve a routing problem.
+
+## Observability
+
+### Telemetry scope
+
+Decision: Declare `SYSTEM_COMPONENTS` and `WORKLOADS` logging and `SYSTEM_COMPONENTS` monitoring with Managed Service for Prometheus, and leave `API_SERVER`, `SCHEDULER`, and `CONTROLLER_MANAGER` off.
+
+Why: Container stdout is the largest ingest line on a cluster this size and Cloud Logging bills it, so keeping `WORKLOADS` is a cost decision rather than a free one. The control plane streams answer "who changed this object", and are noisy and billable for everything else. Writing the scope down also turned an inherited default into a recorded choice, which the first plan proved by proposing a change rather than an empty diff.
+
+Alternatives: Accept the GKE defaults unwritten, or enable every control plane stream.
+
+### Availability signal
+
+Decision: Alert on a [Cloud Monitoring uptime check](https://cloud.google.com/monitoring/uptime-checks) against `/healthz` from three prober regions every 60 seconds, with a content matcher requiring `ok` and `validate_ssl` enabled.
+
+Why: This platform has close to no organic traffic, so a condition on the load balancer's 5xx ratio evaluates an empty series at the moment an outage begins, and silence is indistinguishable from a quiet night. The check produces the traffic it alerts on, so it is both the load and the signal. Matching body content means a `200` from something that is not this workload still fails, and `validate_ssl` makes the same check an expiry alarm for a certificate that renews unattended.
+
+Alternatives: Alert on load balancer response classes or backend health, which only fire when there is traffic to observe.
+
+### Alert threshold
+
+Decision: Open an incident only when more than one checker location is failing, and set `auto_close` to 30 minutes.
+
+Why: One location failing is a network path somewhere on the internet, and paging on it is how an alert teaches its reader to dismiss it. Requiring two costs nothing in detection here: one zonal cluster behind one global load balancer has no partial-failure mode, so a real outage fails every location inside the same check period. The default `auto_close` of seven days would leave a self-recovered incident open when the next real one arrives.
+
+Alternatives: Page on a single failing location, or on a proportion of locations.
 
 ## Project and process
 

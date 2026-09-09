@@ -21,7 +21,7 @@ The existing cluster, namespace, manifests, and evidence remain in use.
 
 ## Milestone 1: Complete platform slice
 
-The first milestone takes the existing NGINX workload through validation, policy, image delivery, external access, observability, and failure testing.
+The first milestone takes the existing NGINX workload through validation, policy, image delivery, external access, observability, resilience, and failure testing.
 
 ### Phase 3: Credential-free CI
 
@@ -100,6 +100,8 @@ Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs
 
 ### Phase 8: Observability and evidence
 
+**Status:** In progress. The telemetry scope, the uptime check, the alert, and the dashboard are built and taking data. The failure drills, the numbers, and the milestone close are outstanding.
+
 - Create one workload health dashboard.
 - Create one actionable availability alert.
 - Trigger the alert deliberately and verify recovery.
@@ -125,11 +127,27 @@ Existing self-healing, scaling, restart, and rollback evidence counts toward thi
 
 Documentation: [GKE observability](https://cloud.google.com/kubernetes-engine/docs/concepts/observability), [Cloud Monitoring alerting](https://cloud.google.com/monitoring/alerts), [GKE pricing](https://cloud.google.com/kubernetes-engine/pricing)
 
+### Phase 9: Surviving a node
+
+**Status:** Complete
+
+Unplanned, and taken on because Phase 8 made the gap visible: two replicas survived a rollout and would not have survived a node going away.
+
+- Raise the node pool floor to two, so a drained Pod has somewhere to land.
+- Decouple `initial_node_count` from that floor, because it is `ForceNew` and moving it replaces the pool.
+- Set a daily maintenance window, so node replacement is predictable rather than whenever the release channel arrives.
+- Add a `PodDisruptionBudget` with `minAvailable: 1` to both workloads.
+- Spread the Pods across both nodes, and record why a rolling restart does not do it.
+
+**Exit criteria met:** Both workloads run a replica on each node, both budgets report one allowed disruption, and node replacement lands in a known window. `maxUnavailable: 0` already covered a rollout; the budgets cover an eviction, which is what `auto_upgrade` and `auto_repair` perform without asking.
+
+Documentation: [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-application/configure-pdb/), [Pod topology spread](https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/), [GKE maintenance windows](https://cloud.google.com/kubernetes-engine/docs/concepts/maintenance-windows-and-exclusions)
+
 ## Milestone 2: AI reference workload
 
 Start only after Milestone 1 is complete.
 
-### Phase 9: Deterministic manifest review
+### Phase 10: Deterministic manifest review
 
 - Add a small API for submitted Kubernetes YAML.
 - Treat all submissions as untrusted input.
@@ -139,7 +157,7 @@ Start only after Milestone 1 is complete.
 
 **Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
 
-### Phase 10: AI explanation with closed validation
+### Phase 11: AI explanation with closed validation
 
 - Use Vertex AI only to explain findings and propose corrections.
 - Authenticate from GKE with Workload Identity Federation.
@@ -177,4 +195,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Begin Phase 8. Build the workload health dashboard and one actionable availability alert, then trigger the alert deliberately and record the recovery.
+Finish Phase 8. The dashboard and the alert are built and taking data. What remains is triggering the alert deliberately, recording the recovery, executing a failed rollout and rollback, and capturing the cost snapshot.
