@@ -212,6 +212,68 @@ When the credits are consumed the cluster stops. The availability alert from [Ph
 
 One gap recorded and not closed: `notificationsRule` is empty, so budget alerts fall back to emailing billing administrators rather than the `Platform owner` notification channel the rest of the platform uses. Two alerting paths that do not meet. Not worth wiring up for a budget that has been rejected as a control.
 
+## Slice 7: Close what the earlier phases left open
+
+Status: Complete
+
+Three items were carried as open. None were large. Two of them meant a platform claim was not true.
+
+### The Pods were not spread
+
+[Phase 9](phase-09-resilience.md) claims a replica of each workload on each node. The rollout triggered by this phase's apply undid it.
+
+```bash
+kubectl get pods -n demo -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName
+```
+
+```
+nginx-7db4c86d44-cz784   ...-0rru
+nginx-7db4c86d44-mpncv   ...-0rru
+sky-7f55c85b96-6hg9z     ...-kr98
+sky-7f55c85b96-tfbgg     ...-0rru
+```
+
+Both `nginx` replicas on one node. A graceful drain still survives on the disruption budget, but a sudden node loss takes the whole workload, and `auto_repair` replaces nodes without asking.
+
+Phase 9 named the durable fix and did not apply it. `topologySpreadConstraints` counts every Pod matching the selector, including replicas from the outgoing ReplicaSet, so each new Pod sees the old node as full and picks the other one. Both land together and a rolling restart reproduces it.
+
+```yaml
+- matchLabelKeys: ["pod-template-hash"]
+  maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+```
+
+Confining the count to one ReplicaSet is what makes the spread survive a rollout. Applied to both workloads.
+
+### `terraform plan` is clean
+
+Phase 9 recorded that two observability resources drift on every plan. One had already resolved. The dashboard was the other, and the cause turned out to be in the template rather than in the API.
+
+- The template wrote `"xPos": 0` and `"yPos": 0`. Those are defaults, so the API omits them from what it returns, and Terraform read the difference as a change on every plan.
+- `etag` and `name` are added by the API and are not in the template. Those were expected to leave a residual diff. They do not.
+
+Removing six default-valued lines was the whole fix.
+
+```
+No changes. Your infrastructure matches the configuration.
+```
+
+First clean plan in the project. It matters more than tidiness: a plan nobody can read is what let a node pool replacement sit unnoticed until Slice 2.
+
+### The committed digest is stale, and applying by hand rolls back
+
+Recorded rather than fixed.
+
+`kubernetes/nginx/deployment.yml` carries a real image reference, and the pipeline overrides it with the digest it just built. The committed value is therefore always behind:
+
+| | Digest |
+| --- | --- |
+| Running | `sha256:b97584e9...` |
+| In the repository | `sha256:9f95c44c...` |
+
+A `kubectl apply -f kubernetes/nginx/deployment.yml` would deploy the older image. Manifest changes to `nginx` have to go through the pipeline, which is also why this slice's change was delivered by `workflow_dispatch` rather than by hand. `sky` has no such gap, because its pipeline triggers on its own manifest path.
+
 ## Result
 
 | Finding | Outcome |
@@ -223,10 +285,12 @@ One gap recorded and not closed: `notificationsRule` is empty, so budget alerts 
 | Service account key creation unrestricted | Cannot be enforced from a project |
 | Budget assumed unable to warn | Assumption wrong, and retuning rejected |
 | A plan that destroyed both nodes | Fixed, and it predated this phase |
+| Pods concentrated on one node | `matchLabelKeys` on both workloads |
+| `terraform plan` never clean | Clean, from six default-valued lines removed |
 
 The audit was the cheap part. The node pool fault was worth more than everything it was looking for, and it only appeared because something unrelated was about to be applied.
 
 ## Open
 
-- `terraform plan` is still not clean. The dashboard reports a permanent diff, now understood: the template writes `xPos` and `yPos` of `0`, which the API omits as defaults, and the API returns `etag` and `name`, which the template cannot carry. A noisy plan is what hid the node pool fault.
 - No alert on `nginx-error-level` until it has a baseline.
+- The committed image digest in `kubernetes/nginx/deployment.yml` is decorative and always stale. Applying that manifest by hand rolls the workload back.

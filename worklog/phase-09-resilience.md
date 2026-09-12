@@ -104,7 +104,7 @@ kubectl get pods -n demo -o wide
 ![One nginx and one sky on each node, 5gn3 and n75s](../images/resilience-pods-spread.png)
 
 - `ScheduleAnyway` stays, now for a second reason: with `maxSkew: 1` across exactly two nodes, `DoNotSchedule` would refuse to reschedule during a drain, because the surviving node would sit at skew 2.
-- Durable fix, not applied yet: `matchLabelKeys: ["pod-template-hash"]` confines the calculation to one ReplicaSet. Until then, every rollout needs this rebalance.
+- Durable fix: `matchLabelKeys: ["pod-template-hash"]` confines the calculation to one ReplicaSet. Applied in [Phase 11](phase-11-hardening.md). Until then, every rollout needed this rebalance by hand.
 
 ## Slice 3: Add disruption budgets
 
@@ -140,6 +140,6 @@ Spot nodes would more than offset this, and preemptions would exercise the self-
 
 ## Open
 
-- Apply `matchLabelKeys` to both spread constraints, so a rollout stops concentrating.
 - Spot migration.
-- Two observability resources drift on every plan, so `terraform plan` is never clean.
+
+Closed in [Phase 11](phase-11-hardening.md): `matchLabelKeys` on both spread constraints, and the dashboard drift that kept `terraform plan` from ever being clean.

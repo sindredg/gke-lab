@@ -124,7 +124,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10]
 | Deployment | Keyless GitHub Actions delivery for both workloads, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
 | Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS, HTTP to HTTPS redirect, path routing to both workloads | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
 | Observability | Cluster telemetry, uptime check on `/healthz`, one alert policy, dashboard as code, deployment and cost numbers | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
-| Resilience | Node floor of two, disruption budgets on both workloads, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
+| Resilience | Node floor of two, disruption budgets on both workloads, spread that survives a rollout, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
 | Failure drills | Deliberate outage with a measured three minute detection floor, and a failed rollout contained by `maxUnavailable: 0` | [Observability](decisions.md#observability) | [Phase 10](worklog/phase-10-failure-drills.md) |
 | Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
 

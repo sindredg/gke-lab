@@ -173,8 +173,9 @@ A security pass over what Milestone 1 built, before leaving the platform running
 - Enable Log Analytics on logs already ingested and billed.
 - Add one log-based metric, from a filter validated against real data rather than assumed.
 - Redact the control plane endpoint from the public networking reference.
+- Close the items Phase 9 left open: spread that survives a rollout, and a clean `terraform plan`.
 
-**Exit criteria met:** `gke-vpc` is the only network and every rule on it is one GKE created. The cluster reports `VULNERABILITY_BASIC`. `_Default` reports analytics enabled. No node was replaced.
+**Exit criteria met:** `gke-vpc` is the only network and every rule on it is one GKE created. The cluster reports `VULNERABILITY_BASIC`. `_Default` reports analytics enabled. No node was replaced. `terraform plan` reports no changes for the first time in the project.
 
 The audit found what it was looking for and then found something better. Planning the change surfaced a `ForceNew` drift on `initial_node_count` that would have destroyed both nodes on any apply, armed since Phase 9 raised the node floor by hand. Two limits are also recorded. `constraints/iam.disableServiceAccountKeyCreation` cannot be set by a project owner. Retuning the cost budget was rejected, because the account runs on credits and cannot turn usage into a charge, so the threshold guards nothing.
 
