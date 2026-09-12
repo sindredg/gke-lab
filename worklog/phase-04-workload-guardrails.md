@@ -179,7 +179,7 @@ Result: the Pod received the default values.
 
 - Kubernetes recorded the fields it added in the `kubernetes.io/limit-ranger` annotation.
 - The quota counted the Pod exactly like one with values written in its manifest.
-- A fourth `restricted` warning appeared for `seccompProfile`, which the Deployment sets and this test Pod did not — the warning reflects actual Pod settings.
+- A fourth `restricted` warning appeared for `seccompProfile`, which the Deployment sets and this test Pod did not. The warning reflects actual Pod settings.
 
 ### Failure test
 
@@ -203,7 +203,7 @@ YAML
 
 ![Oversized Pod rejected by the namespace budget](../images/quota-exceeded-rejected.png)
 
-Result: rejected with `exceeded quota: demo-budget`, showing the request, current usage, and configured limit. Nothing was created, and the Pod never reached the scheduler — four CPUs would not fit on a 1930m node, but the quota rejected it before node capacity was checked.
+Result: rejected with `exceeded quota: demo-budget`, showing the request, current usage, and configured limit. Nothing was created, and the Pod never reached the scheduler. Four CPUs would not fit on a 1930m node, but the quota rejected it before node capacity was checked.
 
 ### Recovery
 
@@ -255,7 +255,7 @@ kubectl run client -n demo --image=nicolaka/netshoot --command -- sleep infinity
 
 ![Client Pod created with a restricted warning](../images/netpol-client-pod.png)
 
-Result: admitted, with four `restricted` violations reported — the `warn` label behaving as configured in Slice 1.
+Result: admitted, with four `restricted` violations reported, the `warn` label behaving as configured in Slice 1.
 
 ```bash
 kubectl exec -n demo -it client -- bash

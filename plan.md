@@ -100,28 +100,28 @@ Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs
 
 ### Phase 8: Observability and evidence
 
-**Status:** In progress. The telemetry scope, the uptime check, the alert, and the dashboard are built and taking data. The drills moved to Phase 10 and are done. The numbers and the milestone close are outstanding.
+**Status:** Complete
 
 - Create one workload health dashboard.
 - Create one actionable availability alert.
-- Trigger the alert deliberately and verify recovery. Done in Phase 10.
 - Measure onboarding and deployment time.
 - Capture an actual GCP cost snapshot.
-- Execute one failed rollout and rollback. Done in Phase 10.
 - Write one short incident postmortem.
 
-**Exit criteria:** Every platform claim below has recorded commands, results, and evidence.
+The deliberate failures are Phase 10.
 
-| Claim | Required evidence |
+**Exit criteria met:** Every platform claim below has recorded commands, results, and evidence.
+
+| Claim | Evidence |
 | --- | --- |
-| Onboarding is repeatable | Time from configuration change to Ready workload |
-| Quotas work | Excessive request attempted and rejected |
-| Pod Security works | Privileged Pod attempted and rejected |
-| Network isolation works | Unauthorized connection attempted and denied |
-| Delivery is keyless | Successful pipeline run without stored cloud keys |
+| Onboarding is repeatable | 59s from merge to Ready workload. [Phase 8](worklog/phase-08-observability.md) |
+| Quotas work | Excessive request attempted and rejected. [Phase 4](worklog/phase-04-workload-guardrails.md) |
+| Pod Security works | Privileged Pod attempted and rejected. [Phase 4](worklog/phase-04-workload-guardrails.md) |
+| Network isolation works | Unauthorized connection attempted and denied. [Phase 4](worklog/phase-04-workload-guardrails.md) |
+| Delivery is keyless | Successful pipeline run without stored cloud keys. [Phase 6](worklog/phase-06-keyless-delivery.md) |
 | Rollout is controlled | Failed version detected and previous version restored. [Phase 10](worklog/phase-10-failure-drills.md) |
 | Monitoring works | Deliberate failure triggered the expected alert. [Phase 10](worklog/phase-10-failure-drills.md) |
-| Cost is understood | Billing snapshot with the main cost sources identified |
+| Cost is understood | kr461.81 a week, three sources named. [Phase 8](worklog/phase-08-observability.md) |
 
 Existing self-healing, scaling, restart, and rollback evidence counts toward this milestone.
 
@@ -131,7 +131,7 @@ Documentation: [GKE observability](https://cloud.google.com/kubernetes-engine/do
 
 **Status:** Complete
 
-Unplanned, and taken on because Phase 8 made the gap visible: two replicas survived a rollout and would not have survived a node going away.
+Two replicas survived a rollout and would not have survived a node going away.
 
 - Raise the node pool floor to two, so a drained Pod has somewhere to land.
 - Decouple `initial_node_count` from that floor, because it is `ForceNew` and moving it replaces the pool.
@@ -147,7 +147,7 @@ Documentation: [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-applic
 
 **Status:** Complete
 
-Unplanned in shape but not in intent: Phase 8 always required the drills, and they grew large enough to stand on their own. This is the first work in the project that adds nothing and only tests what exists.
+The first work here that adds nothing and only tests what exists.
 
 - Take the site down deliberately and time the alert.
 - Ship a knowingly broken version through the real pipeline.
@@ -164,7 +164,7 @@ Documentation: [Deployment strategies](https://kubernetes.io/docs/concepts/workl
 
 ## Milestone 2: AI reference workload
 
-Start only after Milestone 1 is complete.
+Milestone 1 is complete. This milestone has not started.
 
 ### Phase 11: Deterministic manifest review
 
@@ -208,10 +208,12 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 - Use the available GCP credits to support hands-on validation.
 - Keep the current zonal cluster available during active project work.
-- Record costs and configure budget alerts.
+- Record costs and configure budget alerts. Measured at kr461.81 a week, fully covered by credits.
 - Provision a regional cluster only when its availability behavior is being tested.
 - Do not add GPU nodes unless self-hosted inference becomes a separate project goal.
 
 ## Immediate next step
 
-Finish Phase 8. The drills are done and recorded in Phase 10. What remains is the deploy timings, the time from a configuration change to a Ready workload, the cost snapshot, and a short postmortem, then filling the claim table and closing Milestone 1.
+Milestone 1 is closed. The platform is guarded, the image is project owned and deployed by digest, delivery is keyless, the workload is public through Gateway API, and every claim above has evidence.
+
+Next is Phase 11, the deterministic manifest reviewer, which is the first workload this platform exists to carry.

@@ -137,7 +137,7 @@ curl -sI "http://$IP/healthz"
 
 ![Both requests answered through the load balancer](../images/gateway-http-via-google.png)
 
-Result: `200 OK` for the page and for the probe path. `via: 1.1 google` is the evidence that the response came through the load balancer rather than from somewhere else — and it sits ninth in the response, after `last-modified`, `etag`, and `accept-ranges`, so a `head -5` truncates it and reads as a missing header.
+Result: `200 OK` for the page and for the probe path. `via: 1.1 google` is the evidence that the response came through the load balancer rather than from somewhere else. It sits ninth in the response, after `last-modified`, `etag`, and `accept-ranges`, so a `head -5` truncates it and reads as a missing header.
 
 ## Slice 3: Domain and managed TLS
 

@@ -163,7 +163,7 @@ default_type text/plain;
 
 ![A single content type on the probe response](../images/image-healthz.png)
 
-Result: one `Content-Type: text/plain`, body unchanged. The status and body were correct throughout, so a check asserting only `200` would have passed — reading the whole response is what surfaced it. The [troubleshooting log](../troubleshooting.md#an-nginx-response-carries-the-same-header-twice) records the directive difference.
+Result: one `Content-Type: text/plain`, body unchanged. The status and body were correct throughout, so a check asserting only `200` would have passed. Reading the whole response is what surfaced it. The [troubleshooting log](../troubleshooting.md#an-nginx-response-carries-the-same-header-twice) records the directive difference.
 
 ## Slice 3: Publish to the repository
 

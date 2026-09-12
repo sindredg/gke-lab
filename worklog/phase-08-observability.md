@@ -1,7 +1,7 @@
 # Worklog: Phase 8 Observability and Evidence
 
 Date: 2026-09-06  
-Status: in progress. The signal path and the dashboard are built and taking data. The failure drills are done and recorded in Phase 10. The numbers and the cost snapshot are outstanding.
+Status: Complete.
 
 ## Goal
 
@@ -9,7 +9,9 @@ Make platform health observable and provable:
 
 - One dashboard that answers what is wrong.
 - One alert that fires when the site stops serving.
-- Recorded failure, recovery and cost numbers, to close Milestone 1.
+- Recorded deployment and cost numbers, to close Milestone 1.
+
+The drills that exercise this signal path are [Phase 10](phase-10-failure-drills.md).
 
 ## Problem: an alert on served traffic needs served traffic
 
@@ -108,35 +110,84 @@ Nearly all of that traffic is the uptime check itself: without it the panels wou
 - **No ready-replicas panel.** It needs kube-state-metrics, an exporter with Pod Security and NetworkPolicy consequences in a namespace that enforces `restricted`. Restart count and backend responses answer this phase's questions.
 - **Console autosave is on.** Edits made there are silently overwritten by the next `terraform apply`. To keep one: `gcloud monitoring dashboards describe <id> --format=json`.
 
-## Slice 4: Break it on purpose
+## Slice 4: The numbers
 
-Status: complete, as [Phase 10](phase-10-failure-drills.md).
+Status: Complete
 
-Both drills were run on 2026-09-12 and are recorded in their own worklog, because they are the first work in this project that only tests what already exists.
+### Deployment
 
-| Drill | Result |
+Twelve successful pipeline runs.
+
+| | Duration |
 | --- | --- |
-| Availability | the alert opened about 3m15s after the site stopped serving, and closed on recovery |
-| Rollout | the pipeline failed at the rollout gate, and the previous digest kept serving throughout |
+| Fastest | 58s |
+| Median | 70.5s |
+| Slowest | 88s |
 
-The availability drill also measured this phase's detection floor. Nothing shorter than roughly 3 minutes can open an incident, because the check runs every 60s per location, the condition needs more than one location failing, and `duration` holds it a further 60s.
+Commit to serving, measured on run `34692269773`, which sits on the median at 71s.
 
-## Slice 5: The numbers
+| Milestone | Time (UTC) | From merge |
+| --- | --- | --- |
+| Pull request merged | 11:54:51 | |
+| Workflow starts | 11:54:53 | 2s |
+| Deployment applied | 11:55:35 | 44s |
+| Workload Ready | 11:55:50 | 59s |
+| Smoke test passes | 11:55:57 | 66s |
 
-Status: Not started
+| Step | Duration |
+| --- | --- |
+| Build and push | 12s |
+| Apply the Deployment with the new digest | 7s |
+| Wait for the rollout | 15s |
+| Smoke test from inside the cluster | 7s |
 
-- Median deploy duration and the per-step split, plus commit to serving.
-- Time from a configuration change to a Ready workload.
-- A billing snapshot grouped by SKU, with the main cost sources named rather than only the total.
+That run carried a configuration change to `app/default.conf.template`, so it is also the measurement for time from a configuration change to a Ready workload: 59 seconds. Roughly half of a deploy is runner setup and authentication, not this platform.
 
-Evidence: the workflow run list with its step timings, and the billing report grouped by SKU.
+### Cost
 
-## Slice 6: Close Milestone 1
+Seven days, grouped by SKU. Usage cost, before credits.
 
-Status: Not started
+| SKU | Usage cost | Share |
+| --- | --- | --- |
+| Zonal Kubernetes Clusters | kr152.58 | 33% |
+| E2 instance core | kr118.68 | 26% |
+| E2 instance RAM | kr63.61 | 14% |
+| Cloud Load Balancer forwarding rule | kr38.14 | 8% |
+| Container images scanned | kr33.95 | 7% |
+| Balanced PD capacity | kr18.89 | 4% |
+| Private Service Connect endpoint | kr15.26 | 3% |
+| Cloud NAT, IP and gateway | kr11.09 | 2% |
+| Network Intelligence Center | kr7.83 | 2% |
+| Prometheus samples ingested | kr1.78 | 0.4% |
 
-Fill every row of the claim table with a link to its evidence, mark the phase complete, and update the README status and capability table.
+Total kr461.81 for the week, kr0.00 after credits.
 
-## Next
+| Reading | Value |
+| --- | --- |
+| Cluster management fee | 33% |
+| Nodes, including disk | 44% |
+| Reaching the internet | 13% |
+| Observability | under 1% |
 
-Slice 5: the deploy timings and the cost snapshot.
+Three things the total alone would have hidden:
+
+- **The control plane costs more than either node.** A zonal cluster still carries a management fee, and at this size it is the single largest line.
+- **Observability is close to free.** Container stdout was expected to dominate ingest. It does not appear at all, and Prometheus samples cost kr1.78 against 3.18 million of them.
+- **Image scanning is not free.** kr33.95 across 14 scans, about kr2.43 each. Every pipeline run buys one, including the deliberately broken image from [Phase 10](phase-10-failure-drills.md).
+
+Credits cover the whole bill, so the number to watch is usage cost rather than the subtotal.
+
+## Result
+
+Every claim in this milestone has recorded commands, results and evidence.
+
+| Claim | Evidence |
+| --- | --- |
+| Onboarding is repeatable | Slice 4: 59s from merge to Ready workload |
+| Quotas work | [Phase 4](phase-04-workload-guardrails.md) |
+| Pod Security works | [Phase 4](phase-04-workload-guardrails.md) |
+| Network isolation works | [Phase 4](phase-04-workload-guardrails.md) |
+| Delivery is keyless | [Phase 6](phase-06-keyless-delivery.md) |
+| Rollout is controlled | [Phase 10](phase-10-failure-drills.md) |
+| Monitoring works | [Phase 10](phase-10-failure-drills.md) |
+| Cost is understood | Slice 4: kr461.81 a week, three sources named |
