@@ -12,7 +12,7 @@ server {
 
         # Sets the type rather than appending a second Content-Type header.
         default_type text/plain;
-        return 200 "ok\n";
+        return 503 "unavailable\n";
     }
 
     location / {
