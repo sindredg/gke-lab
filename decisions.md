@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Decisions are grouped by domain. Each entry records what was chosen, why, and what was rejected.
+Decisions are grouped by domain. Each entry records what was chosen, why, what it costs when the cost is not obvious, and what was rejected. Entries keep that order and stay short: the worklog carries the narrative, this file carries the choice.
 
 ## Cluster
 
@@ -46,11 +46,13 @@ Alternatives: [Rapid, Stable, or Extended channels](https://docs.cloud.google.co
 
 ### Replica placement
 
-Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule set to `ScheduleAnyway`, rather than a required pod anti-affinity rule, paired since Phase 9 with a [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-application/configure-pdb/) of `minAvailable: 1` on each workload.
+Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule set to `ScheduleAnyway`, paired with a [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-application/configure-pdb/) of `minAvailable: 1` on each workload.
 
-Why: A required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. The preference survives the floor moving to two, for a second reason: with `maxSkew: 1` across exactly two nodes, `DoNotSchedule` would refuse to reschedule during a drain, because the surviving node would sit at skew 2. The value shows up during Regular channel node upgrades, which replace nodes underneath a running workload.
+Why: A required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. With `maxSkew: 1` across exactly two nodes, `DoNotSchedule` would also refuse to reschedule during a drain, because the surviving node would sit at skew 2. The preference keeps replicas apart during the node replacements the Regular channel performs underneath a running workload.
 
-Alternatives: Required anti-affinity, or accepting co-located replicas. The budget was deferred rather than rejected until the node floor rose: on a pool that can scale to one node, `minAvailable` blocks the drain that an automatic node upgrade depends on, so the floor of two and the budgets had to land as one change.
+Cost: The budget had to wait for the node floor. On a pool that can scale to one node, `minAvailable` blocks the drain an automatic upgrade depends on, so the floor of two and the budgets shipped as one change.
+
+Alternatives: Required anti-affinity, or accepting co-located replicas.
 
 ## Networking
 
@@ -108,7 +110,7 @@ Alternatives: [Service account impersonation](https://docs.cloud.google.com/iam/
 
 Decision: A dedicated Kubernetes ServiceAccount for each workload, with [automountServiceAccountToken](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/) disabled.
 
-Why: The namespace default account is shared by every Pod, so any permission granted to it is granted to all of them. NGINX never calls the Kubernetes API, so a mounted token is only attack surface. Workload Identity Federation binds to a named account in Phase 6.
+Why: The namespace default account is shared by every Pod, so any permission granted to it is granted to all of them. NGINX never calls the Kubernetes API, so a mounted token is only attack surface.
 
 Alternatives: [The namespace default ServiceAccount](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/).
 
@@ -118,33 +120,29 @@ Alternatives: [The namespace default ServiceAccount](https://kubernetes.io/docs/
 
 Decision: [Enforce the restricted standard](https://kubernetes.io/docs/concepts/security/pod-security-admission/) on the `demo` namespace, with `warn` and `audit` at the same level, and all three pinned to `v1.35`.
 
-Why: Restricted is the strongest of the three standards and rejects the workload the project no longer runs. Pinning the version stops a cluster upgrade from changing enforcement without a repository change.
+Why: Restricted is the strongest of the three standards and rejects the workload the project no longer runs. Pinning the version stops a cluster upgrade from changing enforcement without a repository change. A standard set to report and never enforced is a standard nobody obeys.
 
-Phase 4 enforced `baseline` because the workload ran as root and `restricted` would have rejected it. That constraint is gone: the Phase 5 image runs as UID 101 and declares the fields the standard requires, so the level was raised rather than left reporting indefinitely. A standard set to report and never enforced is a standard nobody obeys.
+Cost: The level could only be raised once the image stopped running as root. Phase 4 enforced `baseline` for that reason; the Phase 5 image runs as UID 101 and declares the fields the standard requires.
 
 Alternatives: Remain on `baseline`, leave the namespace unlabelled, or add an external policy engine.
 
 ### Namespace network isolation
 
-Decision: [Deny all Pod traffic in the `demo` namespace by default](https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-ingress-and-all-egress-traffic), then allow cluster DNS for every Pod and HTTP to the NGINX Pods from Pods labelled `nginx-client`.
+Decision: [Deny all Pod traffic in the `demo` namespace by default](https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-ingress-and-all-egress-traffic), then allow cluster DNS for every Pod and HTTP to the NGINX Pods from Pods labelled `nginx-client`. Enforcement comes from [GKE Dataplane V2](https://cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2), already enabled through `datapath_provider = "ADVANCED_DATAPATH"`, so the legacy `network_policy` block is deliberately absent.
 
 Why: A namespace with no policy lets any Pod in the cluster reach the workload and lets the workload reach anything, including the internet through Cloud NAT. Denying first makes every allowed path a reviewable line in this repository, and a Pod added later is isolated on creation rather than after someone remembers to write a policy for it. Both ends of the application path are declared because the dataplane checks the sender's egress and the receiver's ingress separately.
 
+Cost: The rules have to name Pods exactly. The DNS rule allows both `kube-dns` and `node-local-dns`, because [NodeLocal DNSCache](https://cloud.google.com/kubernetes-engine/docs/how-to/nodelocal-dns-cache) answers on the kube-dns cluster IP but runs as its own Pod labelled `k8s-app: node-local-dns`, so a rule naming only `kube-dns` selects a Pod that never receives the query. Naming the kube-dns Service address instead does not work either: Dataplane V2 rewrites a Service IP to a backend Pod before policy is evaluated, so an `ipBlock` holding that address matches nothing.
+
 Alternatives: Leave the namespace open and rely on Pod Security alone, allow all egress and restrict only ingress, or select clients by namespace instead of by Pod label.
-
-Enforcement comes from [GKE Dataplane V2](https://cloud.google.com/kubernetes-engine/docs/concepts/dataplane-v2), already enabled through `datapath_provider = "ADVANCED_DATAPATH"`. The legacy `network_policy` block is deliberately absent because Dataplane V2 enforces policy itself.
-
-The DNS rule allows both `kube-dns` and `node-local-dns` Pods. [NodeLocal DNSCache](https://cloud.google.com/kubernetes-engine/docs/how-to/nodelocal-dns-cache) answers on the kube-dns cluster IP but runs as its own Pod with the label `k8s-app: node-local-dns`, so a rule naming only `kube-dns` selects a Pod that never receives the query. Allowing both keeps the rule correct whether or not the cache is present.
-
-The rule cannot name the kube-dns Service address instead. Dataplane V2 rewrites a Service IP to a backend Pod before policy is evaluated, so an `ipBlock` naming that address matches nothing. NetworkPolicy selects Pods, never Services.
 
 ### Namespace boundary between workloads
 
 Decision: Run the second workload in the existing `demo` namespace rather than giving it one of its own.
 
-Why: The namespace is the unit that carries Pod Security enforcement, the default-deny policies, and the resource budget, and all three already apply to any Pod admitted to `demo`, including later ones. A second namespace would duplicate that scaffolding and add a `ReferenceGrant` so the Gateway could route across the boundary, which is a phase of work rather than a configuration change. Both workloads are owned by the same person and fail together anyway, so the shared blast radius is real but not yet meaningful.
+Why: The namespace is the unit that carries Pod Security enforcement, the default-deny policies, and the resource budget, and all three already apply to any Pod admitted to `demo`. A second namespace would duplicate that scaffolding and add a `ReferenceGrant` so the Gateway could route across the boundary, which is a phase of work rather than a configuration change. Both workloads are owned by the same person and fail together anyway, so the shared blast radius is real but not yet meaningful.
 
-Alternatives: A namespace per workload, which is what genuine multi-tenancy would require, and what a third workload should trigger. Recorded as a gate below.
+Alternatives: A namespace per workload, which is what genuine multi-tenancy would require and what a third workload should trigger. Recorded as a [deferred decision](#deferred-decision-records).
 
 ## Images and supply chain
 
@@ -190,13 +188,15 @@ Why: Binding a port below 1024 requires `CAP_NET_BIND_SERVICE`, and the `restric
 
 Cost: The NetworkPolicy rules name the container port, not the Service port, so both have to move with it. That coupling is deliberate and is why the policies name a port at all.
 
+Alternatives: Keep the container on port 80 and grant the capability back, which the enforced standard rejects.
+
 ### Image reference in the manifest
 
 Decision: Reference the image by digest rather than by tag, keeping the tag alongside it for readability.
 
 Why: A digest is derived from the image content, so a manifest naming one deploys exactly those bytes for as long as it exists. A tag is a label the registry could in principle move, and reading a manifest tells you nothing about which build a tag pointed at on a given day.
 
-Cost: A digest is unreadable, and nothing in the manifest says which commit produced it. The tag beside it carries that, and Phase 6 removes the manual step by having delivery write the digest.
+Cost: A digest is unreadable, and nothing in the manifest says which commit produced it. The tag beside it carries that, and delivery writes the digest so there is no manual step.
 
 Alternatives: Deploy by tag and rely on the repository's immutable tags, or deploy by tag and accept the ambiguity.
 
@@ -206,17 +206,17 @@ Decision: Grant `roles/artifactregistry.reader` to the node service account, sco
 
 Why: Image pulls use the node identity. The kubelet fetches the image before the container exists, so Workload Identity is not available at that point and cannot be used for pulls. Scoping the binding to one repository keeps the nodes from reading every repository the project may later hold.
 
-The binding is required rather than a precaution. [`roles/container.defaultNodeServiceAccount`](https://cloud.google.com/iam/docs/roles-permissions/container), already held by the node account, grants five permissions covering logging, monitoring, and autoscaling metrics, and none for Artifact Registry. Pulls fail without this binding. Guidance stating that nodes can pull without extra roles describes the Compute Engine default service account, which receives broad automatic grants; Phase 1 replaced that account with a dedicated one.
+Cost: The binding is required rather than a precaution, and it is easy to assume otherwise. [`roles/container.defaultNodeServiceAccount`](https://cloud.google.com/iam/docs/roles-permissions/container), already held by the node account, covers logging, monitoring, and autoscaling metrics and grants nothing for Artifact Registry, so pulls fail without it. Guidance stating that nodes can pull without extra roles describes the Compute Engine default service account, which receives broad automatic grants; Phase 1 replaced that account with a dedicated one.
 
 Alternatives: Grant the role at project level.
 
-### The page reports the Pod serving it
+### Pod identity reported by the page
 
 Decision: Render the Pod name, namespace, Pod IP, node, uid and image digest into the page from the running container, rather than describing them in prose.
 
-Why: The rest of the page makes claims a reader cannot check. Non-root and deployed-by-digest are the two most load-bearing, and both become verifiable when the container states them about itself. The uid is read with `id -u` rather than copied from the Pod spec, so it reports what the container is rather than what it was asked to be. The downward API supplies the Pod facts; the image digest cannot come from it, so the pipeline sets it in the same patch that sets the image, and the two cannot drift.
+Why: The rest of the page makes claims a reader cannot check, and non-root and deployed-by-digest are the two most load-bearing. The uid is read with `id -u` rather than copied from the Pod spec, so it reports what the container is rather than what it was asked to be. The downward API supplies the Pod facts; the image digest cannot come from it, so the pipeline sets it in the same patch that sets the image, and the two cannot drift.
 
-Cost: The page publishes internal names to the internet. Acceptable for a lab whose purpose is to be inspected, and wrong for a production service. The HTML is no longer static, `sub_filter` runs on every response, and `Cache-Control: no-store` keeps a reload landing on the other replica visible.
+Cost: The page publishes internal names to the internet, which suits a lab whose purpose is to be inspected and would be wrong for a production service. The HTML is no longer static, `sub_filter` runs on every response, and `Cache-Control: no-store` keeps a reload landing on the other replica visible.
 
 Alternatives: Serve the facts as a JSON endpoint, which keeps the page static and puts the evidence where nobody looks. State nothing, which is what a production service should do.
 
@@ -226,7 +226,7 @@ Decision: Build the sky image here, from [sindredg/aca-prod](https://github.com/
 
 Why: Upstream publishes to Azure Container Registry, which this cluster has no credentials for and should not be given any. Rebuilding from a pinned commit keeps the image project-owned, private, and digest-deployed like every other image here, while leaving the application's own repository authoritative. The pin is the review boundary: taking an upstream change is a one-line commit that CI and a rollout then have to accept.
 
-Alternatives: Copy the source into this repository, which forks it and makes upstream fixes a manual port; or grant this cluster cross-cloud pull credentials, which trades a supply-chain property for convenience.
+Alternatives: Copy the source into this repository, which forks it and makes upstream fixes a manual port. Or grant this cluster cross-cloud pull credentials, which trades a supply-chain property for convenience.
 
 ## Infrastructure and configuration
 
@@ -282,7 +282,7 @@ Alternatives: Lint everything from the start, or run no validation until deliver
 
 ### Pipeline credentials
 
-Decision: Grant the workflow `contents: read` only. Do not grant `id-token: write` or any Google Cloud identity.
+Decision: Grant the validation workflow `contents: read` only. Do not grant `id-token: write` or any Google Cloud identity.
 
 Why: The absence of a token-minting permission is what makes the workflow verifiably unable to reach the project.
 
@@ -302,9 +302,9 @@ Decision: Run [kube-linter](https://docs.kubelinter.io/) in advisory mode and pu
 
 Why: Its three current findings need a non-root image and a scheduling decision, which are later phases. A check that cannot pass yet would either block all work or be ignored.
 
-Alternatives: Enforce the default checks immediately, or configure a reduced check set and enforce that.
+Cost: An advisory check proves nothing on its own, so the gap stays open until Phase 4 makes it blocking.
 
-Risk: An advisory check proves nothing on its own. Phase 4 closes this by making it blocking.
+Alternatives: Enforce the default checks immediately, or configure a reduced check set and enforce that.
 
 ### Merge protection
 
@@ -336,9 +336,7 @@ Alternatives: A service account key in a GitHub secret, or a self-hosted runner 
 
 Decision: Restrict the OIDC provider with an `attribute_condition` on `assertion.repository`, and bind impersonation to a `principalSet://` naming that same attribute.
 
-Why: The provider trusts GitHub's issuer, and every repository on GitHub receives tokens from that issuer. Without a condition, a validly signed token from any repository is accepted, including one an attacker creates. The condition is what narrows "signed by GitHub" to "signed by GitHub, for this repository".
-
-`principalSet` rather than `principal` binds every workflow in the repository rather than one exact subject. The branch and workflow will change over this project's life; the repository will not.
+Why: The provider trusts GitHub's issuer, and every repository on GitHub receives tokens from that issuer. Without a condition, a validly signed token from any repository is accepted, including one an attacker creates. The condition is what narrows "signed by GitHub" to "signed by GitHub, for this repository". `principalSet` rather than `principal` binds every workflow in the repository rather than one exact subject, because the branch and workflow will change over this project's life and the repository will not.
 
 Alternatives: Scope trust to a branch or environment as well, which is stricter and breaks on every branch rename.
 
@@ -360,7 +358,7 @@ Why: The validation workflow's claim is that it holds `contents: read` and canno
 
 Alternatives: A single workflow with conditional steps, or a reusable workflow called by both.
 
-### The pipeline applies the manifest rather than patching the image
+### Deployment update method
 
 Decision: Render this run's digest into `deployment.yml` with `kubectl set image --local` and apply the result, instead of patching the live Deployment.
 
@@ -382,7 +380,7 @@ Alternatives: Commit the digest back to `main`, or substitute a placeholder at d
 
 ## Ingress and TLS
 
-### Gateway API rather than Ingress
+### Ingress mechanism
 
 Decision: Publish through a `Gateway` on `gke-l7-global-external-managed` rather than an Ingress object.
 
@@ -392,7 +390,7 @@ Cost: The GKE extensions are proprietary CRDs. `HealthCheckPolicy` has no public
 
 Alternatives: An Ingress with GKE annotations, which is better documented and worse to read.
 
-### The load balancer addresses Pods, not the Service
+### Load balancer backend target
 
 Decision: Let the Gateway controller build a network endpoint group and leave the `nginx` Service `ClusterIP`.
 
@@ -402,7 +400,7 @@ Cost: The hop the load balancer makes is invisible to Kubernetes. A Pod is reach
 
 Alternatives: `LoadBalancer` or `NodePort`, both of which publish the Service itself and forfeit the claim.
 
-### A reserved address owned by Terraform
+### External address ownership
 
 Decision: Reserve a global external address in Terraform and have the `Gateway` name it through `addresses.type: NamedAddress`.
 
@@ -412,7 +410,7 @@ Cost: One more resource, and a reserved address bills whether or not a load bala
 
 Alternatives: Let the controller allocate an ephemeral address, which changes on recreation and makes the DNS record a moving target.
 
-### Certificates through a map rather than a Secret
+### Certificate delivery
 
 Decision: Attach certificates with the `networking.gke.io/certmap` annotation, pointing at a Certificate Manager map.
 
@@ -422,7 +420,7 @@ Cost: Three resources where a Secret is one, and `hostname` on a map entry is im
 
 Alternatives: A TLS Secret listed in the listener, which puts renewal and private keys back on us.
 
-### DNS authorization rather than load balancer authorization
+### Domain validation method
 
 Decision: Prove domain control with a DNS authorization.
 
@@ -442,7 +440,7 @@ Cost: The challenge record's name is generated rather than predictable, so it ca
 
 Alternatives: Disable Cloudflare's Universal SSL, which removes the conflicting records but is console state rather than configuration and may be reprovisioned. Move DNS to Cloud DNS, which removes the conflict and the registrar's edge features with it.
 
-### Redirect to HTTPS at the load balancer
+### Redirect to HTTPS
 
 Decision: Answer plain HTTP with a `301` from a second `HTTPRoute` attached to the HTTP listener, rather than redirecting in NGINX.
 
@@ -452,7 +450,7 @@ Cost: Two routes and a listener kept open only to redirect. The main route binds
 
 Alternatives: Redirect inside NGINX, which lets clear-text requests into the Pod, or close port 80, which breaks anyone typing the bare domain.
 
-### Health checks against /healthz
+### Load balancer health checks
 
 Decision: Point the load balancer's health check at `/healthz` on port 8080 through a `HealthCheckPolicy`, mirroring the Kubernetes probes.
 
@@ -462,21 +460,23 @@ Cost: A GKE-proprietary CRD with no public schema, so CI cannot validate it. A w
 
 Alternatives: Accept the default check on `/`, which passes for the wrong reasons and fails for them too.
 
-### Admitting Google's proxies by address range
+### Health check source range
 
 Decision: Allow ingress to the Pods from `130.211.0.0/22` and `35.191.0.0/16` with an `ipBlock`.
 
-Why: The default-deny policy from Phase 4 drops the health checks, and no `podSelector` can express the source, because Google's proxies are not Pods and hold no identity in the cluster. An address range is the only form the API can state.
+Why: The default-deny policy drops the health checks, and no `podSelector` can express the source, because Google's proxies are not Pods and hold no identity in the cluster. An address range is the only form the API can state.
 
 Cost: The coarsest control that works. Every Google Cloud customer's proxies originate in those ranges, so this admits a network location rather than a caller.
 
 Alternatives: None within NetworkPolicy. Filtering by caller belongs to Cloud Armor, which is a phase of its own.
 
-### A second workload published at a path
+### Second workload routing
 
-Decision: Serve the sky workload at `/sky` on the existing hostname, routing `/sky` with its prefix rewritten away and routing `/api` and `/static` to it unchanged.
+Decision: Serve the sky workload at `/sky` on the existing hostname, routing `/sky` with its prefix rewritten away and routing `/api` and `/static` to it unchanged. The load balancer reaches `/health` through the `HealthCheckPolicy` rather than through a route.
 
-Why: The application is not prefix aware. Its page asks for `/static/app.js` and its script fetches `/api/places`, both absolute, so the prefix cannot be confined to `/sky` without changing the application. Gateway API matches the longest prefix first, so these rules take precedence over the project page's `/` without either route referring to the other. The load balancer reaches `/health` through the HealthCheckPolicy rather than through a route. That is not the same as `/health` being unreachable: rewriting a prefix away exposes everything behind it, so `/sky/health` and `/sky/version` are both public. `/sky/version` returns the upstream commit the image was built from, which is a fact about a public repository rather than a secret, but it is a consequence of the rewrite worth stating rather than discovering.
+Why: The application is not prefix aware. Its page asks for `/static/app.js` and its script fetches `/api/places`, both absolute, so the prefix cannot be confined to `/sky` without changing the application. Gateway API matches the longest prefix first, so these rules take precedence over the project page's `/` without either route referring to the other.
+
+Cost: Rewriting a prefix away exposes everything behind it, so `/sky/health` and `/sky/version` are both public. `/sky/version` returns the upstream commit the image was built from, which is a fact about a public repository rather than a secret, but it is a consequence of the rewrite worth stating rather than discovering.
 
 Alternatives: A `sky.` subdomain, which keeps each workload's path namespace whole at the cost of a DNS record and a certificate map entry, and remains the answer if a second application ever wants `/api`. Or patch a vendored copy to be prefix-clean, which forks the application to solve a routing problem.
 
@@ -514,7 +514,7 @@ Decision: Build a secure GCP hosted Kubernetes workload platform. Host an intere
 
 Why: Keeps cloud and Kubernetes engineering as the primary work while providing a concrete workload to prove the platform.
 
-Options: Build an [application-first AI service](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview) or a dedicated self-hosted AI platform.
+Alternatives: Build an [application-first AI service](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview) or a dedicated self-hosted AI platform.
 
 ### First platform milestone
 
