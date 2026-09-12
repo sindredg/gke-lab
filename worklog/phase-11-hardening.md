@@ -274,6 +274,32 @@ Recorded rather than fixed.
 
 A `kubectl apply -f kubernetes/nginx/deployment.yml` would deploy the older image. Manifest changes to `nginx` have to go through the pipeline, which is also why this slice's change was delivered by `workflow_dispatch` rather than by hand. `sky` has no such gap, because its pipeline triggers on its own manifest path.
 
+
+### Verification
+
+The change reached the two workloads at different times, which made the comparison sharper than a single after-shot.
+
+`deploy-sky.yml` triggers on `kubernetes/sky/**`, so `sky` rolled out on merge. `deploy.yml` triggers on `app/**` only, so `nginx` did not. For a few minutes the same cluster ran one workload with the fix and one without.
+
+![sky spread on a new ReplicaSet while nginx stays concentrated on its old one](../images/spread-split.png)
+
+| Workload | ReplicaSet | `matchLabelKeys` | Placement |
+| --- | --- | --- | --- |
+| `sky` | `b6b698bcb`, seconds old | applied | one per node |
+| `nginx` | `7db4c86d44`, 3h old | not applied | both on `0rru` |
+
+`nginx` needed the pipeline rather than a `kubectl apply`, because the digest committed in its manifest is stale.
+
+```bash
+gh workflow run deploy.yml --ref main
+```
+
+![nginx rolls to a new ReplicaSet and its two Pods split across both nodes](../images/spread-dispatch.png)
+
+![Two and two, with matchLabelKeys live on both workloads](../images/spread-verified.png)
+
+Result: each workload places one replica on each node, and the spread held through the rollout that used to undo it. The two constraints are independent, so this is each workload spreading itself rather than anything balancing across them.
+
 ## Result
 
 | Finding | Outcome |
