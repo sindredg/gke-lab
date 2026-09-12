@@ -100,13 +100,15 @@ IP endpoints are disabled. The cluster is reached through its DNS endpoint.
 | Setting | Value |
 | --- | --- |
 | `ipEndpointsConfig.enabled` | `false` |
-| DNS endpoint | `gke-fa262c863c1049a4b45c7ebc3e0a237f37c6-222222222222.europe-north1-a.gke.goog` |
+| DNS endpoint | `gke-<cluster-hash>-<project-number>.europe-north1-a.gke.goog` |
 | `allowExternalTraffic` | `true` |
 | VPC peerings on `gke-vpc` | none |
 
 There is no authorized-networks list and no peering to a control plane range, because there is no IP endpoint to protect. Access is authorized by IAM on the DNS endpoint instead of by source address. This is what lets GitHub Actions reach the cluster with `use_dns_endpoint: true` and no bastion.
 
 The API still reports a `publicEndpoint` address. It is a leftover field; IP endpoints are off.
+
+The real endpoint is redacted above. It is not a secret, because IAM authorizes every call to it and the hostname grants nothing on its own. It is also the live API server address, so publishing it in a public repository removes a discovery step for no benefit.
 
 ## NetworkPolicy
 

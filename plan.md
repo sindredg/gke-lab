@@ -162,11 +162,31 @@ Evidence: [Phase 10 worklog](worklog/phase-10-failure-drills.md)
 
 Documentation: [Deployment strategies](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy), [configure probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/), [uptime checks](https://cloud.google.com/monitoring/uptime-checks)
 
+### Phase 11: Hardening and log analytics
+
+**Status:** Complete
+
+A security pass over what Milestone 1 built, before leaving the platform running unattended.
+
+- Delete the unused `default` VPC, which was open to the internet on SSH and RDP.
+- Turn on workload vulnerability scanning, which was off.
+- Enable Log Analytics on logs already ingested and billed.
+- Add one log-based metric, from a filter validated against real data rather than assumed.
+- Redact the control plane endpoint from the public networking reference.
+
+**Exit criteria met:** `gke-vpc` is the only network and every rule on it is one GKE created. The cluster reports `VULNERABILITY_BASIC`. `_Default` reports analytics enabled. No node was replaced.
+
+The audit found what it was looking for and then found something better. Planning the change surfaced a `ForceNew` drift on `initial_node_count` that would have destroyed both nodes on any apply, armed since Phase 9 raised the node floor by hand. Two limits are also recorded. `constraints/iam.disableServiceAccountKeyCreation` cannot be set by a project owner. Retuning the cost budget was rejected, because the account runs on credits and cannot turn usage into a charge, so the threshold guards nothing.
+
+Evidence: [Phase 11 worklog](worklog/phase-11-hardening.md)
+
+Documentation: [GKE security posture](https://cloud.google.com/kubernetes-engine/docs/concepts/about-security-posture-dashboard), [Log Analytics](https://cloud.google.com/logging/docs/analyze/query-and-view), [log-based metrics](https://cloud.google.com/logging/docs/logs-based-metrics), [organization policy constraints](https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints)
+
 ## Milestone 2: AI reference workload
 
 Milestone 1 is complete. This milestone has not started.
 
-### Phase 11: Deterministic manifest review
+### Phase 12: Deterministic manifest review
 
 - Add a small API for submitted Kubernetes YAML.
 - Treat all submissions as untrusted input.
@@ -176,7 +196,7 @@ Milestone 1 is complete. This milestone has not started.
 
 **Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
 
-### Phase 12: AI explanation with closed validation
+### Phase 13: AI explanation with closed validation
 
 - Use Vertex AI only to explain findings and propose corrections.
 - Authenticate from GKE with Workload Identity Federation.
@@ -216,4 +236,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 Milestone 1 is closed. The platform is guarded, the image is project owned and deployed by digest, delivery is keyless, the workload is public through Gateway API, and every claim above has evidence.
 
-Next is Phase 11, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
+Next is Phase 12, the deterministic manifest reviewer, which is the first workload this platform exists to carry.

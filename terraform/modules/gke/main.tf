@@ -72,6 +72,13 @@ resource "google_container_cluster" "main" {
     channel = "CHANNEL_STANDARD"
   }
 
+  # BASIC is on by default and scans nothing. VULNERABILITY_BASIC is the free tier that
+  # reports known CVEs in running workloads, which is the half that was missing.
+  security_posture_config {
+    mode               = "BASIC"
+    vulnerability_mode = "VULNERABILITY_BASIC"
+  }
+
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }

@@ -95,6 +95,7 @@ Milestone 1 is complete. Every platform claim has recorded commands, results and
 | Resilience | Node floor of two, a disruption budget per workload, nightly maintenance window |
 | Observability | Uptime check, one actionable alert, dashboard as code |
 | Proven | Both failure drills run and recorded |
+| Hardened | One network, vulnerability scanning on, logs queryable |
 
 Next: Milestone 2, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
 
@@ -125,6 +126,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10]
 | Observability | Cluster telemetry, uptime check on `/healthz`, one alert policy, dashboard as code, deployment and cost numbers | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
 | Resilience | Node floor of two, disruption budgets on both workloads, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
 | Failure drills | Deliberate outage with a measured three minute detection floor, and a failed rollout contained by `maxUnavailable: 0` | [Observability](decisions.md#observability) | [Phase 10](worklog/phase-10-failure-drills.md) |
+| Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
 
 ## Documentation
 
@@ -140,6 +142,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10]
 - [Phase 8 observability worklog](worklog/phase-08-observability.md)
 - [Phase 9 surviving a node worklog](worklog/phase-09-resilience.md)
 - [Phase 10 failure drills worklog](worklog/phase-10-failure-drills.md)
+- [Phase 11 hardening worklog](worklog/phase-11-hardening.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Networking reference](reference/networking.md)

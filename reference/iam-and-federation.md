@@ -44,8 +44,8 @@ Workload Identity Federation replaces the stored key with an exchange. The CI pl
 
 Two APIs carry this, and neither is enabled by default:
 
-- `sts.googleapis.com` — step 2 and 3.
-- `iamcredentials.googleapis.com` — step 4.
+- `sts.googleapis.com`: steps 2 and 3.
+- `iamcredentials.googleapis.com`: step 4.
 
 Steps 2 and 4 fail differently, and telling them apart is most of the diagnosis. See [Reading a failure](#reading-a-failure).
 

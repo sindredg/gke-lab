@@ -61,5 +61,15 @@ resource "google_container_node_pool" "general" {
     max_unavailable = 0
   }
 
+  # initial_node_count is ForceNew. It is pinned to 1 above so the floor can move
+  # without replacing the pool, but a manual resize writes the live count back into
+  # state, and the difference then proposes destroying the pool. Phase 9 raised the
+  # floor by resizing by hand, which armed exactly that. The field only matters when
+  # the pool is created, so drift on it is not worth a plan that offers to delete
+  # both nodes.
+  lifecycle {
+    ignore_changes = [initial_node_count]
+  }
+
   depends_on = [google_project_iam_member.nodes]
 }
