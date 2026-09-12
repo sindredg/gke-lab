@@ -100,14 +100,14 @@ Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs
 
 ### Phase 8: Observability and evidence
 
-**Status:** In progress. The telemetry scope, the uptime check, the alert, and the dashboard are built and taking data. The failure drills, the numbers, and the milestone close are outstanding.
+**Status:** In progress. The telemetry scope, the uptime check, the alert, and the dashboard are built and taking data. The drills moved to Phase 10 and are done. The numbers and the milestone close are outstanding.
 
 - Create one workload health dashboard.
 - Create one actionable availability alert.
-- Trigger the alert deliberately and verify recovery.
+- Trigger the alert deliberately and verify recovery. Done in Phase 10.
 - Measure onboarding and deployment time.
 - Capture an actual GCP cost snapshot.
-- Execute one failed rollout and rollback.
+- Execute one failed rollout and rollback. Done in Phase 10.
 - Write one short incident postmortem.
 
 **Exit criteria:** Every platform claim below has recorded commands, results, and evidence.
@@ -119,8 +119,8 @@ Documentation: [GKE Gateway API](https://cloud.google.com/kubernetes-engine/docs
 | Pod Security works | Privileged Pod attempted and rejected |
 | Network isolation works | Unauthorized connection attempted and denied |
 | Delivery is keyless | Successful pipeline run without stored cloud keys |
-| Rollout is controlled | Failed version detected and previous version restored |
-| Monitoring works | Deliberate failure triggered the expected alert |
+| Rollout is controlled | Failed version detected and previous version restored. [Phase 10](worklog/phase-10-failure-drills.md) |
+| Monitoring works | Deliberate failure triggered the expected alert. [Phase 10](worklog/phase-10-failure-drills.md) |
 | Cost is understood | Billing snapshot with the main cost sources identified |
 
 Existing self-healing, scaling, restart, and rollback evidence counts toward this milestone.
@@ -143,11 +143,30 @@ Unplanned, and taken on because Phase 8 made the gap visible: two replicas survi
 
 Documentation: [PodDisruptionBudget](https://kubernetes.io/docs/tasks/run-application/configure-pdb/), [Pod topology spread](https://kubernetes.io/docs/concepts/scheduling-eviction/topology-spread-constraints/), [GKE maintenance windows](https://cloud.google.com/kubernetes-engine/docs/concepts/maintenance-windows-and-exclusions)
 
+### Phase 10: Failure drills
+
+**Status:** Complete
+
+Unplanned in shape but not in intent: Phase 8 always required the drills, and they grew large enough to stand on their own. This is the first work in the project that adds nothing and only tests what exists.
+
+- Take the site down deliberately and time the alert.
+- Ship a knowingly broken version through the real pipeline.
+- Record the detection lag rather than the intended one.
+- Restore both, through the documented path.
+
+**Exit criteria met:** The alert opened about 3m15s after the site stopped serving and closed on recovery. A broken `/healthz` reached the pipeline, failed the rollout gate at 3m1s, and never reached a user, because `maxUnavailable: 0` refuses to retire a healthy Pod for one that is not Ready.
+
+Two limits are now written down rather than assumed. Detection cannot beat roughly 3 minutes, because the check runs every 60s per location, the condition needs more than one location failing, and `duration` holds it a further 60s. And CI passed the broken change, because it validates Terraform and Kubernetes schemas and nothing parses nginx configuration, so a runtime fault of this class is caught after the image is built rather than before.
+
+Evidence: [Phase 10 worklog](worklog/phase-10-failure-drills.md)
+
+Documentation: [Deployment strategies](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy), [configure probes](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/), [uptime checks](https://cloud.google.com/monitoring/uptime-checks)
+
 ## Milestone 2: AI reference workload
 
 Start only after Milestone 1 is complete.
 
-### Phase 10: Deterministic manifest review
+### Phase 11: Deterministic manifest review
 
 - Add a small API for submitted Kubernetes YAML.
 - Treat all submissions as untrusted input.
@@ -157,7 +176,7 @@ Start only after Milestone 1 is complete.
 
 **Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
 
-### Phase 11: AI explanation with closed validation
+### Phase 12: AI explanation with closed validation
 
 - Use Vertex AI only to explain findings and propose corrections.
 - Authenticate from GKE with Workload Identity Federation.
@@ -195,4 +214,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Finish Phase 8. The dashboard and the alert are built and taking data. What remains is triggering the alert deliberately, recording the recovery, executing a failed rollout and rollback, and capturing the cost snapshot.
+Finish Phase 8. The drills are done and recorded in Phase 10. What remains is the deploy timings, the time from a configuration change to a Ready workload, the cost snapshot, and a short postmortem, then filling the claim table and closing Milestone 1.

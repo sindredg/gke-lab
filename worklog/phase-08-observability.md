@@ -1,7 +1,7 @@
 # Worklog: Phase 8 Observability and Evidence
 
-Date: 2026-09-06, drill run 2026-09-12  
-Status: in progress. The signal path and the dashboard are built and taking data. The availability drill is run and recorded. The rollout drill, the numbers and the cost snapshot are outstanding.
+Date: 2026-09-06  
+Status: in progress. The signal path and the dashboard are built and taking data. The failure drills are done and recorded in Phase 10. The numbers and the cost snapshot are outstanding.
 
 ## Goal
 
@@ -110,108 +110,17 @@ Nearly all of that traffic is the uptime check itself: without it the panels wou
 
 ## Slice 4: Break it on purpose
 
-Status: availability drill complete. Rollout drill not started.
+Status: complete, as [Phase 10](phase-10-failure-drills.md).
 
-Scale to zero rather than removing the Gateway or the DNS record. Recovery from those waits on certificate issuance and DNS propagation, which tests Google's provisioning rather than this platform.
+Both drills were run on 2026-09-12 and are recorded in their own worklog, because they are the first work in this project that only tests what already exists.
 
-### Drill A: availability
-
-Baseline. Four Pods Ready, one of each workload per node.
-
-![Four Pods Running across two nodes](../images/drill-availability-baseline.png)
-
-A probe against the public edge every 10 seconds, stamped in UTC. This is the outage clock.
-
-![The probe loop returning 200](../images/drill-availability-probe-start.png)
-
-```bash
-date -u; kubectl scale deployment/nginx -n demo --replicas=0
-```
-
-![Scaled to zero at 10:03:45 UTC](../images/drill-availability-scale-zero.png)
-
-The edge failed 6 seconds later.
-
-![200 at 10:03:40, then 503 from 10:03:51](../images/drill-availability-first-503.png)
-
-`sky` kept running, so `/sky`, `/api` and `/static` kept serving. The outage was scoped to `/`.
-
-![Only sky Pods left, and an EndpointSlice with no endpoints](../images/drill-availability-no-endpoints.png)
-
-The empty EndpointSlice is what the edge is reporting. It returns 503 rather than 502, because the backend service has no healthy backend to forward to.
-
-![HTTP/2 503 from the edge](../images/drill-availability-edge-503.png)
-
-Restore.
-
-```bash
-date -u; kubectl scale deployment/nginx -n demo --replicas=2
-kubectl rollout status deployment/nginx -n demo
-```
-
-![Scaled to two at 10:06:54 UTC, rollout successful](../images/drill-availability-restore.png)
-
-The edge recovered 16 seconds after the restore.
-
-![503 through 10:06:58, then 200 from 10:07:10](../images/drill-availability-probe-recovery.png)
-
-![Both endpoints back on port 8080, Pods 55s old, one per node](../images/drill-availability-endpoints-restored.png)
-
-![HTTP/2 200 and a body of ok](../images/drill-availability-edge-200.png)
-
-The uptime check recorded the dip, bottoming out at 45.24% of checks passing.
-
-![The uptime panel dipping to 45.24%](../images/drill-availability-uptime-dip.png)
-
-The alert fired.
-
-![Alert firing, Critical, start time 10:07 AM UTC](../images/drill-availability-alert-email.png)
-
-### Timeline
-
-| Time (UTC) | Event | Source |
-| --- | --- | --- |
-| 10:03:40 | Last passing probe | probe loop |
-| 10:03:45 | `nginx` scaled to zero | `date -u` beside the command |
-| 10:03:51 | Edge returns 503 | probe loop |
-| 10:06:54 | `nginx` scaled back to two | `date -u` beside the command |
-| 10:07:10 | Edge returns 200 | probe loop |
-| 10:07 | Alert opens | notification email |
-
-| Interval | Duration |
+| Drill | Result |
 | --- | --- |
-| Scale to zero, to first 503 | 6s |
-| Outage at the edge | 3m19s |
-| Restore, to first 200 | 16s |
-| Scale to zero, to alert | about 3m15s |
+| Availability | the alert opened about 3m15s after the site stopped serving, and closed on recovery |
+| Rollout | the pipeline failed at the rollout gate, and the previous digest kept serving throughout |
 
-### Result: the alert fired after the site was already back
+The availability drill also measured this phase's detection floor. Nothing shorter than roughly 3 minutes can open an incident, because the check runs every 60s per location, the condition needs more than one location failing, and `duration` holds it a further 60s.
 
-The edge recovered at 10:07:10. The notification start time is 10:07.
-
-Detection took about 3m15s against an outage of 3m19s. The alert was correct and it arrived too late to act on.
-
-The floor is structural rather than a tuning mistake:
-
-- The uptime check runs every 60 seconds per location.
-- The condition needs more than one location failing.
-- `duration` holds the condition for a further 60 seconds.
-
-Nothing shorter than roughly 3 minutes can open an incident, whatever the alignment period is set to.
-
-This is the intended trade. A blip under 3 minutes is not worth paging, and requiring two locations is what stops one bad network path from waking anyone. The number is recorded here rather than discovered during a real incident.
-
-### Drill B: failed rollout
-
-Status: not started.
-
-| Step | Expected result |
-| --- | --- |
-| Ship a broken `/healthz` through the pipeline | the surge Pod never passes readiness |
-| Let the rollout fail | `Wait for the rollout` times out at 180s, before the smoke test |
-| Restore the previous version | the alert stays silent, because `maxUnavailable: 0` keeps the previous digest serving |
-
-Evidence to capture: the failed workflow step, the old Pods still Ready beside the new one that is not, and the uptime panel flat across the same window.
 ## Slice 5: The numbers
 
 Status: Not started
@@ -230,4 +139,4 @@ Fill every row of the claim table with a link to its evidence, mark the phase co
 
 ## Next
 
-Run the rollout drill: ship a broken `/healthz` through the pipeline and record the uptime panel staying flat while the rollout fails.
+Slice 5: the deploy timings and the cost snapshot.
