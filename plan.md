@@ -183,11 +183,45 @@ Evidence: [Phase 11 worklog](worklog/phase-11-hardening.md)
 
 Documentation: [GKE security posture](https://cloud.google.com/kubernetes-engine/docs/concepts/about-security-posture-dashboard), [Log Analytics](https://cloud.google.com/logging/docs/analyze/query-and-view), [log-based metrics](https://cloud.google.com/logging/docs/logs-based-metrics), [organization policy constraints](https://cloud.google.com/resource-manager/docs/organization-policy/org-policy-constraints)
 
-## Milestone 2: AI reference workload
+## Milestone 2: Load and autoscaling
 
-Milestone 1 is complete. This milestone has not started.
+Milestone 1 proved the platform under deliberate failure with close to no traffic. This milestone measures it under load, and proves the scaling path from a busy Pod to a new node.
 
-### Phase 12: Deterministic manifest review
+### Phase 12: Load and autoscaling
+
+Every run uses the same scripts and every step changes one variable, so each difference in the results has one cause.
+
+- Add the `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` metric packages, and dashboard panels for sky's desired and available replicas and its throttled CPU.
+- Add `loadtest/`: a stepped k6 ramp, a constant-rate rollout test, and a recorder that captures the HPA, Deployments, Pods, nodes and events every 5s.
+- Generate load from a VM in `europe-west4` on a throwaway VPC reached through IAP, created and deleted with gcloud each session.
+- Calibrate before the baseline, so the load generator is never the bottleneck.
+
+| Step | Change | Runs | Prediction |
+| --- | --- | --- | --- |
+| A | None | Ramp, rollout under load | sky saturates on its CPU limit first. A rollout drops requests, because nothing covers the time the load balancer takes to stop routing to a terminating Pod. |
+| B | `preStop` sleep and a longer `terminationGracePeriodSeconds`, sized from A | Rollout under load | No errors during a rollout. |
+| C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp | Stops at 5 replicas, where `limits.cpu` reaches 3000m of 3000m. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
+| D | Requests, limits and quota sized from A, `maxReplicas` beyond two nodes' capacity | Ramp | A Pod goes `Pending` and a third node joins. The pool returns to two nodes after load stops. |
+
+Each step is one pull request.
+
+- A ramp stops at the first step where p95 exceeds 500ms or errors exceed 1%.
+- `replicas` leaves sky's Deployment in C. Its last-applied record is edited first, or the pipeline's next apply drops sky to one Pod.
+- The pipeline Role cannot create an HPA, so an operator applies it.
+- The quota in D covers `maxReplicas`, one surge Pod, the smoke test Pod and nginx, and `pods` rises with it.
+- The uptime alert stays armed.
+
+Deferred: sudden node loss and drain under load, autoscaling nginx, and custom metrics.
+
+**Exit criteria:** A results table with one row per run: configuration, saturation rate, p95 at saturation, errors during rollout, peak replicas, nodes, and time from the HPA's decision to a Ready Pod on new capacity. The rollout error window, the quota stall and scale-down are each recorded with their recovery. The load generator and its VPC are deleted, and `gke-vpc` is the only network.
+
+Documentation: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [migrating a Deployment to an HPA](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling), [container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/), [container-native load balancing](https://cloud.google.com/kubernetes-engine/docs/concepts/container-native-load-balancing), [GKE cluster autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler), [kube state metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/kube-state-metrics), [cAdvisor and kubelet metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/cadvisor-kubelet-metrics), [k6 executors](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/)
+
+## Milestone 3: AI reference workload
+
+Follows Milestone 2.
+
+### Phase 13: Deterministic manifest review
 
 - Add a small API for submitted Kubernetes YAML.
 - Treat all submissions as untrusted input.
@@ -197,7 +231,7 @@ Milestone 1 is complete. This milestone has not started.
 
 **Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
 
-### Phase 13: AI explanation with closed validation
+### Phase 14: AI explanation with closed validation
 
 - Use Vertex AI only to explain findings and propose corrections.
 - Authenticate from GKE with Workload Identity Federation.
@@ -222,8 +256,10 @@ These are not implementation commitments yet.
 - Add remote Terraform state before automated infrastructure apply or collaboration.
 - Create a regional cluster temporarily for availability and recovery validation.
 - Evaluate advanced supply-chain controls after the basic image pipeline is complete.
+- Add Cloud Armor rate limiting if load testing shows a single client can drive the namespace to its quota.
+- Test sudden node loss and drain under load once autoscaling is in place.
 
-Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters), [Binary Authorization](https://cloud.google.com/binary-authorization/docs)
+Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters), [Binary Authorization](https://cloud.google.com/binary-authorization/docs), [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/rate-limiting-overview)
 
 ## Cost posture
 
@@ -231,10 +267,11 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 - Keep the current zonal cluster available during active project work.
 - Record costs and configure budget alerts. Measured at kr461.81 a week, fully covered by credits.
 - Provision a regional cluster only when its availability behavior is being tested.
+- Create the load generator VM and its VPC only for a test session, and delete both afterwards.
 - Do not add GPU nodes unless self-hosted inference becomes a separate project goal.
 
 ## Immediate next step
 
 Milestone 1 is closed. The platform is guarded, the image is project owned and deployed by digest, delivery is keyless, the workload is public through Gateway API, and every claim above has evidence.
 
-Next is Phase 12, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
+Next is Phase 12, which puts the platform under load before it carries the manifest reviewer. Its first pull request adds the metric packages, the dashboard panels and the load test harness, so the baseline and every later run are measured the same way.

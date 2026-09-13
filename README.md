@@ -97,7 +97,7 @@ Milestone 1 is complete. Every platform claim has recorded commands, results and
 | Proven | Both failure drills run and recorded |
 | Hardened | One network, vulnerability scanning on, logs queryable |
 
-Next: Milestone 2, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
+Next: Milestone 2, load and autoscaling, which measures the platform under load before it carries the manifest reviewer.
 
 ## Measured
 
@@ -144,6 +144,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10]
 - [Phase 10 failure drills worklog](worklog/phase-10-failure-drills.md)
 - [Phase 11 hardening worklog](worklog/phase-11-hardening.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
+- [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)
 - [Networking reference](reference/networking.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)

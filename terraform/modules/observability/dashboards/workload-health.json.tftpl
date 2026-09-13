@@ -228,6 +228,71 @@
       },
       {
         "yPos": 12,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "sky replicas: declared against available (a stall is the gap)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "targetAxis": "Y1",
+                "legendTemplate": "declared",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "max(kube_deployment_spec_replicas{cluster=\"${cluster_name}\",namespace=\"${namespace}\",deployment=\"sky\"})"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "targetAxis": "Y1",
+                "legendTemplate": "available",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "max(kube_deployment_status_replicas_available{cluster=\"${cluster_name}\",namespace=\"${namespace}\",deployment=\"sky\"})"
+                }
+              },
+              {
+                "plotType": "LINE",
+                "targetAxis": "Y1",
+                "legendTemplate": "HPA desired",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "max(kube_horizontalpodautoscaler_status_desired_replicas{cluster=\"${cluster_name}\",namespace=\"${namespace}\",horizontalpodautoscaler=\"sky\"})"
+                }
+              }
+            ],
+            "yAxis": {
+              "label": "replicas",
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 12,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "sky CPU throttling (fraction of periods throttled)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "targetAxis": "Y1",
+                "legendTemplate": "$${metric.labels.pod}",
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum by (pod) (rate(container_cpu_cfs_throttled_periods_total{cluster=\"${cluster_name}\",namespace=\"${namespace}\",container=\"sky\"}[1m])) / sum by (pod) (rate(container_cpu_cfs_periods_total{cluster=\"${cluster_name}\",namespace=\"${namespace}\",container=\"sky\"}[1m]))"
+                }
+              }
+            ],
+            "yAxis": {
+              "label": "fraction throttled",
+              "scale": "LINEAR"
+            }
+          }
+        }
+      },
+      {
+        "yPos": 16,
         "width": 12,
         "height": 6,
         "widget": {

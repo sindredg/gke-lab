@@ -613,7 +613,7 @@ The plan changed a field nobody had edited.
   ]
 ```
 
-Both name the same authorization. The left is the project number, which is how Certificate Manager stores a reference and therefore what refreshes into state; the right is the project ID, which is what `google_certificate_manager_dns_authorization.default.id` builds from `var.project_id`. The two never converge, and because the whole `managed` block is immutable, every plan proposes a replacement — each one landing on the error above.
+Both name the same authorization. The left is the project number, which is how Certificate Manager stores a reference and therefore what refreshes into state; the right is the project ID, which is what `google_certificate_manager_dns_authorization.default.id` builds from `var.project_id`. The two never converge, and because the whole `managed` block is immutable, every plan proposes a replacement, and each one lands on the error above.
 
 The module now writes the reference in the form the API returns, so config and state agree:
 

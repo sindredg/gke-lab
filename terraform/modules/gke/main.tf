@@ -29,7 +29,7 @@ resource "google_container_cluster" "main" {
     }
   }
 
-  # Both blocks below state what GKE is already doing by default. They are here so the telemetry scope is a recorded choice rather than an inherited one, which means a plan that proposes a change is reporting that the default was not what was assumed.
+  # Both blocks below are declared rather than inherited, so the telemetry scope is a recorded choice, and a plan that proposes a change is reporting that the scope was not what was assumed.
 
   # Container stdout is the largest ingest line on a cluster this size and Cloud Logging bills it, so WORKLOADS is a cost decision, not a free one. The control-plane components (API_SERVER, SCHEDULER, CONTROLLER_MANAGER) stay off: useful for "who changed this object", noisy and billable for everything else.
   logging_config {
@@ -37,8 +37,9 @@ resource "google_container_cluster" "main" {
   }
 
   # Workload metrics come from Managed Service for Prometheus rather than the legacy per-workload components. Advanced datapath observability is a separate toggle with its own cost and answers no question this platform is asking yet.
+  # CADVISOR carries CPU throttling, which the system metrics cannot show: a Pod held at its limit reads as busy rather than stuck. HPA, DEPLOYMENT and POD are kube-state-metrics packages, which put declared replicas against available ones and Pending Pods on a graph, so a quota stall shows as two lines parting. All four bill per sample ingested.
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS"]
+    enable_components = ["SYSTEM_COMPONENTS", "CADVISOR", "HPA", "DEPLOYMENT", "POD"]
 
     managed_prometheus {
       enabled = true

@@ -102,11 +102,11 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
     content = <<-EOT
       The uptime check for ${var.domain} is failing from more than one of Google's checker locations, so the site is not reachable for users rather than unreachable down one network path. Check in this order, from the workload outwards:
 
-      1. `kubectl get pods -n ${var.namespace} -o wide` — are the Pods Running and Ready? A rollout that failed readiness leaves the previous version serving, so Pods that are all gone means something removed them.
-      2. `kubectl get endpointslices -n ${var.namespace} -l kubernetes.io/service-name=nginx` — does the Service still have endpoints? An empty slice is why the load balancer would return 502.
-      3. `kubectl describe gateway external -n ${var.namespace}` — is the listener still Programmed and the address unchanged?
-      4. Load balancer backend health in the console — are the network endpoint group backends healthy? Unhealthy backends with Ready Pods points at the NetworkPolicy admitting Google's proxy ranges, or at the HealthCheckPolicy target.
-      5. `curl -sSi https://${var.domain}/healthz` — what does the edge actually return? A TLS error rather than a status code moves the search to Certificate Manager.
+      1. `kubectl get pods -n ${var.namespace} -o wide`:are the Pods Running and Ready? A rollout that failed readiness leaves the previous version serving, so Pods that are all gone means something removed them.
+      2. `kubectl get endpointslices -n ${var.namespace} -l kubernetes.io/service-name=nginx`:does the Service still have endpoints? An empty slice is why the load balancer would return 502.
+      3. `kubectl describe gateway external -n ${var.namespace}`:is the listener still Programmed and the address unchanged?
+      4. Load balancer backend health in the console:are the network endpoint group backends healthy? Unhealthy backends with Ready Pods points at the NetworkPolicy admitting Google's proxy ranges, or at the HealthCheckPolicy target.
+      5. `curl -sSi https://${var.domain}/healthz`:what does the edge actually return? A TLS error rather than a status code moves the search to Certificate Manager.
     EOT
   }
 }

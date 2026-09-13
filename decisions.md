@@ -484,7 +484,7 @@ Alternatives: A `sky.` subdomain, which keeps each workload's path namespace who
 
 ### Telemetry scope
 
-Decision: Declare `SYSTEM_COMPONENTS` and `WORKLOADS` logging and `SYSTEM_COMPONENTS` monitoring with Managed Service for Prometheus, and leave `API_SERVER`, `SCHEDULER`, and `CONTROLLER_MANAGER` off.
+Decision: Declare `SYSTEM_COMPONENTS` and `WORKLOADS` logging and `SYSTEM_COMPONENTS` monitoring with Managed Service for Prometheus, and leave `API_SERVER`, `SCHEDULER`, and `CONTROLLER_MANAGER` off. The `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` packages are recorded under [Scaling telemetry](#scaling-telemetry).
 
 Why: Container stdout is the largest ingest line on a cluster this size and Cloud Logging bills it, so keeping `WORKLOADS` is a cost decision rather than a free one. The control plane streams answer "who changed this object", and are noisy and billable for everything else. Writing the scope down also turned an inherited default into a recorded choice, which the first plan proved by proposing a change rather than an empty diff.
 
@@ -505,6 +505,64 @@ Decision: Open an incident only when more than one checker location is failing, 
 Why: One location failing is a network path somewhere on the internet, and paging on it is how an alert teaches its reader to dismiss it. Requiring two costs nothing in detection here: one zonal cluster behind one global load balancer has no partial-failure mode, so a real outage fails every location inside the same check period. The default `auto_close` of seven days would leave a self-recovered incident open when the next real one arrives.
 
 Alternatives: Page on a single failing location, or on a proportion of locations.
+
+## Load and scaling
+
+### Workload autoscaling
+
+Decision: A `HorizontalPodAutoscaler` on sky, scaling on CPU utilization at 70% of the request with a minimum of two replicas. The replica count leaves the Deployment manifest.
+
+Why: uvicorn serves each Pod from one process, so CPU tracks load closely and the metric is already collected. The minimum of two keeps the spread and the disruption budget intact at rest. nginx serves a static page and is not the bottleneck.
+
+Cost: Utilization is measured against the request, so a low request scales on almost no load, and `limits.cpu` in the quota caps the replica count before node capacity does. The pipeline applies the Deployment, so `replicas` has to leave both the manifest and its last-applied record, or a deploy resets the count. The pipeline Role cannot create the HPA, so an operator applies it.
+
+Alternatives: Fixed replicas. Requests per second through a custom metrics adapter. The [Vertical Pod Autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler), which resizes Pods rather than adding them and restarts them to do it.
+
+### Scaling telemetry
+
+Decision: Add the `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` packages to Managed Service for Prometheus.
+
+Why: The failure modes this phase predicts are invisible in the existing metrics. A quota stall is desired replicas diverging from available ones, and a throttled Pod looks idle against its limit while it queues requests. Both become series on the dashboard rather than lines in a terminal.
+
+Cost: The packages bill per sample ingested, so the weekly cost is measured again after they are enabled.
+
+Alternatives: The `kubectl` recorder alone, which captures stalls and misses throttling.
+
+### Load test tool
+
+Decision: [k6](https://grafana.com/docs/k6/latest/), with arrival-rate executors and a threshold on each fixed-rate step.
+
+Why: A closed-loop tool such as `hey`, `ab` or `wrk` waits for each response before sending the next request, so a slowing server receives less load and its latency is under-reported. An arrival-rate executor holds the rate regardless of response time. k6 evaluates a threshold over the whole run, so a single ramp trips long after the point of saturation; a threshold per step makes that point the last step that passes. The scripts live in the repository, so every run uses the same test.
+
+Alternatives: vegeta or wrk2, which hold a rate and script poorly. Locust or JMeter, which model user journeys this platform does not have.
+
+### Saturation criterion
+
+Decision: A ramp step fails when p95 latency exceeds 500ms or errors exceed 1%, and the run stops at the first failing step.
+
+Why: Stopping at the point of saturation measures capacity without holding the platform in overload while the uptime alert is armed.
+
+Alternatives: A fixed ramp to a fixed peak, which compares more simply and overloads the platform on every run.
+
+### Load source
+
+Decision: Generate load from one `e2-standard-2` VM in `europe-west4`, on a throwaway VPC with SSH through IAP only, created and deleted with gcloud each session.
+
+Why: A laptop on a home connection varies between runs and can saturate before the workload does. A nearby region keeps round-trip time small enough that latency changes belong to the platform, while traffic still arrives through the public load balancer. A separate VPC keeps the load source outside the platform network, and deleting it leaves `gke-vpc` as the only network.
+
+Cost: The VM and its network are console state rather than configuration, so the runbook is what keeps each session's generator identical. The project holds a second network for the length of a session.
+
+Alternatives: A laptop, which is free and unrepeatable. A Terraform-managed VM, which is reproducible and adds a module for a resource that lives for hours. A subnet on `gke-vpc`, which puts unmanaged resources in the Terraform-owned network.
+
+### Alerting during load tests
+
+Decision: Keep the uptime alert armed during every run.
+
+Why: A page caused by load is evidence that the availability alert catches overload as well as an outage. Snoozing it tests a platform with its alerting removed.
+
+Cost: A step pushed past saturation can open an incident. Stopping at the first failing step keeps that window short.
+
+Alternatives: Snooze the alert for each run window.
 
 ## Project and process
 
