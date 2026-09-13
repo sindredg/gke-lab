@@ -204,7 +204,7 @@ Every run uses the same scripts and every step changes one variable, so each dif
 | C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp | Stops at 5 replicas, where `limits.cpu` reaches 3000m of 3000m. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
 | D | Requests, limits and quota sized from A, `maxReplicas` beyond two nodes' capacity | Ramp | A Pod goes `Pending` and a third node joins. The pool returns to two nodes after load stops. |
 
-Each step is one pull request. The worklog splits by concern: 12a for the baseline ramp, 12b for rollouts and connections (A's rollout, B, B2), and 12c for autoscaling (C, D).
+Each step is one pull request. The worklog splits by concern: 12a for the baseline ramp, 12b for the baseline rollout, 12c for rollouts and connections (B, B2), and 12d for autoscaling (C, D).
 
 - A ramp stops at the first step where p95 exceeds 500ms or errors exceed 1%.
 - `replicas` leaves sky's Deployment in C. Its last-applied record is edited first, or the pipeline's next apply drops sky to one Pod.
@@ -216,7 +216,7 @@ Deferred: sudden node loss and drain under load, autoscaling nginx, and custom m
 
 **Exit criteria:** A results table with one row per run: configuration, saturation rate, p95 at saturation, errors during rollout, peak replicas, nodes, and time from the HPA's decision to a Ready Pod on new capacity. The rollout error window, the quota stall and scale-down are each recorded with their recovery. The load generator and its VPC are deleted, and `gke-vpc` is the only network.
 
-Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md)
+Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md), [Phase 12b worklog](worklog/phase-12b-rollout-baseline.md)
 
 Documentation: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [migrating a Deployment to an HPA](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling), [container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/), [container-native load balancing](https://cloud.google.com/kubernetes-engine/docs/concepts/container-native-load-balancing), [GKE cluster autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler), [kube state metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/kube-state-metrics), [cAdvisor and kubelet metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/cadvisor-kubelet-metrics), [k6 executors](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/)
 
