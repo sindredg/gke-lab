@@ -642,3 +642,27 @@ Referencing `.name` keeps the implicit dependency, so the authorization is still
 ![The L7 classes accepted](images/gateway-classes.png)
 
 The diagnostic is the CONTROLLER column rather than the names: no row carrying `networking.gke.io/gateway` means the L7 controller has not registered yet. If the classes never appear, confirm the HTTP load balancing add-on is enabled, since the L7 classes depend on it.
+
+## Phase 12: Load and autoscaling
+
+### A committed script fails with Permission denied
+
+**Issue:** `loadtest/loadgen.sh up` fails with `Permission denied` after a pull, and `sudo` reports `command not found`.
+
+**Cause:** The checkout sets `core.filemode = false`, so git ignores the executable bit on disk. The `chmod +x` before the commit never reached the index, and both scripts were stored as `100644`.
+
+**Fix:** Set the mode in the index, which works whatever `core.filemode` says.
+
+```bash
+git update-index --chmod=+x loadtest/loadgen.sh loadtest/record.sh
+```
+
+`git ls-files -s loadtest/*.sh` reports `100755`. `sudo` is never the fix: `gcloud` and `kubectl` hold the operator's credentials, not root's.
+
+### An IAP SSH session drops as a k6 run ends
+
+**Issue:** `gcloud compute ssh --tunnel-through-iap` exits with `ConnectionCreationError: Unexpected error while reconnecting` straight after a run.
+
+**Cause:** The session rides a websocket through IAP, and a failed reconnect ends it. Anything started in the session ends with it.
+
+**Fix:** Start runs inside tmux on the generator, and reattach with `tmux attach -t k6`. The generator installs tmux at boot.

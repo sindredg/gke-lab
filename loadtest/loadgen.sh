@@ -31,6 +31,8 @@ curl -fsSLO "\$base/k6-${K6_VERSION}-linux-amd64.tar.gz"
 curl -fsSLO "\$base/k6-${K6_VERSION}-checksums.txt"
 grep " k6-${K6_VERSION}-linux-amd64.tar.gz\$" "k6-${K6_VERSION}-checksums.txt" | sha256sum -c -
 tar -xzf "k6-${K6_VERSION}-linux-amd64.tar.gz" --strip-components=1 -C /usr/local/bin "k6-${K6_VERSION}-linux-amd64/k6"
+# An IAP tunnel can drop mid-run, and a run started inside tmux survives it.
+apt-get update -qq && apt-get install -y -qq tmux
 # Each VU holds its own connection, and the default of 1024 open files caps a step well before the VM's CPU does.
 echo '* soft nofile 65536' > /etc/security/limits.d/k6.conf
 echo '* hard nofile 65536' >> /etc/security/limits.d/k6.conf

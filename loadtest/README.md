@@ -20,10 +20,16 @@ loadtest/loadgen.sh up
 loadtest/loadgen.sh copy
 ```
 
-Calibrate once per session. The generator is not the bottleneck if `dropped_iterations` is 0 and `vmstat` shows idle CPU above 30% at the step that fails.
+Run k6 inside tmux on the generator. An IAP tunnel can drop mid-run, and `tmux attach -t k6` picks the run back up.
 
 ```bash
 loadtest/loadgen.sh ssh
+tmux new -s k6
+```
+
+Calibrate once per session. The generator is not the bottleneck if `dropped_iterations` is 0 and `vmstat` shows idle CPU above 30% at the step that fails.
+
+```bash
 cd ~/loadtest && k6 run -e RUN=calibrate -e STEP_SECONDS=20 ramp.js
 ```
 

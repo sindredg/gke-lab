@@ -107,8 +107,9 @@ Next: Milestone 2, load and autoscaling, which measures the platform under load 
 | Deploy duration, median of twelve runs | 70.5s |
 | Alert detection floor | about 3 minutes |
 | Running cost | kr461.81 a week, covered by credits |
+| sky saturation, two replicas | 40 requests a second, p95 230ms |
 
-Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10](worklog/phase-10-failure-drills.md).
+Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md) and [Phase 12a](worklog/phase-12a-load-baseline.md).
 
 ## Platform capabilities
 
@@ -143,6 +144,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md) and [Phase 10]
 - [Phase 9 surviving a node worklog](worklog/phase-09-resilience.md)
 - [Phase 10 failure drills worklog](worklog/phase-10-failure-drills.md)
 - [Phase 11 hardening worklog](worklog/phase-11-hardening.md)
+- [Phase 12a load baseline worklog](worklog/phase-12a-load-baseline.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)

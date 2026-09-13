@@ -13,7 +13,9 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
 const BASE_URL = __ENV.BASE_URL || 'https://sindrg.com';
 const RUN = __ENV.RUN || 'ramp';
 const STEP_SECONDS = Number(__ENV.STEP_SECONDS || 60);
-const STEPS = (__ENV.STEPS || '10,25,50,75,100,150,200,300,400,600,800').split(',').map(Number);
+// Calibration put the baseline between 25 and 50 requests a second, so the grid is fine at the bottom and still
+// reaches past what a scaled-out sky should hold.
+const STEPS = (__ENV.STEPS || '5,10,15,20,25,30,40,50,60,80,100,125,150,200').split(',').map(Number);
 const BACKGROUND_RATE = Number(__ENV.BACKGROUND_RATE || 2);
 const P95_MS = Number(__ENV.P95_MS || 500);
 const MAX_ERROR_RATE = Number(__ENV.MAX_ERROR_RATE || 0.01);
@@ -46,8 +48,9 @@ STEPS.forEach((rate, i) => {
     timeUnit: '1s',
     duration: `${STEP_SECONDS}s`,
     startTime: `${i * STEP_SECONDS}s`,
-    // One VU per request per second covers a response time of up to a second before k6 has to drop iterations.
-    preAllocatedVUs: Math.ceil(rate / 4) + 5,
+    // One VU per request per second covers a response time of up to a second. They are all allocated up front,
+    // because a VU allocated mid-step arrives too late for the iteration that needed it, and k6 drops that iteration.
+    preAllocatedVUs: rate + 10,
     maxVUs: rate + 10,
   };
 
