@@ -21,9 +21,12 @@ permissions:
   contents: read
   id-token: write
 
-# A running deploy is left to finish rather than cancelled.
+# Shared with deploy.yml. Both roll Pods in the demo namespace, and two rollouts at
+# once hold old Pods in their preStop sleep alongside the new ones, which filled
+# limits.cpu and refused the smoke test. The second deploy waits for the first, and a
+# running deploy is left to finish rather than cancelled.
 concurrency:
-  group: deploy-sky-main
+  group: deploy-demo
   cancel-in-progress: false
 
 env:

@@ -570,7 +570,7 @@ Decision: A `preStop` sleep of 35s on both workloads, using the kubelet's built-
 
 Why: The NEG readiness gate holds an old Pod until its replacement is healthy in the load balancer, and nothing held it until its own endpoint had left. That took 12 to 13s, and a rollout at 20 rps failed 73 requests in the gap. A 20s sleep took sky to zero and left 4 failures on nginx: the detach completed 12s after the Pod stopped, and a few requests still reached it 28.6s after, while the change spread across the load balancer's proxies. 35s covers that tail. The built-in action needs no shell, so it works in both images and under the `restricted` standard.
 
-Cost: Every replaced Pod stays `Terminating` 35s longer and holds its share of the namespace quota for that time. The grace period includes the sleep, so raising the sleep without raising the grace period cuts the server's own shutdown short.
+Cost: Every replaced Pod stays `Terminating` 35s longer and holds its share of the namespace quota for that time. Two deploys 33s apart filled `limits.cpu` at 3000m of 3000m and both smoke tests were refused, so the two deploy workflows now share one concurrency group. The grace period includes the sleep, so raising the sleep without raising the grace period cuts the server's own shutdown short.
 
 Alternatives: An `exec` hook running `sleep`, which depends on a shell neither image is required to carry. Connection draining on the backend service, which keeps connections that are already open and does nothing for a Pod that has stopped listening before its endpoint is removed.
 

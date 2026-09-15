@@ -666,3 +666,36 @@ git update-index --chmod=+x loadtest/loadgen.sh loadtest/record.sh
 **Cause:** The session rides a websocket through IAP, and a failed reconnect ends it. Anything started in the session ends with it.
 
 **Fix:** Start runs inside tmux on the generator, and reattach with `tmux attach -t k6`. The generator installs tmux at boot.
+
+### A deploy smoke test is forbidden by the quota
+
+**Issue:** Deploy and Deploy sky both report `successfully rolled out`, then fail at the smoke test.
+
+```text
+pods "smoke-sky-34972870400" is forbidden: exceeded quota: demo-budget, requested: limits.cpu=250m, used: limits.cpu=3, limited: limits.cpu=3
+```
+
+**Cause:** The two workflows started 33s apart in separate concurrency groups, and both reached the smoke test at 13:07:36. A Pod in its `preStop` sleep still counts against the quota, and each rollout ended with both old Pods still sleeping.
+
+| Pods at 13:07:36 | Count | Limit each | Total |
+| --- | --- | --- | --- |
+| sky, new | 2 | 500m | 1000m |
+| sky, stopping | 2 | 500m | 1000m |
+| nginx, new | 2 | 250m | 500m |
+| nginx, stopping | 2 | 250m | 500m |
+| Used | 8 | | 3000m of 3000m |
+
+**Fix:** Both deploy workflows share the concurrency group `deploy-demo`, so the second waits for the first. One rollout at a time peaks at 2750m with the smoke Pod. The site kept serving throughout, because only the smoke Pod was refused.
+
+### A rerun of a deploy rolls out again
+
+**Issue:** `gh run rerun --failed` on a deploy whose spec was already live created new ReplicaSets for both workloads.
+
+**Cause:** The image build is not reproducible, so the same source publishes a new digest, and a new digest is a new Pod template.
+
+| Workload | Digest before the rerun | Digest after |
+| --- | --- | --- |
+| sky | `sha256:7e22eb3d...` | `sha256:1701fa64...` |
+| nginx | `sha256:1614acea...` | `sha256:77286fc0...` |
+
+**Fix:** Treat every deploy run as a rollout, and keep reruns out of a load test window. A reproducible build would make a rerun publish the same digest and change nothing.

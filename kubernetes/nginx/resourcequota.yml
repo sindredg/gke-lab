@@ -13,11 +13,15 @@ spec:
     requests.memory: 1Gi
 
     # Total ceiling the namespace can burst to. Steady state is 1500m across
-    # both workloads, and each rollout adds one surge Pod. Two rollouts at once
-    # reach 2250m, which a ceiling of 2 rejects: with maxUnavailable 0 the
-    # second rollout then stalls rather than failing, which is the hardest
-    # shape of problem to recognise. Only requests are scheduled, so a burst
-    # ceiling above one node's capacity still bounds the namespace.
+    # both workloads. A Pod in its preStop sleep still counts, so a rollout can
+    # end with two new Pods and both old ones: sky peaks at 2000m, nginx at
+    # 1000m. Rolled together they reach 3000m and the deploy smoke test's 250m
+    # is refused, which is why both deploy workflows share one concurrency
+    # group. One at a time, the peak with the smoke Pod is 2750m. A surge Pod
+    # that does not fit stalls a rollout rather than failing it, because of
+    # maxUnavailable 0, which is the hardest shape of problem to recognise.
+    # Only requests are scheduled, so a burst ceiling above one node's
+    # capacity still bounds the namespace.
     limits.cpu: "3"
     limits.memory: 2Gi
 
