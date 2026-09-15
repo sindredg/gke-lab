@@ -5,6 +5,11 @@ resource "google_container_node_pool" "general" {
   location = var.zone
   cluster  = google_container_cluster.main.name
 
+  # A scale-up in one zone failed with ZONE_RESOURCE_POOL_EXHAUSTED while the other zones had capacity. With every
+  # zone listed, the autoscaler places a node wherever the machine type is available. BALANCED below spreads the
+  # pool across them as it grows.
+  node_locations = var.node_zones
+
   # Only the size the pool is created at; autoscaling owns the count from then on.
   # The field forces a new node pool when it changes, so it stays at one rather than
   # tracking the floor, where raising the floor would replace the pool instead of

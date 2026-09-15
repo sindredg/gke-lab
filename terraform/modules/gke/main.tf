@@ -4,6 +4,10 @@ resource "google_container_cluster" "main" {
   name     = var.cluster_name
   location = var.zone
 
+  # The control plane stays in one zone; nodes may run in any zone of the region. For a zonal cluster this field
+  # lists only the additional zones, so the cluster's own zone is left out.
+  node_locations = [for z in var.node_zones : z if z != var.zone]
+
   network    = var.network_id
   subnetwork = var.subnet_id
 
@@ -38,8 +42,10 @@ resource "google_container_cluster" "main" {
 
   # Workload metrics come from Managed Service for Prometheus rather than the legacy per-workload components. Advanced datapath observability is a separate toggle with its own cost and answers no question this platform is asking yet.
   # CADVISOR carries CPU throttling, which the system metrics cannot show: a Pod held at its limit reads as busy rather than stuck. HPA, DEPLOYMENT and POD are kube-state-metrics packages, which put declared replicas against available ones and Pending Pods on a graph, so a quota stall shows as two lines parting. All four bill per sample ingested.
+  # Listed in the order the API returns them. The provider compares the list in order, so any other order is a
+  # change on every plan.
   monitoring_config {
-    enable_components = ["SYSTEM_COMPONENTS", "CADVISOR", "HPA", "DEPLOYMENT", "POD"]
+    enable_components = ["SYSTEM_COMPONENTS", "HPA", "POD", "DEPLOYMENT", "CADVISOR"]
 
     managed_prometheus {
       enabled = true

@@ -699,3 +699,29 @@ pods "smoke-sky-34972870400" is forbidden: exceeded quota: demo-budget, requeste
 | nginx | `sha256:1614acea...` | `sha256:77286fc0...` |
 
 **Fix:** Treat every deploy run as a rollout, and keep reruns out of a load test window. A reproducible build would make a rerun publish the same digest and change nothing.
+
+### Pods stay Pending because the scale-up fails
+
+**Issue:** The HPA scaled sky to 8, four Pods stayed `Pending` for over six minutes, and no third node joined.
+
+```text
+TriggeredScaleUp   Pod triggered scale-up: [{.../instanceGroups/gke-k8-lab-general-7d6bb7c7-grp 2->3 (max: 3)}]
+FailedScaleUp      Node scale up in zones europe-north1-a associated with this pod failed: GCE out of resources.
+NotTriggerScaleUp  Pod didn't trigger scale-up: 1 in backoff after failed scale-up
+```
+
+**Cause:** Compute Engine had no `e2-standard-2` capacity left in `europe-north1-a`. The node pool's managed instance group records it:
+
+```bash
+gcloud compute instance-groups managed list-errors gke-k8-lab-general-7d6bb7c7-grp --zone europe-north1-a
+```
+
+| Time (UTC) | Error |
+| --- | --- |
+| 16:26:22 | `ZONE_RESOURCE_POOL_EXHAUSTED` |
+| 16:26:36 | `ZONE_RESOURCE_POOL_EXHAUSTED` |
+| 16:31:55 | `ZONE_RESOURCE_POOL_EXHAUSTED` |
+
+The autoscaler retries after a backoff, so the Pods wait for the zone rather than failing. Each Pod only fitted two to a node at a 350m request, so the two nodes held four.
+
+**Fix:** The node pool lists all three zones of `europe-north1` in `node_locations`, so a scale-up can land in a zone with capacity. The cluster's own `node_locations` lists the other two, because a zonal cluster's field holds only its additional zones. A shortage is Google's capacity, not the project's quota, so `gcloud compute project-info describe` shows nothing wrong.

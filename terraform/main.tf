@@ -19,6 +19,7 @@ module "gke" {
   project_id               = var.project_id
   cluster_name             = "k8-lab"
   zone                     = var.zone
+  node_zones               = var.node_zones
   network_id               = module.network.network_id
   subnet_id                = module.network.subnet_id
   pod_secondary_range_name = module.network.pod_secondary_range_name

@@ -13,6 +13,16 @@ variable "zone" {
   type        = string
 }
 
+variable "node_zones" {
+  description = "The zones the node pool may place nodes in, including the cluster's own zone."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.node_zones) >= 1
+    error_message = "The node_zones must list at least one zone."
+  }
+}
+
 variable "network_id" {
   description = "The ID of the VPC network to deploy the GKE cluster into."
   type        = string

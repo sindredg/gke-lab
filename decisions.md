@@ -14,15 +14,17 @@ Alternatives: [GKE Autopilot](https://docs.cloud.google.com/kubernetes-engine/do
 
 ### Cluster availability
 
-Decision: [Zonal cluster](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster) in `europe-north1-a`.
+Decision: [Zonal cluster](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-zonal-cluster) in `europe-north1-a`, with nodes allowed in all three zones of `europe-north1`.
 
-Why: Keeps the initial topology and baseline resource usage small.
+Why: A zonal control plane keeps the topology and baseline cost small. Nodes in one zone did not: at 16:26 and 16:31 UTC on 2026-09-15 the autoscaler asked for a third `e2-standard-2`, Compute Engine answered `ZONE_RESOURCE_POOL_EXHAUSTED` both times, and four sky Pods stayed `Pending` while the HPA wanted eight. Listing every zone lets the autoscaler place a node wherever the machine type is available.
 
-Alternatives: [Regional cluster](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster).
+Cost: The control plane is still in one zone, so an outage of `europe-north1-a` still takes the API away, though running Pods keep serving. Traffic between nodes in different zones is billed.
+
+Alternatives: [Regional cluster](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/creating-a-regional-cluster), which replicates the control plane across zones as well. A second node pool on another machine family, which answers a shortage of one machine type but not of one zone.
 
 ### Node pool
 
-Decision: [One autoscaling general node pool](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/node-pools) with `e2-standard-2` nodes, 50 GB balanced disks, and a total size of two to three nodes.
+Decision: [One autoscaling general node pool](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/node-pools) with `e2-standard-2` nodes, 50 GB balanced disks, and a total size of two to three nodes across the region's three zones.
 
 Why: Provides predictable baseline capacity with room to scale. The floor is two rather than one so that an evicted Pod has somewhere to land, which is what makes a disruption budget pace a drain instead of blocking it.
 

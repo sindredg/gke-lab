@@ -20,6 +20,17 @@ variable "zone" {
   default     = "europe-north1-a"
 }
 
+variable "node_zones" {
+  description = "Zones the node pool may place nodes in. Includes the cluster's own zone."
+  type        = list(string)
+  default     = ["europe-north1-a", "europe-north1-b", "europe-north1-c"]
+
+  validation {
+    condition     = contains(var.node_zones, var.zone)
+    error_message = "The node_zones must include the cluster's zone."
+  }
+}
+
 variable "domain" {
   description = "The domain name for the Gateway and SSL certificate"
   type        = string
