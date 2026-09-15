@@ -216,7 +216,7 @@ Deferred: sudden node loss and drain under load, autoscaling nginx, and custom m
 
 **Exit criteria:** A results table with one row per run: configuration, saturation rate, p95 at saturation, errors during rollout, peak replicas, nodes, and time from the HPA's decision to a Ready Pod on new capacity. The rollout error window, the quota stall and scale-down are each recorded with their recovery. The load generator and its VPC are deleted, and `gke-vpc` is the only network.
 
-Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md), [Phase 12b worklog](worklog/phase-12b-rollout-baseline.md)
+Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md), [Phase 12b worklog](worklog/phase-12b-rollout-baseline.md), [Phase 12c worklog](worklog/phase-12c-rollouts-connections.md)
 
 Documentation: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [migrating a Deployment to an HPA](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling), [container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/), [container-native load balancing](https://cloud.google.com/kubernetes-engine/docs/concepts/container-native-load-balancing), [GKE cluster autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler), [kube state metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/kube-state-metrics), [cAdvisor and kubelet metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/cadvisor-kubelet-metrics), [k6 executors](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/)
 
