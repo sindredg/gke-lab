@@ -106,14 +106,18 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
 
+          # Catches a process that has stopped answering, not one that is busy. At a 2s timeout and three failures, the
+          # kubelet restarted four overloaded but healthy Pods in five minutes of a traffic spike, and each restart
+          # removed capacity while the others were overloaded. Six failures at a 5s timeout give a busy Pod a minute,
+          # and readiness above still takes it out of the load balancer within 15s.
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
 
           # Keeps a stopping Pod serving until the load balancer has let it go. Without it, uvicorn stopped listening within a second while the endpoint detach took about 12s to complete, and a few requests still reached a stopped Pod 28.6s after it stopped. SIGTERM reaches the server only after the sleep.
           lifecycle:

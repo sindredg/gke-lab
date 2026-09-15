@@ -530,6 +530,16 @@ Cost: Five sky Pods request 1750m, and the two nodes have about 2000m free after
 
 Alternatives: No CPU limit, which removes throttling entirely but leaves `limits.cpu` in the quota unenforceable for sky. A higher request at the same limit, which delays scaling and keeps the throttling.
 
+### Liveness probe under load
+
+Decision: sky's liveness probe allows six failures at a 5s timeout, about a minute, before a restart. Readiness stays at three failures at 2s.
+
+Why: Both probes asked the same question on the same schedule, so a Pod too busy to answer in 2s was restarted as well as taken out of rotation. A spike from 0 to 100 rps on two Pods restarted four Pods in five minutes, each restart refused connections while it came back, and the load balancer logged 270 `failed_to_connect_to_backend`. Readiness is the probe that should react to load: it removes a slow Pod from the load balancer and returns it when it recovers. Liveness is for a process that will not recover.
+
+Cost: A Pod that has truly hung serves nothing for up to a minute before it restarts, though readiness has already removed it from the load balancer by then.
+
+Alternatives: A separate liveness endpoint that answers without the application's own work, which the upstream application does not have. No liveness probe, which leaves a hung process running until someone notices.
+
 ### Scaling telemetry
 
 Decision: Add the `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` packages to Managed Service for Prometheus.
