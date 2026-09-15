@@ -8,22 +8,21 @@ metadata:
     app.kubernetes.io/part-of: k8-lab
 spec:
   hard:
-    # Total reserved capacity, which the scheduler counts against nodes.
-    requests.cpu: "1"
-    requests.memory: 1Gi
+    # Sized for the worst moment of a deploy at sky's HPA maximum: eight replicas, one surge Pod and two old Pods
+    # still in their preStop sleep, which still count, beside nginx's two new and two old Pods and the deploy's
+    # smoke test Pod. At the previous 3 CPU of limits, the HPA stopped at five of eight sky replicas.
 
-    # Total ceiling the namespace can burst to. Steady state is 1500m across
-    # both workloads. A Pod in its preStop sleep still counts, so a rollout can
-    # end with two new Pods and both old ones: sky peaks at 2000m, nginx at
-    # 1000m. Rolled together they reach 3000m and the deploy smoke test's 250m
-    # is refused, which is why both deploy workflows share one concurrency
-    # group. One at a time, the peak with the smoke Pod is 2750m. A surge Pod
-    # that does not fit stalls a rollout rather than failing it, because of
-    # maxUnavailable 0, which is the hardest shape of problem to recognise.
-    # Only requests are scheduled, so a burst ceiling above one node's
-    # capacity still bounds the namespace.
-    limits.cpu: "3"
-    limits.memory: 2Gi
+    # Total reserved capacity, which the scheduler counts against nodes. 11 sky Pods at 350m, 4 nginx at 50m and
+    # the smoke Pod's 50m make 4100m.
+    requests.cpu: "5"
+    requests.memory: 2Gi
 
-    # Object count, independent of resource size.
-    pods: "10"
+    # Total ceiling the namespace can burst to. 11 sky Pods at 1000m, 4 nginx at 250m and the smoke Pod's 250m
+    # make 12250m. A surge Pod that does not fit stalls a rollout rather than failing it, because of
+    # maxUnavailable 0, which is the hardest shape of problem to recognise. Only requests are scheduled, so a
+    # burst ceiling above the nodes' capacity still bounds the namespace.
+    limits.cpu: "13"
+    limits.memory: 4Gi
+
+    # Object count, independent of resource size: 11 sky, 4 nginx and the smoke Pod.
+    pods: "16"

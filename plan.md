@@ -203,14 +203,14 @@ Every run uses the same scripts and every step changes one variable, so each dif
 | B2 | `--timeout-keep-alive 620` on sky and `keepalive_timeout 620s` on nginx, above the load balancer's 600s | Ramp | No 503s from closed backend connections. |
 | C0 | None, with each ramp step judged after it settles | Ramp, 180s steps settled after 90s | Saturation near 40 rps: the fixed-replica reference C and D compare against. |
 | C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp from 20 rps, 120s steps settled after 75s; a deploy under held load | Replicas stop at 5 from about 20 rps, where `limits.cpu` reaches 3000m of 3000m, while the HPA wants 8. Saturation near 100 rps, five Pods at C0's 20 each. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
-| D | Requests, limits and quota sized from A, `maxReplicas` beyond two nodes' capacity | Ramp | A Pod goes `Pending` and a third node joins. The pool returns to two nodes after load stops. |
+| D | sky request 350m and limit 1000m, quota for eight replicas at that size | Ramp from 20 rps, 120s steps settled after 75s | Throttling falls. The sixth Pod goes `Pending`, because two nodes have about 2000m of requests free, and a third node joins. Saturation above C's 60 rps. The pool returns to two nodes after load stops. |
 
 Each step is one pull request. The worklog splits by concern: 12a for the baseline ramp, 12b for the baseline rollout, 12c for rollouts and connections (B, B2), and 12d for autoscaling (C, D).
 
 - A ramp stops at the first step where p95 exceeds 500ms or errors exceed 1%, judged on the requests sent after the step settles: 15s into a 60s step, 90s into C0's 180s steps, and 75s into the 120s steps C and D use, so the HPA has time to act.
 - `replicas` leaves sky's Deployment in C. Its last-applied record is edited first, or the pipeline's next apply drops sky to one Pod.
 - The pipeline Role cannot create an HPA, so an operator applies it.
-- The quota in D covers `maxReplicas`, one surge Pod, the smoke test Pod and nginx, and `pods` rises with it.
+- The quota in D covers `maxReplicas`, one surge Pod, two old Pods still in their `preStop` sleep, the smoke test Pod and nginx, and `pods` rises with it. It is applied before the resized Deployment, or the resize's own rollout does not fit.
 - The uptime alert stays armed.
 
 Deferred: sudden node loss and drain under load, autoscaling nginx, and custom metrics.

@@ -14,8 +14,8 @@ spec:
     kind: Deployment
     name: sky
 
-  # Two keeps a replica on each node and the disruption budget satisfiable at rest. Eight is more than the namespace
-  # quota admits at today's 500m limit, which stops the count at five.
+  # Two keeps a replica on each node and the disruption budget satisfiable at rest. The quota admits eight at sky's
+  # size, and eight at a 350m request is more than two nodes hold, so the top of the range adds a node.
   minReplicas: 2
   maxReplicas: 8
 

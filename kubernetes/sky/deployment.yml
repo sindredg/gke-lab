@@ -121,13 +121,17 @@ spec:
               sleep:
                 seconds: 35
 
-          # A Python interpreter needs more headroom than NGINX. Two replicas of this plus two of nginx stay inside the namespace budget.
+          # Sized from the load runs. One uvicorn process uses about 20m of CPU per request a second. At a 500m limit it
+          # was throttled in a third of its 100ms periods while averaging two thirds of the limit, because a burst
+          # spends the period's quota; a process that cannot use more than one core leaves a one-core limit little to
+          # throttle. The HPA measures its 70% against the request, so 350m sets the target near 245m, about 12
+          # requests a second a Pod.
           resources:
             requests:
-              cpu: 100m
+              cpu: 350m
               memory: 128Mi
             limits:
-              cpu: 500m
+              cpu: 1000m
               memory: 256Mi
 
           volumeMounts:

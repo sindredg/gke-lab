@@ -518,6 +518,16 @@ Cost: Utilization is measured against the request, so a low request scales on al
 
 Alternatives: Fixed replicas. Requests per second through a custom metrics adapter. The [Vertical Pod Autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/verticalpodautoscaler), which resizes Pods rather than adding them and restarts them to do it.
 
+### sky resource size
+
+Decision: A CPU request of 350m and a limit of 1000m on sky, with the namespace quota at 5 CPU of requests, 13 CPU of limits and 16 Pods.
+
+Why: At 100m and 500m, the HPA acted from 20 rps and the quota stopped it at five of eight replicas, and five Pods saturated at 60 rps with 31 to 48% of their CPU periods throttled while the busiest node used 61% of its CPU. The limit, not the node, was the ceiling. One uvicorn process cannot use more than one core, so a one-core limit leaves little to throttle. The request sets what the HPA's 70% means: at 350m the target is about 245m, around 12 rps a Pod. The quota covers the worst moment of a deploy at eight replicas: one surge Pod and two old Pods still in their `preStop` sleep, beside nginx's four and the smoke test Pod.
+
+Cost: Five sky Pods request 1750m, and the two nodes have about 2000m free after system Pods, so a sixth Pod needs a third node. The quota no longer caps sky below its HPA maximum, so node capacity and the pool's maximum of three are what bound it.
+
+Alternatives: No CPU limit, which removes throttling entirely but leaves `limits.cpu` in the quota unenforceable for sky. A higher request at the same limit, which delays scaling and keeps the throttling.
+
 ### Scaling telemetry
 
 Decision: Add the `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` packages to Managed Service for Prometheus.

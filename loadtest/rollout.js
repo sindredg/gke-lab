@@ -24,7 +24,8 @@ export const options = {
       rate: RATE,
       timeUnit: '1s',
       duration: DURATION,
-      preAllocatedVUs: 20,
+      // Allocated up front, as in ramp.js. At RATE=60 a pool of 20 grew mid-run and k6 dropped 11 iterations.
+      preAllocatedVUs: RATE + 10,
       maxVUs: RATE * 4,
     },
   },
