@@ -278,6 +278,71 @@ Throttling stayed near zero. The liveness probe used the same 2s timeout as read
 
 Result: a spike outran scale-out for 2.5 minutes, and the liveness probe turned overload into restarts. The liveness probe now allows six failures at a 5s timeout.
 
+## Slice 8: The spike on the new probe
+
+The same spike, from rest: two sky Pods and two nodes, so the run needed a new node as well as new Pods.
+
+![Two Pods, two nodes, before the spike](../images/load-spike2-baseline.png)
+
+![Both Pods Running and not Ready as the spike lands](../images/load-spike2-not-ready.png)
+
+| Time (UTC) | Event | Source |
+| --- | --- | --- |
+| 19:15:04 | load starts at 150 rps | k6 |
+| 19:15:28 | HPA 2 to 5; one Pod does not fit two nodes | events |
+| 19:15:30 | autoscaler asks for one node in `europe-north1-b` | autoscaler log |
+| 19:15:45 | HPA 6 to 8 | events |
+| 19:15:49 | 1 of 2 Pods available: readiness takes the overloaded Pods out | kube-state-metrics |
+| 19:16:30 | node `jplw` Ready in `europe-north1-b`, four Pods scheduled on it | events |
+| 19:17:05 | the four Pods Running | recorder |
+| 19:17:50 | last timeout of the main window | k6 failure log |
+| 19:18:19 | 8 of 8 available | kube-state-metrics |
+
+![Eight Pods, the new node in europe-north1-b](../images/load-spike2-eight-pods.png)
+
+![Every sky Pod near its limit with no restarts](../images/load-spike2-cpu.png)
+
+![Available fell to 1 before it rose to 8](../images/load-spike2-replicas.png)
+
+![7,281 of 39,970 sky requests failed](../images/load-spike2-summary.png)
+
+| Measure | Liveness 2s, three failures | Liveness 5s, six failures |
+| --- | --- | --- |
+| Nodes at the start | 3 | 2 |
+| Restarts | 4 | **0** |
+| Liveness probe failures | 3 per restart | 33, none reaching six in a row |
+| sky requests failed | 2,513 of 41,123 | 7,281 of 39,970 |
+| How they failed | 503 `failed_to_connect_to_backend` | k6's 10s timeout, no 5xx logged |
+| Dropped iterations | 1,165 | 3,332 |
+| HPA decision to a Pod Running on a new node | none needed | **97s** |
+| HPA decision to 8 available | 2m04s | 2m51s |
+
+![Latency at the edge through the spike](../images/load-spike2-dashboard.png)
+
+![Throttling below 3%](../images/load-spike2-throttling.png)
+
+The two runs did not start from the same capacity, so the failure counts do not compare directly. The first had a third node standing; the second waited 60s for one. What changed cleanly is the failure mode: no Pod was restarted, and requests queued behind two overloaded Pods rather than being refused by restarting ones. Readiness still took both out at once, which left one Pod carrying the spike for a minute.
+
+The scale-up landed in `europe-north1-b` while `europe-north1-a` held both existing nodes, with no instance errors.
+
+Result: the liveness change removed restarts. A spike above resting capacity still fails requests until new capacity serves them, 2m51s from two nodes, and the only lever for that is capacity at rest.
+
+## Slice 9: Teardown
+
+```bash
+loadtest/loadgen.sh pull && loadtest/loadgen.sh down
+```
+
+![Only the cluster's nodes remain](../images/load-close-instances.png)
+
+```text
+networks: gke-vpc
+```
+
+The `loadgen` network was still listed straight after `down` and gone a minute later, because its deletion finished asynchronously.
+
+Result: the load generator, its firewall rule, subnet and VPC are deleted, and `gke-vpc` is the only network.
+
 ## Result
 
 | Run | Replicas | Settled saturation | Failed |
@@ -286,19 +351,21 @@ Result: a spike outran scale-out for 2.5 minutes, and the liveness probe turned 
 | C, HPA at 100m and 500m | 5 of 8, quota | 60 rps | 0 |
 | D, 350m and 1000m | 4 of 8, zone out of capacity | 100 rps | 0 |
 | D, nodes in three zones | 8 of 8 | **125 rps** | 0 |
-| Spike to 150 rps | 8 after 2.5 minutes | | 6.1% of sky |
+| Spike, liveness 2s, third node standing | 8 after 2m04s | | 6.1% of sky, 4 restarts |
+| Spike, liveness 5s, from two nodes | 8 after 2m51s | | 18.2% of sky, 0 restarts |
 
 | Finding | Outcome |
 | --- | --- |
 | The quota capped the HPA at five | Quota sized for eight replicas, a surge Pod and two stopping Pods |
 | A deploy during a stall fails, and recovers only after scale-down | Recorded |
 | A 500m limit throttled a single-process server | Limit at 1000m, request at 350m |
-| A zone ran out of `e2-standard-2` | Node pool in three zones |
+| A zone ran out of `e2-standard-2` | Node pool in three zones; a later scale-up landed in `europe-north1-b` |
 | Adding zones creates nodes above the maximum | Recorded; the autoscaler removes them |
-| Liveness restarted overloaded Pods | Six failures at a 5s timeout |
+| Liveness restarted overloaded Pods | Six failures at a 5s timeout; no restarts in the rerun |
+| A spike from two nodes waits for a node | 97s to a Pod on it, 2m51s to eight available |
 
 ## Open
 
-- The spike has not been rerun on the new liveness probe.
-- A scale-up into a second zone during a real shortage cannot be triggered on demand, so that path is configured, not observed.
-- A spike beyond two Pods' capacity fails requests until new Pods are ready. Only a higher minimum removes that.
+- A spike beyond two Pods' capacity fails requests until new capacity serves them. A higher `minReplicas` or a standing spare node is the lever, at the cost of capacity paid for at rest.
+- Readiness at a 2s timeout takes every overloaded Pod out together during a spike.
+- A scale-up into another zone during a real shortage cannot be triggered on demand, so that path is configured, not observed.

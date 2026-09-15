@@ -189,6 +189,8 @@ Milestone 1 proved the platform under deliberate failure with close to no traffi
 
 ### Phase 12: Load and autoscaling
 
+**Status:** Complete
+
 Every run uses the same scripts and every step changes one variable, so each difference in the results has one cause.
 
 - Add the `CADVISOR`, `HPA`, `DEPLOYMENT` and `POD` metric packages, and dashboard panels for sky's desired and available replicas and its throttled CPU.
@@ -215,7 +217,21 @@ Each step is one pull request. The worklog splits by concern: 12a for the baseli
 
 Deferred: sudden node loss and drain under load, autoscaling nginx, and custom metrics.
 
-**Exit criteria:** A results table with one row per run: configuration, saturation rate, p95 at saturation, errors during rollout, peak replicas, nodes, and time from the HPA's decision to a Ready Pod on new capacity. The rollout error window, the quota stall and scale-down are each recorded with their recovery. The load generator and its VPC are deleted, and `gke-vpc` is the only network.
+**Exit criteria met:** Every run is recorded below and in its worklog. A rollout at 20 rps went from 73 failed requests to none. The HPA stalled at five of eight on the quota, a deploy during the stall failed, and both recovered once sky scaled down. Resized, eight Pods held 125 rps with no failures, and a Pod ran on a new node 97s after the HPA's decision. The load generator and its VPC are deleted, and `gke-vpc` is the only network.
+
+| Run | Configuration | Saturation | p95 at saturation | Failed | Peak replicas | Nodes |
+| --- | --- | --- | --- | --- | --- | --- |
+| A ramp | 2 replicas, 100m and 500m | 40 rps | 230ms | 6 of 10,331 | 2 | 2 |
+| A rollout | no `preStop` | | | 73 of 6,357, 20.4s window | 2 | 2 |
+| B rollout | `preStop` 35s | | | 0 connection failures | 2 | 2 |
+| B2 ramp | keep-alive 620s | | | 0 of 7,150 | 2 | 2 |
+| C0 ramp | settled steps | 40 rps | 251ms | 0 of 34,187 | 2 | 2 |
+| C ramp | HPA, quota 3 CPU | 60 rps | 240ms | 0 of 22,132 | 5 of 8 | 2 |
+| D ramp | 350m and 1000m | 100 rps | 489ms | 0 of 47,951 | 4 of 8 | 2, zone out of capacity |
+| D ramp, three zones | nodes in a, b, c | 125 rps | 394ms | 0 of 65,361 | 8 | 3 |
+| Spike to 150 rps | liveness 5s, six failures | | | 18.2% of sky | 8 after 2m51s | 2 to 3 |
+
+Two limits are written down rather than assumed. A spike above resting capacity fails requests until new capacity serves it, 2m51s from two nodes, and only capacity at rest removes that. And a scale-up into another zone during a shortage is configured and seen to work on a normal day, but cannot be triggered on demand.
 
 Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md), [Phase 12b worklog](worklog/phase-12b-rollout-baseline.md), [Phase 12c worklog](worklog/phase-12c-rollouts-connections.md), [Phase 12d worklog](worklog/phase-12d-autoscaling.md)
 
@@ -276,6 +292,6 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 ## Immediate next step
 
-Milestone 1 is closed. The platform is guarded, the image is project owned and deployed by digest, delivery is keyless, the workload is public through Gateway API, and every claim above has evidence.
+Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
 
-Next is Phase 12, which puts the platform under load before it carries the manifest reviewer. Its first pull request adds the metric packages, the dashboard panels and the load test harness, so the baseline and every later run are measured the same way.
+Next is Phase 13, the deterministic manifest reviewer, which is the first workload this platform exists to carry.

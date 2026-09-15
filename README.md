@@ -83,12 +83,12 @@ flowchart TB
 
 ## Status
 
-Milestone 1 is complete. Every platform claim has recorded commands, results and evidence.
+Milestones 1 and 2 are complete. Every platform claim has recorded commands, results and evidence.
 
 | Area | State |
 | --- | --- |
 | Foundation | Private GKE on modular Terraform, custom VPC, Cloud NAT, DNS-only control plane |
-| Workloads | Two, `nginx` and `sky`, two replicas each, behind one Gateway |
+| Workloads | Two behind one Gateway: `nginx` at two replicas, `sky` autoscaled from two to eight |
 | Guardrails | Pod Security `restricted`, namespace budget, default-deny NetworkPolicies |
 | Delivery | Keyless, repository-scoped federation, gated rollout, required checks on `main` |
 | Ingress | Public Gateway on a custom domain, managed TLS, HTTP to HTTPS redirect |
@@ -96,8 +96,9 @@ Milestone 1 is complete. Every platform claim has recorded commands, results and
 | Observability | Uptime check, one actionable alert, dashboard as code |
 | Proven | Both failure drills run and recorded |
 | Hardened | One network, vulnerability scanning on, logs queryable |
+| Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 
-Next: Milestone 2, load and autoscaling, which measures the platform under load before it carries the manifest reviewer.
+Next: Milestone 3, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
 
 ## Measured
 
@@ -112,6 +113,7 @@ Next: Milestone 2, load and autoscaling, which measures the platform under load 
 | Connection failures in a rollout, after `preStop` | 0 across three rollouts, from 72 |
 | Closed-connection 503s in a ramp, after keep-alive | 0 of 7,150, from 6 |
 | sky saturation, autoscaled to eight replicas | 125 requests a second, p95 394ms, no failures |
+| HPA decision to a Pod running on a new node | 97s |
 
 Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md) and [Phase 12d](worklog/phase-12d-autoscaling.md).
 
@@ -132,6 +134,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 | Resilience | Node floor of two, disruption budgets on both workloads, spread that survives a rollout, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
 | Failure drills | Deliberate outage with a measured three minute detection floor, and a failed rollout contained by `maxUnavailable: 0` | [Observability](decisions.md#observability) | [Phase 10](worklog/phase-10-failure-drills.md) |
 | Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
+| Load and autoscaling | k6 harness on a throwaway load generator, `preStop` and keep-alive for clean rollouts, HPA on sky with requests and quota sized from measured load, nodes across three zones | [Load and scaling](decisions.md#load-and-scaling) | [Phase 12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
 
 ## Documentation
 
