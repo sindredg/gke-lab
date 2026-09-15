@@ -92,28 +92,38 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -B "$branch"
 
-          printf '%s\n' "$HEAD_SHA" > "$pin"
-          git add "$pin"
+          # The checkout fetched main alone. Without a local copy of the bump branch,
+          # --force-with-lease has nothing to compare the remote against, and rejects
+          # every push once the branch exists. The fetch fails while the branch does
+          # not exist yet, which is expected.
+          git fetch --depth 1 origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
+          carried=$(git show "origin/${branch}:${pin}" 2>/dev/null | tr -d '[:space:]' || true)
 
-          if git diff --cached --quiet; then
-            echo "Nothing to commit; the branch already carries this pin."
+          if [ "$carried" = "$HEAD_SHA" ]; then
+            echo "${branch} already carries ${HEAD_SHA:0:7}."
+          else
+            git checkout -B "$branch"
+            printf '%s\n' "$HEAD_SHA" > "$pin"
+            git add "$pin"
+
+            subject=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" -q '.commit.message' | head -1)
+            git commit -m "ci: pin ${HEAD_SHA:0:7} from the sky repository" \
+                       -m "${subject}" \
+                       -m "Opened by the Watch sky workflow. Merging builds and rolls out."
+            git push --force-with-lease origin "$branch"
+          fi
+
+          # gh pr view also finds closed and merged pull requests, so only an open one counts.
+          if [ "$(gh pr view "$branch" --json state -q .state 2>/dev/null)" = "OPEN" ]; then
+            echo "The open pull request carries ${HEAD_SHA:0:7}."
             exit 0
           fi
 
-          subject=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" -q '.commit.message' | head -1)
-          git commit -m "ci: pin ${HEAD_SHA:0:7} from the sky repository" \
-                     -m "${subject}" \
-                     -m "Opened by the Watch sky workflow. Merging builds and rolls out."
-          git push --force-with-lease origin "$branch"
-
-          if gh pr view "$branch" --json number >/dev/null 2>&1; then
-            echo "The open pull request now carries ${HEAD_SHA:0:7}."
-            exit 0
-          fi
-
-          gh pr create \
+          # GitHub refuses a pull request from the workflow token unless the repository
+          # allows Actions to create them. The branch is pushed either way, so a refusal
+          # is reported with the link to open it by hand rather than failing the run.
+          if ! gh pr create \
             --base main \
             --head "$branch" \
             --title "ci: pin ${HEAD_SHA:0:7} from the sky repository" \
@@ -132,4 +142,6 @@ jobs:
               "" \
               "CI does not run on this pull request: it was opened with the workflow" \
               "token, and GitHub does not raise workflow events from those. The push" \
-              "to main after merging does run it.")"
+              "to main after merging does run it.")"; then
+            echo "::warning::Could not open the pull request. Open it from https://github.com/${GITHUB_REPOSITORY}/compare/main...${branch}, or allow GitHub Actions to create pull requests in the repository settings."
+          fi
