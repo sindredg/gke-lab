@@ -111,8 +111,9 @@ Next: Milestone 2, load and autoscaling, which measures the platform under load 
 | Requests failed during a rollout at 20 rps | 1.14%, error window up to 20.4s |
 | Connection failures in a rollout, after `preStop` | 0 across three rollouts, from 72 |
 | Closed-connection 503s in a ramp, after keep-alive | 0 of 7,150, from 6 |
+| sky saturation, autoscaled to eight replicas | 125 requests a second, p95 394ms, no failures |
 
-Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md) and [Phase 12c](worklog/phase-12c-rollouts-connections.md).
+Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md) and [Phase 12d](worklog/phase-12d-autoscaling.md).
 
 ## Platform capabilities
 
@@ -150,6 +151,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Phase 12a load baseline worklog](worklog/phase-12a-load-baseline.md)
 - [Phase 12b rollout baseline worklog](worklog/phase-12b-rollout-baseline.md)
 - [Phase 12c rollouts and connections worklog](worklog/phase-12c-rollouts-connections.md)
+- [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)

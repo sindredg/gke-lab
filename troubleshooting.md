@@ -725,3 +725,15 @@ gcloud compute instance-groups managed list-errors gke-k8-lab-general-7d6bb7c7-g
 The autoscaler retries after a backoff, so the Pods wait for the zone rather than failing. Each Pod only fitted two to a node at a 350m request, so the two nodes held four.
 
 **Fix:** The node pool lists all three zones of `europe-north1` in `node_locations`, so a scale-up can land in a zone with capacity. The cluster's own `node_locations` lists the other two, because a zonal cluster's field holds only its additional zones. A shortage is Google's capacity, not the project's quota, so `gcloud compute project-info describe` shows nothing wrong.
+
+### Adding zones to a node pool creates nodes above its maximum
+
+**Issue:** An apply that added `europe-north1-b` and `-c` to the node pool left six nodes, against a pool maximum of three.
+
+**Cause:** GKE creates the pool's initial node count in each zone it adds. The pool reports `initialNodeCount: 2`, so it created two nodes in each new zone at 17:42:10, while the apply was still running.
+
+```bash
+gcloud container node-pools describe general --cluster k8-lab --zone europe-north1-a --format="yaml(locations,autoscaling,initialNodeCount)"
+```
+
+**Fix:** None needed. The cluster autoscaler removed three nodes at 17:55:29 and 17:56:11, and running Pods were rescheduled under their disruption budgets with no failed requests. Wait for the pool to settle before a load test, or the run measures capacity the pool will not keep.
