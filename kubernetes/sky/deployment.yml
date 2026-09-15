@@ -1,4 +1,4 @@
-# Runs and maintains two healthy sky replicas.
+# Runs sky. The HorizontalPodAutoscaler in hpa.yml owns the replica count, between two and eight.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +8,8 @@ metadata:
     app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
-  replicas: 2
+  # No replicas field. The pipeline applies this manifest on every deploy, and a replicas value here would reset
+  # whatever the HPA has scaled to.
   revisionHistoryLimit: 3
 
   selector:

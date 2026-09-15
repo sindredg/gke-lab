@@ -510,9 +510,9 @@ Alternatives: Page on a single failing location, or on a proportion of locations
 
 ### Workload autoscaling
 
-Decision: A `HorizontalPodAutoscaler` on sky, scaling on CPU utilization at 70% of the request with a minimum of two replicas. The replica count leaves the Deployment manifest.
+Decision: A `HorizontalPodAutoscaler` on sky between two and eight replicas, scaling on CPU utilization at 70% of the request, with scale-up stabilization of 0s and scale-down stabilization of 300s written out. The replica count leaves the Deployment manifest.
 
-Why: uvicorn serves each Pod from one process, so CPU tracks load closely and the metric is already collected. The minimum of two keeps the spread and the disruption budget intact at rest. nginx serves a static page and is not the bottleneck.
+Why: uvicorn serves each Pod from one process, so CPU tracks load closely and the metric is already collected. The minimum of two keeps the spread and the disruption budget intact at rest, and a floor of one would save nothing, because the node pool's floor of two is the cost. nginx serves a static page and is not the bottleneck. The stabilization windows are the defaults: react to load at once, and wait five minutes before removing a Pod.
 
 Cost: Utilization is measured against the request, so a low request scales on almost no load, and `limits.cpu` in the quota caps the replica count before node capacity does. The pipeline applies the Deployment, so `replicas` has to leave both the manifest and its last-applied record, or a deploy resets the count. The pipeline Role cannot create the HPA, so an operator applies it.
 

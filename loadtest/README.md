@@ -6,7 +6,7 @@ The scripts behind [Phase 12](../plan.md#phase-12-load-and-autoscaling). Every r
 | --- | --- | --- |
 | `loadgen.sh` | operator | creates and deletes the load generator VM, its VPC, and an IAP-only SSH rule |
 | `ramp.js` | load generator | steps sky through fixed arrival rates until a settled step's p95 exceeds 500ms or its errors exceed 1% |
-| `rollout.js` | load generator | holds a constant rate during a rollout and logs every failed request |
+| `rollout.js` | load generator | holds a constant rate, during a rollout or a deploy, and logs every failed request |
 | `record.sh` | operator | snapshots the HPA, Deployments, Pods, nodes and quota every 5s, and streams events |
 
 Results land in `results/`, which git ignores. The worklog carries what they show.
@@ -15,10 +15,11 @@ Results land in `results/`, which git ignores. The worklog carries what they sho
 
 Each request is tagged `settling` for the first `SETTLE_SECONDS` of its step and `settled` after. Only settled requests decide the step, and the decision waits for 10s of them.
 
-| Run | `STEP_SECONDS` | `SETTLE_SECONDS` | Why |
-| --- | --- | --- | --- |
-| fixed replicas | 60 | 15 | skips the first seconds of a step, which can be slow for reasons that pass |
-| autoscaling | 180 | 90 | gives the HPA time to add Pods before the step counts |
+| Run | `STEPS` | `STEP_SECONDS` | `SETTLE_SECONDS` | Why |
+| --- | --- | --- | --- | --- |
+| fixed replicas | default, from 5 | 60 | 15 | skips the first seconds of a step, which can be slow for reasons that pass |
+| C0, fixed-replica reference | default, from 5 | 180 | 90 | the full curve, once |
+| C and D, autoscaling | `20,40,60,80,100,125,150` | 120 | 75 | starts where the HPA is already acting, and gives it time to add Pods before a step counts |
 
 Every request is still reported per step, settling ones included, as `http_req_duration{scenario:stepNN_...}`.
 
@@ -51,11 +52,11 @@ loadtest/loadgen.sh ssh --command='vmstat 5'
 Start the recorder on the operator's machine, then the run on the generator.
 
 ```bash
-loadtest/record.sh c0-ramp
+loadtest/record.sh c-ramp
 ```
 
 ```bash
-cd ~/loadtest && k6 run -e RUN=c0-ramp -e STEP_SECONDS=180 -e SETTLE_SECONDS=90 ramp.js
+cd ~/loadtest && k6 run -e RUN=c-ramp -e STEPS=20,40,60,80,100,125,150 -e STEP_SECONDS=120 -e SETTLE_SECONDS=75 ramp.js
 ```
 
 For a rollout run, let `rollout.js` hold its rate for a minute, then restart each workload in turn.
@@ -83,11 +84,11 @@ loadtest/loadgen.sh down
 | A | ramp, rollout | `a-ramp`, `a-rollout` | 60s, judged from the step's first request |
 | B | rollout | `b-rollout`, `b-rollout-2` | |
 | B2 | ramp | `b2-ramp` | 60s, judged from the step's first request |
-| C0 | ramp | `c0-ramp` | 180s, settle 90s |
-| C | ramp | `c-ramp` | 180s, settle 90s |
-| D | ramp | `d-ramp` | 180s, settle 90s |
+| C0 | ramp | `c0-ramp` | 180s, settle 90s, from 5 rps |
+| C | ramp, deploy under held load | `c-ramp`, `c-stall` | 120s, settle 75s, from 20 rps |
+| D | ramp | `d-ramp` | 120s, settle 75s, from 20 rps |
 
-`RATE` for the rollout runs is 20, about half the saturation rate from `a-ramp`. C0 is the fixed-replica reference that C and D compare against, on the same step and settle times.
+`RATE` for the rollout runs is 20, about half the saturation rate from `a-ramp`. `c-stall` holds `RATE=60`, enough to keep the HPA at its quota cap while a deploy runs.
 
 ## Reading a run
 

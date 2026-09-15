@@ -10,7 +10,7 @@
 // noise and measures capacity before the HPA has acted. Every request is still reported per step.
 //
 // Usage, from this directory: k6 run -e RUN=a-ramp ramp.js
-// Autoscaling runs:           k6 run -e RUN=c-ramp -e STEP_SECONDS=180 -e SETTLE_SECONDS=90 ramp.js
+// Autoscaling runs:           k6 run -e RUN=c-ramp -e STEPS=20,40,60,80,100,125,150 -e STEP_SECONDS=120 -e SETTLE_SECONDS=75 ramp.js
 import http from 'k6/http';
 import exec from 'k6/execution';
 import { check } from 'k6';

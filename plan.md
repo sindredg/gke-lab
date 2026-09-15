@@ -202,12 +202,12 @@ Every run uses the same scripts and every step changes one variable, so each dif
 | B | `preStop` sleep and a longer `terminationGracePeriodSeconds`, sized from A | Rollout under load | No errors during a rollout. |
 | B2 | `--timeout-keep-alive 620` on sky and `keepalive_timeout 620s` on nginx, above the load balancer's 600s | Ramp | No 503s from closed backend connections. |
 | C0 | None, with each ramp step judged after it settles | Ramp, 180s steps settled after 90s | Saturation near 40 rps: the fixed-replica reference C and D compare against. |
-| C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp | Stops at 5 replicas, where `limits.cpu` reaches 3000m of 3000m. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
+| C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp from 20 rps, 120s steps settled after 75s; a deploy under held load | Replicas stop at 5 from about 20 rps, where `limits.cpu` reaches 3000m of 3000m, while the HPA wants 8. Saturation near 100 rps, five Pods at C0's 20 each. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
 | D | Requests, limits and quota sized from A, `maxReplicas` beyond two nodes' capacity | Ramp | A Pod goes `Pending` and a third node joins. The pool returns to two nodes after load stops. |
 
 Each step is one pull request. The worklog splits by concern: 12a for the baseline ramp, 12b for the baseline rollout, 12c for rollouts and connections (B, B2), and 12d for autoscaling (C, D).
 
-- A ramp stops at the first step where p95 exceeds 500ms or errors exceed 1%, judged on the requests sent after the step settles: 15s into a 60s step, 90s into the 180s steps C0, C and D use, so the HPA has time to act.
+- A ramp stops at the first step where p95 exceeds 500ms or errors exceed 1%, judged on the requests sent after the step settles: 15s into a 60s step, 90s into C0's 180s steps, and 75s into the 120s steps C and D use, so the HPA has time to act.
 - `replicas` leaves sky's Deployment in C. Its last-applied record is edited first, or the pipeline's next apply drops sky to one Pod.
 - The pipeline Role cannot create an HPA, so an operator applies it.
 - The quota in D covers `maxReplicas`, one surge Pod, the smoke test Pod and nginx, and `pods` rises with it.
