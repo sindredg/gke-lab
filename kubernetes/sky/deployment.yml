@@ -30,6 +30,9 @@ spec:
       serviceAccountName: sky
       automountServiceAccountToken: false
 
+      # The preStop sleep counts against this, so 40 leaves 20s for in-flight requests once the sleep ends.
+      terminationGracePeriodSeconds: 40
+
       # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
       topologySpreadConstraints:
         # Without this, the calculation counts Pods from the old ReplicaSet too, so every
@@ -106,6 +109,12 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+
+          # Keeps a stopping Pod serving until the load balancer has let it go. Without it, uvicorn stopped listening within a second and the endpoint was detached 12 to 13s later, and every request routed there in between failed. SIGTERM reaches the server only after the sleep.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 20
 
           # A Python interpreter needs more headroom than NGINX. Two replicas of this plus two of nginx stay inside the namespace budget.
           resources:
