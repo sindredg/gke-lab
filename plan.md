@@ -200,7 +200,7 @@ Every run uses the same scripts and every step changes one variable, so each dif
 | --- | --- | --- | --- |
 | A | None | Ramp, rollout under load | sky saturates on its CPU limit first. A rollout drops requests, because nothing covers the time the load balancer takes to stop routing to a terminating Pod. |
 | B | `preStop` sleep and a longer `terminationGracePeriodSeconds`, sized from A | Rollout under load | No errors during a rollout. |
-| B2 | `--timeout-keep-alive 620` on sky, above the load balancer's 600s | Ramp | No 503s from closed backend connections. |
+| B2 | `--timeout-keep-alive 620` on sky and `keepalive_timeout 620s` on nginx, above the load balancer's 600s | Ramp | No 503s from closed backend connections. |
 | C | HPA on sky, 2 to 8 replicas at 70% CPU, current quota | Ramp | Stops at 5 replicas, where `limits.cpu` reaches 3000m of 3000m. A deploy during the stall fails at the rollout gate. Both recover once load stops. |
 | D | Requests, limits and quota sized from A, `maxReplicas` beyond two nodes' capacity | Ramp | A Pod goes `Pending` and a third node joins. The pool returns to two nodes after load stops. |
 

@@ -61,7 +61,7 @@ spec:
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky@sha256:7af41229bb716ba3586cbb4887c0f9f13575724cf586ae8fc35b0403956f7851
           imagePullPolicy: IfNotPresent
 
-          # Repeats the image's own command to add one flag. uvicorn logs every
+          # Repeats the image's own command to add two flags. uvicorn logs every
           # request by default, and the only requests here are probes: two
           # readiness checks every five seconds, two liveness checks every ten,
           # and the load balancer's own health checks. With WORKLOADS logging
@@ -75,6 +75,10 @@ spec:
             - --port
             - "8080"
             - --no-access-log
+            # The load balancer reuses a backend connection for up to 600s. uvicorn's default of 5s
+            # closed connections it was about to reuse, and each of those requests got a 503.
+            - --timeout-keep-alive
+            - "620"
 
           securityContext:
             allowPrivilegeEscalation: false

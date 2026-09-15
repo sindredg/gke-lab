@@ -3,6 +3,9 @@ server {
     listen 8080;
     server_name _;
 
+    # The load balancer reuses a backend connection for up to 600s. The image's 65s let NGINX close a connection the load balancer was about to reuse, and that request got a 503.
+    keepalive_timeout 620s;
+
     root /usr/share/nginx/html;
     index index.html;
 

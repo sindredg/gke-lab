@@ -574,6 +574,16 @@ Cost: Every replaced Pod stays `Terminating` 35s longer and holds its share of t
 
 Alternatives: An `exec` hook running `sleep`, which depends on a shell neither image is required to carry. Connection draining on the backend service, which keeps connections that are already open and does nothing for a Pod that has stopped listening before its endpoint is removed.
 
+### Backend keep-alive
+
+Decision: Keep idle backend connections open for 620s on both workloads: `--timeout-keep-alive 620` on uvicorn and `keepalive_timeout 620s` on NGINX.
+
+Why: The load balancer reuses a backend connection for up to 600s. A backend that closes it sooner can close it just as a request is sent on it, and the load balancer answers that request with a 503 `backend_connection_closed_before_data_sent_to_client`. uvicorn closed after 5s and NGINX after 65s. The baseline ramp saw 6 of these 503s, and the rollout runs saw 1, 3 and 8, including one on nginx and several outside any rollout.
+
+Cost: Idle connections from the load balancer's proxies stay open for minutes rather than seconds, each holding a file descriptor and a little memory on the Pod.
+
+Alternatives: Keep the defaults and retry on the client, which hides the error from one client and leaves it for every other.
+
 ## Project and process
 
 ### Project focus
