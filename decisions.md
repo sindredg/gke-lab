@@ -538,11 +538,13 @@ Alternatives: vegeta or wrk2, which hold a rate and script poorly. Locust or JMe
 
 ### Saturation criterion
 
-Decision: A ramp step fails when p95 latency exceeds 500ms or errors exceed 1%, and the run stops at the first failing step.
+Decision: A ramp step fails when p95 latency exceeds 500ms or errors exceed 1% among the requests sent after the step settles, and the run stops at the first failing step. A step settles 15s into a 60s step, or 90s into the 180s steps an autoscaling run uses.
 
-Why: Stopping at the point of saturation measures capacity without holding the platform in overload while the uptime alert is armed.
+Why: Stopping at the point of saturation measures capacity without holding the platform in overload while the uptime alert is armed. Judging a step from its first request let its opening seconds end a run: the keep-alive ramp stopped 3.4s into its 40 rps step, on 118 requests. An autoscaled workload is slow at the start of a step by design while the HPA adds Pods, so that part of the step says nothing about capacity.
 
-Alternatives: A fixed ramp to a fixed peak, which compares more simply and overloads the platform on every run.
+Cost: A failing step runs for its settle time plus 10s before the run stops, so overload lasts longer. Runs judged with and without a settle window do not compare directly, which is why C0 reruns the baseline.
+
+Alternatives: A fixed ramp to a fixed peak, which compares more simply and overloads the platform on every run. A longer `delayAbortEval` from the start of the run, which protects only the first step.
 
 ### Load source
 
