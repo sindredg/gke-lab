@@ -380,6 +380,16 @@ Cost: The digest in `kubernetes/nginx/deployment.yml` no longer matches what run
 
 Alternatives: Commit the digest back to `main`, or substitute a placeholder at deploy time.
 
+### Upstream pin automation
+
+Decision: A scheduled workflow, `Watch sky`, opens a pull request that moves the commit in `.github/sky-upstream.ref` to the head of [sindredg/sky](https://github.com/sindredg/sky). Merging it is the review.
+
+Why: `deploy-sky.yml` fetches a commit rather than a branch, so what is built is what was reviewed and a re-run of an old run rebuilds the same source. Tracking `main` would remove the bump and that property together, and leaving the bump to be typed by hand lets the pin drift until someone remembers. Proposing it keeps the decision on a merge. The workflow fetches the commit during the run, so a pin that cannot resolve fails there rather than in a deploy.
+
+Cost: The pin is a data file only because GitHub rejects a workflow-token push that touches `.github/workflows`, and no permission lifts it. The job holds `contents: write` and `pull-requests: write`, more than any other workflow here, which is what keeps the pin as data rather than as a credential. Two gaps remain open and are recorded in the [worklog](worklog/upstream-pin-automation.md): the repository does not allow Actions to create pull requests, so every bump so far has been opened by hand from the link in the run's warning, and a pull request opened by the workflow token raises no workflow events, so `ci.yml` would not run on it before merge. Turning the setting on without closing the second would trade a manual click for a hole in [merge protection](#merge-protection).
+
+Alternatives: Track `main` and rebuild on a schedule, which removes the review boundary. Hold a personal access token, which buys the workflow-file write and gives this repository the one long-lived credential it does not otherwise have. Dependabot or Renovate, neither of which tracks a bare commit in a data file.
+
 ## Ingress and TLS
 
 ### Ingress mechanism

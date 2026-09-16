@@ -83,7 +83,7 @@ flowchart TB
 
 ## Status
 
-Milestones 1 and 2 are complete. Every platform claim has recorded commands, results and evidence.
+Milestones 1 and 2 are complete. Every platform claim has recorded commands, results and evidence, and the two gaps that are not yet closed are recorded with them.
 
 | Area | State |
 | --- | --- |
@@ -129,6 +129,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 | Policy | Pod Security `restricted` enforced, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md), [Phase 5](worklog/phase-05-custom-image.md) |
 | Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
 | Deployment | Keyless GitHub Actions delivery for both workloads, repository-scoped federation, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
+| Upstream tracking | Scheduled workflow that proposes the sky commit bump as a pull request, with the merge as the review | [Upstream pin automation](decisions.md#upstream-pin-automation) | [Pin automation](worklog/upstream-pin-automation.md) |
 | Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS, HTTP to HTTPS redirect, path routing to both workloads | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
 | Observability | Cluster telemetry, uptime check on `/healthz`, one alert policy, dashboard as code, deployment and cost numbers | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
 | Resilience | Node floor of two, disruption budgets on both workloads, spread that survives a rollout, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
@@ -155,6 +156,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Phase 12b rollout baseline worklog](worklog/phase-12b-rollout-baseline.md)
 - [Phase 12c rollouts and connections worklog](worklog/phase-12c-rollouts-connections.md)
 - [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
+- [Upstream pin automation worklog](worklog/upstream-pin-automation.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)
