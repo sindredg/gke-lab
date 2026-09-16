@@ -1,6 +1,6 @@
-# Secure GKE Workload Platform
+# Kubernetes on GKE
 
-A secure, publicly reachable Kubernetes platform on Google Cloud, built and documented one phase at a time, for those who want to see how a private cluster, keyless delivery, workload guardrails and managed TLS fit together in practice.
+A Kubernetes cluster on Google Cloud, set up with Terraform and deployed to from GitHub Actions. It currently runs two workloads, `nginx` and `sky`, behind a Gateway with managed TLS. Each phase has a worklog, and each design choice is recorded in [decisions.md](decisions.md).
 
 ## Live
 
@@ -158,6 +158,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
 - [Upstream pin automation worklog](worklog/upstream-pin-automation.md)
 - [Manifest linting worklog](worklog/manifest-linting.md)
+- [Repository review worklog](worklog/repository-review.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)
