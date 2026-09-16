@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
+      - 'kubernetes/nginx/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 

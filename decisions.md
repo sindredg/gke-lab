@@ -386,9 +386,9 @@ Alternatives: A single workflow with conditional steps, or a reusable workflow c
 
 Decision: Render this run's digest into `deployment.yml` with `kubectl set image --local` and apply the result, instead of patching the live Deployment.
 
-Why: A patch only ever changed the fields it named. Every other edit to `deployment.yml` merged to `main` and never reached the cluster, which is how a Deployment declaring five environment variables ran with one. Applying carries the image and the rest of the manifest in the same rollout, and an apply that changes nothing is a no-op.
+Why: A patch only ever changed the fields it named. Every other edit to `deployment.yml` merged to `main` and never reached the cluster, which is how a Deployment declaring five environment variables ran with one. Applying carries the image and the rest of the manifest in the same rollout, and an apply that changes nothing is a no-op. Both deploy workflows also trigger on their workload's manifest directory, so a change to `deployment.yml` alone rolls out on merge. Until 2026-09-16 the nginx workflow triggered on `app/**` only, and a manifest-only change waited for the next image change.
 
-Cost: Only the Deployment is applied. The namespace, quotas, policies and routes stay manual, because letting the pipeline apply them means granting it authority over its own RBAC.
+Cost: Only the Deployment is applied. The namespace, quotas, policies and routes stay manual, because letting the pipeline apply them means granting it authority over its own RBAC. A change to another file in `kubernetes/nginx/`, such as the Service, still triggers a full build and rollout that does not apply the file that changed.
 
 Alternatives: Apply the whole directory, which needs a far broader Role. Keep patching and apply by hand, which is what failed.
 
