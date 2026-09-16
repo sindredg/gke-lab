@@ -394,6 +394,18 @@ Why: The validation workflow's claim is that it holds `contents: read` and canno
 
 Alternatives: A single workflow with conditional steps, or a reusable workflow called by both.
 
+### Shared smoke test
+
+Decision: Keep `Deploy` and `Deploy sky` as separate workflows, but move the in-cluster smoke test into the `./.github/actions/smoke-test` composite action both call.
+
+Why: The two workflows were 91% identical line for line, and the smoke step was the worst of it: 37 lines repeated byte for byte apart from the Pod name, the client label and the URL. Sixteen of those lines are the `securityContext` the restricted Pod Security standard requires, so the duplication was not only length. A change to what the standard demands had to be made twice, correctly, or the second workload's smoke Pod would be rejected at admission while the first still passed.
+
+The workflows themselves stay separate. That is the [delivery workflow separation](#delivery-workflow-separation) decision and it is unchanged: what is shared here is one step, not the credential boundary.
+
+Cost: The nginx smoke Pod is now named `smoke-nginx-<run id>` rather than `smoke-<run id>`, because the action derives the name from the Service. The Pod is created and deleted inside the step, so nothing outside it refers to the name. The action is also a second file to open when reading either pipeline.
+
+Alternatives: A `workflow_call` reusable workflow covering the whole job, which would cut roughly three times as much but has to carry `build_only` and the upstream fetch as inputs, leaving a conditional shared workflow in place of two readable ones. Or leaving the duplication and relying on a reviewer to catch drift, which is what the repeated `securityContext` already argues against.
+
 ### Deployment update method
 
 Decision: Render this run's digest into `deployment.yml` with `kubectl set image --local` and apply the result, instead of patching the live Deployment.
