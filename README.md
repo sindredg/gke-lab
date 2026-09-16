@@ -157,6 +157,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Phase 12c rollouts and connections worklog](worklog/phase-12c-rollouts-connections.md)
 - [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
 - [Upstream pin automation worklog](worklog/upstream-pin-automation.md)
+- [Manifest linting worklog](worklog/manifest-linting.md)
 - [Availability drill postmortem](worklog/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)

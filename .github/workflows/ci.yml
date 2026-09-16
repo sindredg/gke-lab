@@ -85,10 +85,5 @@ jobs:
             -ignore-missing-schemas \
             kubernetes/
 
-      - name: Report kube-linter findings (advisory)
-        run: |
-          {
-            echo "### kube-linter findings (advisory in Phase 3)"
-            echo ""
-            kube-linter lint kubernetes/ 2>&1 | sed 's/^/    /' || true
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Lint manifests for security and reliability
+        run: kube-linter lint --config .kube-linter.yaml kubernetes/

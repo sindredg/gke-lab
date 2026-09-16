@@ -80,6 +80,7 @@ spec:
 
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
@@ -121,3 +122,16 @@ spec:
             limits:
               cpu: 250m
               memory: 128Mi
+
+          # nginx writes its PID and temp files to /tmp and renders its config into conf.d.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: conf-d
+              mountPath: /etc/nginx/conf.d
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: conf-d
+          emptyDir: {}

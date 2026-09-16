@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/part-of: k8-lab
 spec:
   minAvailable: 1
+  # Lets a drain evict a broken Pod the budget would otherwise hold.
+  unhealthyPodEvictionPolicy: AlwaysAllow
 
   selector:
     matchLabels:

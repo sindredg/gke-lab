@@ -1,0 +1,4 @@
+checks:
+  exclude:
+    # Replicas spread with topologySpreadConstraints, which this check does not recognise.
+    - no-anti-affinity

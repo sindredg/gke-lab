@@ -52,6 +52,8 @@ Decision: Spread replicas across nodes with a `topologySpreadConstraints` rule s
 
 Why: A required rule would leave the second replica `Pending` whenever the pool sits at its floor, turning a resilience measure into an outage. With `maxSkew: 1` across exactly two nodes, `DoNotSchedule` would also refuse to reschedule during a drain, because the surviving node would sit at skew 2. The preference keeps replicas apart during the node replacements the Regular channel performs underneath a running workload.
 
+Both budgets set `unhealthyPodEvictionPolicy: AlwaysAllow`. The default refuses to evict a Pod while the budget is unmet, even one that is not Ready and serves nothing, so a crashlooping replica could hold the drain the budget exists to pace.
+
 Cost: The budget had to wait for the node floor. On a pool that can scale to one node, `minAvailable` blocks the drain an automatic upgrade depends on, so the floor of two and the budgets shipped as one change.
 
 Alternatives: Required anti-affinity, or accepting co-located replicas.
@@ -127,6 +129,16 @@ Why: Restricted is the strongest of the three standards and rejects the workload
 Cost: The level could only be raised once the image stopped running as root. Phase 4 enforced `baseline` for that reason; the Phase 5 image runs as UID 101 and declares the fields the standard requires.
 
 Alternatives: Remain on `baseline`, leave the namespace unlabelled, or add an external policy engine.
+
+### Read-only root filesystem
+
+Decision: Run both workloads with `readOnlyRootFilesystem: true`, and give each only the writable paths its process needs as `emptyDir` volumes: `/tmp` for sky, and `/tmp` and `/etc/nginx/conf.d` for nginx.
+
+Why: A process that cannot write to its own image cannot persist a change to it. The restricted standard does not require it, so it has to be declared. nginx's paths come from the image rather than from guessing: `nginx.conf` puts the PID and every temp path under `/tmp`, and the entrypoint renders the page's template into `conf.d` at startup.
+
+Cost: The nginx entrypoint does not fail when `conf.d` is unwritable. It logs an error and starts nginx with no server block, which runs, reports healthy workers, and refuses every connection. The readiness probe is the only thing that catches that, which is one more reason the probe targets `/healthz` rather than being removed. The [worklog](worklog/manifest-linting.md) records the local runs that found it.
+
+Alternatives: Leave the root writable, which kube-linter flags. Point `NGINX_ENVSUBST_OUTPUT_DIR` under `/tmp` and change the `include` in `nginx.conf` to match, which saves one volume by editing the image's own configuration.
 
 ### Namespace network isolation
 
@@ -322,13 +334,13 @@ Alternatives: [Pin by tag](https://docs.github.com/en/actions/security-for-githu
 
 ### Kubernetes security linting
 
-Decision: Run [kube-linter](https://docs.kubelinter.io/) in advisory mode and publish its findings to the run summary. Make it blocking once Phase 4 and Phase 5 close the findings it reports.
+Decision: Run [kube-linter](https://docs.kubelinter.io/) with its default checks as a blocking step in the `Kubernetes` job, excluding `no-anti-affinity` in `.kube-linter.yaml`.
 
-Why: Its three current findings need a non-root image and a scheduling decision, which are later phases. A check that cannot pass yet would either block all work or be ignored.
+Why: It started advisory in Phase 3, because its findings needed a non-root image and a scheduling decision that came later. The plan was to make it blocking once Phases 4 and 5 closed them. That did not happen until 2026-09-16, and by then it reported four findings nobody was required to read, two of them real. An advisory check proves nothing on its own. `no-anti-affinity` is excluded because it only recognises `podAntiAffinity`, and replicas here spread with `topologySpreadConstraints` for the reasons in [replica placement](#replica-placement).
 
-Cost: An advisory check proves nothing on its own, so the gap stays open until Phase 4 makes it blocking.
+Cost: A new manifest has to satisfy every default check or name the one it disagrees with. The exclusion applies to the whole repository, so a future workload that genuinely lacks any spreading would not be flagged. The [worklog](worklog/manifest-linting.md) records each finding and the injected failures that prove the gate.
 
-Alternatives: Enforce the default checks immediately, or configure a reduced check set and enforce that.
+Alternatives: Stay advisory, which is what let the findings sit. Per-object `ignore-check.kube-linter.io` annotations instead of a config file, which scope the exclusion to one Deployment but put linter configuration into the live object.
 
 ### Merge protection
 
