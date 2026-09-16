@@ -82,11 +82,11 @@ loadtest/loadgen.sh down
 | Step | Runs | `RUN` names | Steps |
 | --- | --- | --- | --- |
 | A | ramp, rollout | `a-ramp`, `a-rollout` | 60s, judged from the step's first request |
-| B | rollout | `b-rollout`, `b-rollout-2` | |
+| B | rollout | `b-rollout`, `b-rollout-2` | 20 rps held for 8m |
 | B2 | ramp | `b2-ramp` | 60s, judged from the step's first request |
 | C0 | ramp | `c0-ramp` | 180s, settle 90s, from 5 rps |
 | C | ramp, deploy under held load | `c-ramp`, `c-stall` | 120s, settle 75s, from 20 rps |
-| D | ramp | `d-ramp` | 120s, settle 75s, from 20 rps |
+| D | ramp, deploy under held load | `d-ramp`, `d-ramp-2`, `d-scale`, `d-scale-2` | 120s, settle 75s, from 20 rps |
 
 `RATE` for the rollout runs is 20, about half the saturation rate from `a-ramp`. `c-stall` holds `RATE=60`, enough to keep the HPA at its quota cap while a deploy runs.
 

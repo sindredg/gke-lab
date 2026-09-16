@@ -1,4 +1,4 @@
-# Points the load balancer's health check at /healthz instead of /, so the check doesnt depend on page content. Mirrors the Kubernetes probes.
+# Points the load balancer's health check at /healthz instead of /, so the check does not depend on page content. Mirrors the Kubernetes probes.
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:

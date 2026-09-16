@@ -79,7 +79,7 @@ spec:
                   fieldPath: spec.nodeName
 
             # The downward API cannot read the image, so the pipeline sets this in the same patch that sets the image.
-            # The value here matches the digest above, for an apply that doesnt go through the pipeline.
+            # The value here matches the digest above, for an apply that does not go through the pipeline.
             - name: IMAGE_DIGEST
               value: sha256:9f95c44c693fe186af2785917a8476fe5cfed5baad6a7b03a39e7312f65d0195
 

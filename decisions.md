@@ -224,9 +224,9 @@ Alternatives: Serve the facts as a JSON endpoint, which keeps the page static an
 
 ### Application source for the second workload
 
-Decision: Build the sky image here, from [sindredg/aca-prod](https://github.com/sindredg/aca-prod) at a commit pinned in the workflow, rather than vendoring its source or pulling its published image.
+Decision: Build the sky image here, from [sindredg/sky](https://github.com/sindredg/sky) at a commit pinned in `.github/sky-upstream.ref`, rather than vendoring its source or pulling its published image.
 
-Why: Upstream publishes to Azure Container Registry, which this cluster has no credentials for and should not be given any. Rebuilding from a pinned commit keeps the image project-owned, private, and digest-deployed like every other image here, while leaving the application's own repository authoritative. The pin is the review boundary: taking an upstream change is a one-line commit that CI and a rollout then have to accept.
+Why: Upstream published to Azure Container Registry, which this cluster has no credentials for and should not be given any, and since its own workflows were removed it publishes no image at all. Rebuilding from a pinned commit keeps the image project-owned, private, and digest-deployed like every other image here, while leaving the application's own repository authoritative. The pin is the review boundary: taking an upstream change is a one-line commit that CI and a rollout then have to accept.
 
 Alternatives: Copy the source into this repository, which forks it and makes upstream fixes a manual port. Or grant this cluster cross-cloud pull credentials, which trades a supply-chain property for convenience.
 

@@ -24,6 +24,3 @@ override.tf.json
 # CLI configuration
 .terraformrc
 terraform.rc
-
-# Markdown plan files
-plan.md
