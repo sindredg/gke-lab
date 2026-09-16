@@ -46,7 +46,7 @@ Status: Complete
 Status: Passed
 
 ```bash
-kubectl apply -f kubernetes/nginx/namespace.yml
+kubectl apply -f kubernetes/platform/namespace.yml
 kubectl get namespace demo --show-labels
 ```
 
@@ -132,14 +132,14 @@ The quota is a policy limit, not a measure of cluster capacity. A Pod must pass 
 Status: Passed
 
 ```bash
-kubectl apply -f kubernetes/nginx/limitrange.yml
+kubectl apply -f kubernetes/platform/limitrange.yml
 kubectl describe limitrange demo-defaults -n demo
 ```
 
 ![LimitRange defaults for the demo namespace](../images/quota-limitrange-defaults.png)
 
 ```bash
-kubectl apply -f kubernetes/nginx/resourcequota.yml
+kubectl apply -f kubernetes/platform/resourcequota.yml
 kubectl describe resourcequota demo-budget -n demo
 ```
 
@@ -287,9 +287,9 @@ Status: Passed
 Allow rules are applied before the deny, so no Pod loses DNS in between.
 
 ```bash
-kubectl apply -f kubernetes/nginx/networkpolicy-dns.yml
+kubectl apply -f kubernetes/platform/networkpolicy-dns.yml
 kubectl apply -f kubernetes/nginx/networkpolicy-nginx.yml
-kubectl apply -f kubernetes/nginx/networkpolicy-default-deny.yml
+kubectl apply -f kubernetes/platform/networkpolicy-default-deny.yml
 kubectl get networkpolicy -n demo
 ```
 

@@ -266,7 +266,7 @@ The policy behaved exactly as intended: the tag still names the bytes it origina
 Status: Not yet recorded
 
 ```bash
-kubectl apply -f kubernetes/nginx/
+kubectl apply -f kubernetes/platform/ -f kubernetes/nginx/
 kubectl get pods -n demo
 kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 ```

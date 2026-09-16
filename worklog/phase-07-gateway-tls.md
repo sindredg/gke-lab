@@ -63,7 +63,7 @@ Status: Complete
 - A `NetworkPolicy` admitting Google's health check and proxy ranges to port 8080.
 
 ```bash
-kubectl apply -f kubernetes/nginx/
+kubectl apply -f kubernetes/platform/ -f kubernetes/nginx/
 ```
 
 ![The Gateway, HealthCheckPolicy, and HTTPRoute created](../images/gateway-manifests-applied.png)
@@ -237,7 +237,7 @@ Result: comparing the two values directly is what identifies a stale record. The
 ### The HTTPS listener
 
 ```bash
-kubectl apply -f kubernetes/nginx/
+kubectl apply -f kubernetes/platform/ -f kubernetes/nginx/
 ```
 
 ![The redirect route created and the main route rebound](../images/gateway-https-listener-applied.png)

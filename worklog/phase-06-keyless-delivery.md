@@ -73,7 +73,7 @@ Status: Complete
 
 ### Implemented
 
-- `kubernetes/nginx/rbac-deploy.yml`, a namespaced `Role` and `RoleBinding` in `demo`.
+- `kubernetes/platform/rbac-deploy.yml`, a namespaced `Role` and `RoleBinding` in `demo`.
 - `get`, `list`, `watch`, and `patch` on Deployments; read on ReplicaSets; create, read, and delete on Pods and Pod logs.
 - The Role bound to the deploy service account's email as an RBAC `User` subject.
 
@@ -95,7 +95,7 @@ Status: Complete
 The manifest is applied from a workstation, by a human, before the first workflow run. That bootstrapping step is a permanent property of the design rather than a one-off inconvenience, and it is what keeps the pipeline from widening its own access.
 
 ```bash
-kubectl apply -f kubernetes/nginx/rbac-deploy.yml
+kubectl apply -f kubernetes/platform/rbac-deploy.yml
 ```
 
 ![The Role and RoleBinding created](../images/delivery-rbac-applied.png)

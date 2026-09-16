@@ -256,6 +256,16 @@ Why: Keeps cluster lifecycle separate from workload lifecycle and avoids couplin
 
 Alternatives: [Terraform Kubernetes provider](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs), [Config Connector](https://cloud.google.com/config-connector/docs/overview), or a shared Terraform state.
 
+### Manifest layout
+
+Decision: Group manifests by what owns them: `kubernetes/platform/` for the objects that belong to the namespace as a whole, and one directory per workload.
+
+Why: Everything started in `kubernetes/nginx/` because nginx was the only workload. By the time sky arrived, that directory held the Namespace, the LimitRange, the ResourceQuota, the pipeline's Role and RoleBinding, the Gateway, the HTTP to HTTPS redirect and the two shared NetworkPolicies, none of which are nginx's. A reader looking for the Gateway looked in the wrong place first, and `kubectl apply -f kubernetes/nginx/` quietly meant "apply the platform as well".
+
+Cost: The commands in the phase 4 to 11 worklogs were written against the old paths and have been updated to the new ones, so they still run. The objects themselves are untouched, so nothing had to be reapplied, but `HTTPRoute/nginx-https-redirect` now sits in `platform/` under a name that still says nginx. Renaming it means deleting and recreating the route, which is a live change rather than a file move, so the name stays until there is a reason to take that.
+
+Alternatives: One directory per workload with the platform objects duplicated into each, which makes the namespace ambiguous. Kustomize with a base and overlays, which is the [deferred decision](#deferred-decision-records) on real duplication and is not this.
+
 ### Kubernetes configuration management
 
 Decision: Continue with plain Kubernetes YAML for the current workload. Adopt [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/) when environment or workload variants create duplication.
