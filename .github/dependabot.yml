@@ -1,0 +1,14 @@
+# Proposes action bumps, because a pinned SHA is otherwise a frozen one.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Oslo
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci

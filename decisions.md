@@ -276,11 +276,23 @@ Alternatives: Add cloud credentials to the first CI workflow or install a GitOps
 
 ### Pull request validation scope
 
-Decision: Validate Terraform formatting and configuration, and validate Kubernetes manifests against the upstream schemas with [kubeconform](https://github.com/yannh/kubeconform). Defer YAML and Markdown linting.
+Decision: Validate Terraform formatting and configuration, validate Kubernetes manifests against the upstream schemas with [kubeconform](https://github.com/yannh/kubeconform), resolve every documentation link, anchor and screenshot, and lint the shell scripts with [shellcheck](https://www.shellcheck.net/). Defer YAML and Markdown style linting.
 
-Why: The included checks catch configuration that would fail against a real cluster or provider. The deferred checks only enforce formatting and would have required repository-wide cleanup before the first workflow could pass.
+Why: The included checks catch configuration that would fail against a real cluster or provider. The documentation checks were added later, once the worklogs and their 259 screenshots had become most of the repository: a renamed file, a heading reworded after something links to it, or a screenshot that was never committed all render as a broken page, and nothing else here notices. The check is a script rather than an action, so the same command runs locally and in CI. Style linting stays deferred, because it enforces formatting rather than catching a claim that is no longer true.
 
-Alternatives: Lint everything from the start, or run no validation until delivery is automated.
+Cost: Every screenshot has to be referenced by a worklog or the check fails, which is a rule about housekeeping rather than about the platform. It is the rule that keeps the images directory from filling with the ones that were never used.
+
+Alternatives: Lint everything from the start, or run no validation until delivery is automated. A hosted link checker, which also follows external URLs and fails on someone else's outage.
+
+### Action updates
+
+Decision: Dependabot proposes GitHub Action bumps weekly, as pull requests.
+
+Why: Pinning to a commit SHA is what makes [action pinning](#action-pinning) meaningful, and it is also what stops an action ever moving. Without something proposing the bump, a pinned SHA is a frozen one and an upstream fix never arrives. A pull request keeps the merge as the review, which is the same shape as the [upstream pin](#upstream-pin-automation).
+
+Cost: A pull request to read most weeks, often for nothing important. Dependabot rewrites the SHA and its trailing version comment together, so the comment cannot drift from the pin it annotates.
+
+Alternatives: Bump by hand when something breaks, which is how a pinned action reaches end of life unnoticed. Pin by tag and let it float, which is what action pinning rejected.
 
 ### Pipeline credentials
 
