@@ -49,7 +49,53 @@ A Kubernetes `emptyDir` is created world-writable, which is what run E reproduce
 
 The last row shows the exclusion suppresses one check and nothing else.
 
+## In the cluster
+
+The budgets are not in the pipeline, so they were applied by hand:
+
+```bash
+kubectl apply -f kubernetes/nginx/poddisruptionbudget.yml -f kubernetes/sky/poddisruptionbudget.yml
+```
+
+```
+poddisruptionbudget.policy/nginx configured
+poddisruptionbudget.policy/sky configured
+```
+
+Merging [#85](https://github.com/sindredg/k8-lab/pull/85) triggered `Deploy` on its own, although it changed no file under `app/`. That is the first manifest-only nginx change to deploy on merge, and it is what [#84](https://github.com/sindredg/k8-lab/pull/84) was for. Run [35086307973](https://github.com/sindredg/k8-lab/actions/runs/35086307973) finished at 10:43:31 UTC, rollout and smoke test included. The edge then served `/healthz` with a 200, and the page with digest `sha256:254f0ebc…` and no placeholders left, so nginx had rendered its config into the `emptyDir`.
+
+### The first check proved nothing
+
+Run before the deploy had finished, against the Pods from the previous build:
+
+```bash
+kubectl exec -n demo deploy/nginx -- touch /should-fail
+```
+
+```
+touch: /should-fail: Permission denied
+```
+
+It looked like a pass, and it was not one. `/` is owned by root, so uid 101 is refused there whether or not the filesystem is read-only. A read-only mount refuses the write before permissions are checked, and says so: the local run printed `Read-only file system`. `Permission denied` meant the root was still writable. The Deploy run for #85 was still waiting for a runner.
+
+A check that separates the two has to write somewhere the process owns. `/var/cache/nginx` belongs to uid 101, so on a writable root the write succeeds.
+
+### After the deploy
+
+```bash
+kubectl get deploy nginx -n demo -o jsonpath='{.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem}{"\n"}'
+kubectl get pods -n demo -l app.kubernetes.io/name=nginx
+kubectl exec -n demo deploy/nginx -- touch /var/cache/nginx/probe
+kubectl exec -n demo deploy/nginx -- sh -c 'touch /tmp/probe && ls /etc/nginx/conf.d'
+```
+
+| Check | Result |
+| --- | --- |
+| `readOnlyRootFilesystem` in the live spec | `true` |
+| Pods | `nginx-54444fc956-q282q` and `-rb7q7`, both `1/1 Running`, 0 restarts |
+| Write to a directory uid 101 owns | `Read-only file system` |
+| Write to `/tmp`, then list `conf.d` | no error, `default.conf` |
+
 ## Open
 
-- **The cluster.** The pipeline applies only the Deployment, so the two budgets need `kubectl apply` by an operator. The nginx change rolls out on merge, which depends on `deploy.yml` triggering on `kubernetes/nginx/**`. After the rollout: both Pods Ready, and `kubectl exec -n demo deploy/nginx -- touch /should-fail` refused.
 - **The entrypoint continues on an unwritable `conf.d`.** That is upstream behaviour. The readiness probe is what catches it here.
