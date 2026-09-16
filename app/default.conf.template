@@ -3,7 +3,7 @@ server {
     listen 8080;
     server_name _;
 
-    # The load balancer reuses a backend connection for up to 600s. The image's 65s let NGINX close a connection the load balancer was about to reuse, and that request got a 503.
+    # The load balancer reuses a connection for 600s; 65s closed it first.
     keepalive_timeout 620s;
 
     root /usr/share/nginx/html;
@@ -21,7 +21,7 @@ server {
     location / {
         try_files $uri $uri/ =404;
 
-        # Replaces the placeholders in index.html with this Pod's facts. envsubst filled in the ${...} values at startup.
+        # Fills in this Pod's facts; envsubst set the values at startup.
         sub_filter '__POD_NAME__'      '${POD_NAME}';
         sub_filter '__POD_NAMESPACE__' '${POD_NAMESPACE}';
         sub_filter '__POD_IP__'        '${POD_IP}';
@@ -30,7 +30,7 @@ server {
         sub_filter '__IMAGE_DIGEST__'  '${IMAGE_DIGEST}';
         sub_filter_once off;
 
-        # Prevents caching, so a reload can land on the other replica and show it.
+        # No caching, so a reload can land on the other replica.
         add_header Cache-Control "no-store" always;
     }
 }

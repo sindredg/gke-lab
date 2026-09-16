@@ -1,4 +1,4 @@
-# Establishes GitHub Actions as an external identity provider for this project, workflows authenticate by signed token instead of stored key.
+# GitHub Actions as an external identity provider: tokens, not stored keys.
 resource "google_iam_workload_identity_pool" "github" {
   project                   = var.project_id
   workload_identity_pool_id = var.pool_id
@@ -13,14 +13,14 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_provider_id = "github-oidc"
   display_name                       = "GitHub OIDC"
 
-  # Claims carried across from the token. Only mapped attributes can be referenced by the condition below or by an IAM member string.
+  # Claims carried from the token. Only mapped attributes can be referenced.
   attribute_mapping = {
     "google.subject"       = "assertion.sub"
     "attribute.repository" = "assertion.repository"
     "attribute.ref"        = "assertion.ref"
   }
 
-  # Without this, the provider accepts a valid token from any repository on GitHub, including one an attacker creates.
+  # Without this, any repository on GitHub can present a valid token.
   attribute_condition = "assertion.repository == '${var.github_repository}'"
 
   oidc {
@@ -28,14 +28,14 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   }
 }
 
-# The identity the workflow acts as. It holds the permissions; the pool only decides who is allowed to become it.
+# The identity the workflow acts as. The pool only decides who may become it.
 resource "google_service_account" "deploy" {
   project      = var.project_id
   account_id   = var.service_account_id
   display_name = "Delivery pipeline identity for ${var.github_repository}"
 }
 
-# Lets any token carrying this repository attribute impersonate the account. principalSet names a group of identities instead of a single one.
+# principalSet names a group of identities rather than a single one.
 resource "google_service_account_iam_member" "github_impersonation" {
   service_account_id = google_service_account.deploy.name
   role               = "roles/iam.workloadIdentityUser"
@@ -51,8 +51,7 @@ resource "google_artifact_registry_repository_iam_member" "deploy_writer" {
   member     = "serviceAccount:${google_service_account.deploy.email}"
 }
 
-# Permission to reach the cluster and read its endpoint, and nothing more.
-# What the pipeline may do inside the cluster is Kubernetes RBAC, in Slice 2.
+# Reaching the cluster only. What it may do inside is Kubernetes RBAC.
 resource "google_project_iam_member" "deploy_cluster_viewer" {
   project = var.project_id
   role    = "roles/container.clusterViewer"

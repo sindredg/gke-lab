@@ -9,16 +9,12 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
-# id-token: write lets the runner request a signed OIDC token. Without it,
-# authentication cannot start.
+# id-token: write lets the runner request the OIDC token. Required.
 permissions:
   contents: read
   id-token: write
 
-# Shared with deploy-sky.yml. Both roll Pods in the demo namespace, and two rollouts
-# at once hold old Pods in their preStop sleep alongside the new ones, which filled
-# limits.cpu and refused the smoke test. The second deploy waits for the first, and a
-# running deploy is left to finish rather than cancelled.
+# Shared with deploy-sky.yml: two rollouts at once filled limits.cpu.
 concurrency:
   group: deploy-demo
   cancel-in-progress: false
@@ -59,8 +55,7 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
-      # platforms pins the node architecture. The run id keeps the tag unique,
-      # because the repository refuses to move an existing tag.
+      # platforms pins the architecture; the run id keeps the tag unique.
       - name: Build and push
         id: build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
@@ -79,8 +74,7 @@ jobs:
           location: ${{ env.ZONE }}
           use_dns_endpoint: true
 
-      # The digest is what deploys. The tag above is only for a reader.
-      # Applies the manifest rather than patching the image, so a change to deployment.yml reaches the cluster in the same rollout.
+      # The digest is what deploys. Applying carries the rest of the manifest.
       - name: Apply the Deployment with the new digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -95,8 +89,7 @@ jobs:
       - name: Wait for the rollout
         run: kubectl rollout status "deployment/$DEPLOYMENT" -n "$NAMESPACE" --timeout=180s
 
-      # The label satisfies the NetworkPolicy; the securityContext satisfies
-      # the restricted Pod Security standard.
+      # The label satisfies the NetworkPolicy, the securityContext the standard.
       - name: Smoke test from inside the cluster
         env:
           POD: smoke-${{ github.run_id }}

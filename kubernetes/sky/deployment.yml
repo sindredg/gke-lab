@@ -1,4 +1,4 @@
-# Runs sky. The HorizontalPodAutoscaler in hpa.yml owns the replica count, between two and eight.
+# Runs sky. hpa.yml owns the replica count, between two and eight.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,8 +8,7 @@ metadata:
     app.kubernetes.io/name: sky
     app.kubernetes.io/part-of: k8-lab
 spec:
-  # No replicas field. The pipeline applies this manifest on every deploy, and a replicas value here would reset
-  # whatever the HPA has scaled to.
+  # No replicas field: it would reset whatever the HPA has scaled to.
   revisionHistoryLimit: 3
 
   selector:
@@ -31,15 +30,12 @@ spec:
       serviceAccountName: sky
       automountServiceAccountToken: false
 
-      # The preStop sleep counts against this, so 60 leaves 25s for in-flight requests once the sleep ends.
+      # 60 covers the 35s preStop sleep and the requests still in flight.
       terminationGracePeriodSeconds: 60
 
-      # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
+      # Prefers one replica per node. Required would leave one Pending.
       topologySpreadConstraints:
-        # Without this, the calculation counts Pods from the old ReplicaSet too, so every
-        # replacement sees the old node as full and picks the other one. Both land together
-        # and a rolling restart cannot undo it. Confining the count to one ReplicaSet is
-        # what makes the spread hold across a rollout.
+        # Counts only this ReplicaSet, so the spread survives a rollout.
         - matchLabelKeys: ["pod-template-hash"]
           maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -57,17 +53,11 @@ spec:
 
       containers:
         - name: sky
-          # Built from sindredg/sky at a pinned commit and published to this project's registry, because the application repository publishes no image of its own. It was renamed from aca-prod, and now calls itself Sky, which matches the path it serves.
-          # Built by run 34004725462 from upstream 9393211. The pipeline replaces this with the digest it builds; this value is what an apply outside the pipeline deploys.
+          # Built from a pinned sindredg/sky commit. The pipeline sets it.
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky@sha256:7af41229bb716ba3586cbb4887c0f9f13575724cf586ae8fc35b0403956f7851
           imagePullPolicy: IfNotPresent
 
-          # Repeats the image's own command to add two flags. uvicorn logs every
-          # request by default, and the only requests here are probes: two
-          # readiness checks every five seconds, two liveness checks every ten,
-          # and the load balancer's own health checks. With WORKLOADS logging
-          # enabled that is billed ingest and a dashboard panel full of noise.
-          # The nginx workload solves the same problem with access_log off.
+          # Repeats the image's command to add flags. Probes would flood logs.
           args:
             - uvicorn
             - app.src.main:app
@@ -76,8 +66,7 @@ spec:
             - --port
             - "8080"
             - --no-access-log
-            # The load balancer reuses a backend connection for up to 600s. uvicorn's default of 5s
-            # closed connections it was about to reuse, and each of those requests got a 503.
+            # The load balancer reuses a connection for 600s; 5s got 503s.
             - --timeout-keep-alive
             - "620"
 
@@ -87,7 +76,7 @@ spec:
               drop:
                 - ALL
 
-            # The application only reads its own code and writes nothing, so the image stays immutable at runtime.
+            # The app writes nothing, so the root filesystem stays read-only.
             readOnlyRootFilesystem: true
 
           # A non-root process cannot bind a port below 1024.
@@ -96,7 +85,7 @@ spec:
               containerPort: 8080
               protocol: TCP
 
-          # /health is the application's own endpoint. It is deliberately not published through the HTTPRoute.
+          # The app's own endpoint, deliberately not routed publicly.
           readinessProbe:
             httpGet:
               path: /health
@@ -106,10 +95,7 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
 
-          # Catches a process that has stopped answering, not one that is busy. At a 2s timeout and three failures, the
-          # kubelet restarted four overloaded but healthy Pods in five minutes of a traffic spike, and each restart
-          # removed capacity while the others were overloaded. Six failures at a 5s timeout give a busy Pod a minute,
-          # and readiness above still takes it out of the load balancer within 15s.
+          # Catches a hung process, not a busy one. 2s and 3 was too tight.
           livenessProbe:
             httpGet:
               path: /health
@@ -119,17 +105,13 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 6
 
-          # Keeps a stopping Pod serving until the load balancer has let it go. Without it, uvicorn stopped listening within a second while the endpoint detach took about 12s to complete, and a few requests still reached a stopped Pod 28.6s after it stopped. SIGTERM reaches the server only after the sleep.
+          # Keeps a stopping Pod serving until the load balancer lets go.
           lifecycle:
             preStop:
               sleep:
                 seconds: 35
 
-          # Sized from the load runs. One uvicorn process uses about 20m of CPU per request a second. At a 500m limit it
-          # was throttled in a third of its 100ms periods while averaging two thirds of the limit, because a burst
-          # spends the period's quota; a process that cannot use more than one core leaves a one-core limit little to
-          # throttle. The HPA measures its 70% against the request, so 350m sets the target near 245m, about 12
-          # requests a second a Pod.
+          # Sized from the load runs: 70% of a 350m request is about 12 rps.
           resources:
             requests:
               cpu: 350m
@@ -142,7 +124,7 @@ spec:
             - name: tmp
               mountPath: /tmp
 
-      # The only writable path, so a read-only root filesystem does not break the interpreter.
+      # The only writable path, so a read-only root does not break it.
       volumes:
         - name: tmp
           emptyDir: {}

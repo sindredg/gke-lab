@@ -1,19 +1,14 @@
-# Creates a separately managed, autoscaling node pool using private Shielded VMs.
+# A separately managed autoscaling node pool on private Shielded VMs.
 resource "google_container_node_pool" "general" {
   project  = var.project_id
   name     = var.node_pool_name
   location = var.zone
   cluster  = google_container_cluster.main.name
 
-  # A scale-up in one zone failed with ZONE_RESOURCE_POOL_EXHAUSTED while the other zones had capacity. With every
-  # zone listed, the autoscaler places a node wherever the machine type is available. BALANCED below spreads the
-  # pool across them as it grows.
+  # Every zone listed, so a ZONE_RESOURCE_POOL_EXHAUSTED falls to another.
   node_locations = var.node_zones
 
-  # Only the size the pool is created at; autoscaling owns the count from then on.
-  # The field forces a new node pool when it changes, so it stays at one rather than
-  # tracking the floor, where raising the floor would replace the pool instead of
-  # resizing it.
+  # Creation size only, and ForceNew, so it stays at 1 while the floor moves.
   initial_node_count = 1
 
   autoscaling {
@@ -66,12 +61,7 @@ resource "google_container_node_pool" "general" {
     max_unavailable = 0
   }
 
-  # initial_node_count is ForceNew. It is pinned to 1 above so the floor can move
-  # without replacing the pool, but a manual resize writes the live count back into
-  # state, and the difference then proposes destroying the pool. Phase 9 raised the
-  # floor by resizing by hand, which armed exactly that. The field only matters when
-  # the pool is created, so drift on it is not worth a plan that offers to delete
-  # both nodes.
+  # ForceNew and drifts on a manual resize, which would plan a pool delete.
   lifecycle {
     ignore_changes = [initial_node_count]
   }

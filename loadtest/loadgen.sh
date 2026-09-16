@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Creates and deletes the load generator: a throwaway VPC, a firewall rule admitting SSH from IAP only, and one VM
-# with k6. Everything it creates is named loadgen, and `down` deletes all of it, which leaves gke-vpc as the project's
-# only network. The VM has no service account, because it needs no Google Cloud identity to send HTTPS requests.
-#
-# Usage: loadtest/loadgen.sh up | copy | ssh | pull | down
+# Creates and deletes the load generator. Usage: up | copy | ssh | pull | down
 set -euo pipefail
 
 PROJECT="${PROJECT:-example-security-lab}"
@@ -14,13 +10,13 @@ K6_VERSION="${K6_VERSION:-v2.2.0}"
 SUBNET_RANGE="${SUBNET_RANGE:-10.99.0.0/24}"
 
 NAME=loadgen
-# The fixed range IAP TCP forwarding connects from. Nothing else can reach port 22.
+# The fixed range IAP forwards from. Nothing else reaches port 22.
 IAP_RANGE=35.235.240.0/20
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 gc() { gcloud --project "$PROJECT" --quiet "$@"; }
 
-# Runs as root on first boot. The checksum is verified before the binary is unpacked.
+# Runs as root on first boot. The checksum is verified before unpacking.
 startup_script() {
   cat <<EOF
 #!/bin/bash
@@ -33,7 +29,7 @@ grep " k6-${K6_VERSION}-linux-amd64.tar.gz\$" "k6-${K6_VERSION}-checksums.txt" |
 tar -xzf "k6-${K6_VERSION}-linux-amd64.tar.gz" --strip-components=1 -C /usr/local/bin "k6-${K6_VERSION}-linux-amd64/k6"
 # An IAP tunnel can drop mid-run, and a run started inside tmux survives it.
 apt-get update -qq && apt-get install -y -qq tmux
-# Each VU holds its own connection, and the default of 1024 open files caps a step well before the VM's CPU does.
+# Each VU holds a connection; the default 1024 open files caps a step first.
 echo '* soft nofile 65536' > /etc/security/limits.d/k6.conf
 echo '* hard nofile 65536' >> /etc/security/limits.d/k6.conf
 touch /var/lib/k6-ready
@@ -41,7 +37,7 @@ EOF
 }
 
 up() {
-  # IAP TCP forwarding carries the SSH session. Enabling it is idempotent and costs nothing.
+  # IAP TCP forwarding carries the SSH session. Enabling it is free.
   gc services enable iap.googleapis.com
 
   gc compute networks create "$NAME" --subnet-mode=custom
@@ -81,7 +77,7 @@ pull() {
   gc compute scp --zone="$ZONE" --tunnel-through-iap --recurse "$NAME":~/loadtest/results/* "$HERE/results/"
 }
 
-# Deletes in dependency order and carries on past anything already gone, then lists what is left.
+# Deletes in dependency order, past anything already gone.
 down() {
   gc compute instances delete "$NAME" --zone="$ZONE" || true
   gc compute firewall-rules delete "$NAME-allow-iap-ssh" || true

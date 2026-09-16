@@ -1,5 +1,4 @@
-# Requests the published site from outside Google's network on a fixed period.
-# The platform has close to no organic traffic, so an alert built on served requests would evaluate an empty series during an outage and stay silent. This check is both the traffic and the signal.
+# Probes the site from outside; it is the traffic as well as the signal.
 resource "google_monitoring_uptime_check_config" "public" {
   project      = var.project_id
   display_name = "${var.domain} healthz"
@@ -7,12 +6,12 @@ resource "google_monitoring_uptime_check_config" "public" {
   period       = "60s"
 
   http_check {
-    # /healthz instead of /, because the page content changes and the health endpoint is a contract. access_log is off for this path, so a request every minute adds no log ingest.
+    # /healthz, not /: page content changes, the endpoint is a contract.
     path    = "/healthz"
     port    = 443
     use_ssl = true
 
-    # Also makes this an expiry alarm for the managed certificate, which renews unattended.
+    # Also an expiry alarm for the managed certificate.
     validate_ssl = true
 
     accepted_response_status_codes {
@@ -35,11 +34,11 @@ resource "google_monitoring_uptime_check_config" "public" {
     }
   }
 
-  # Google's prober regions, meaning where the check is requested from. Nothing to do with europe-north1-a, where the workload runs. Three is the minimum the API accepts once the set is named at all, and each named region expands to one or more checker locations, which is what the alert below counts.
+  # Google's prober regions, not where the workload runs. Three is the minimum.
   selected_regions = var.uptime_check_regions
 }
 
-# Email channels deliver nothing until the address is confirmed at the inbox, so the policy below is not trustworthy until that has happened once.
+# An email channel delivers nothing until the address is confirmed once.
 resource "google_monitoring_notification_channel" "email" {
   project      = var.project_id
   display_name = "Platform owner"
@@ -50,7 +49,7 @@ resource "google_monitoring_notification_channel" "email" {
   }
 }
 
-# The one signal that pages. Everything on the dashboard is diagnosis and does not need to wake anyone.
+# The one signal that pages. The dashboard is diagnosis, not a page.
 resource "google_monitoring_alert_policy" "site_unavailable" {
   project      = var.project_id
   display_name = "${var.domain} is not serving"
@@ -67,9 +66,7 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
         "metric.label.check_id = \"${google_monitoring_uptime_check_config.public.uptime_check_id}\"",
       ])
 
-      # The metric carries one series per checker location, so grouping by host and reducing with COUNT_FALSE counts the locations currently reporting a failed check.
-      #
-      # The threshold of 1 therefore means at least two locations. One location failing is a network path somewhere on the internet, and paging on it is how an alert teaches its reader to dismiss it. This costs nothing in detection: one zonal cluster behind one global load balancer has no partial-failure mode, so a real outage fails every location within the same check period.
+      # COUNT_FALSE per host; a threshold of 1 means at least two locations.
       aggregations {
         alignment_period     = "1200s"
         per_series_aligner   = "ALIGN_NEXT_OLDER"
@@ -89,12 +86,12 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
 
   notification_channels = [google_monitoring_notification_channel.email.id]
 
-  # The default is seven days. Without this, an incident that recovered on its own is still open when the next real one arrives.
+  # Without this, a self-recovered incident is still open at the next one.
   alert_strategy {
     auto_close = "1800s"
   }
 
-  # The difference between an alert and an actionable alert. A notification that says only "uptime check failing" has moved the diagnosis onto whoever is holding the phone.
+  # An alert without commands moves the diagnosis onto whoever is paged.
   documentation {
     subject   = "${var.domain} is not serving"
     mime_type = "text/markdown"
@@ -111,7 +108,7 @@ resource "google_monitoring_alert_policy" "site_unavailable" {
   }
 }
 
-# The console is a good place to build a widget and the wrong place to keep one: the next apply overwrites anything edited there. To keep a console change, export it with `gcloud monitoring dashboards describe <id> --format=json` and commit the result.
+# The next apply overwrites console edits; export and commit them instead.
 resource "google_monitoring_dashboard" "workload_health" {
   project = var.project_id
 

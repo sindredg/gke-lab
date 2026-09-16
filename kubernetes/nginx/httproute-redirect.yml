@@ -1,4 +1,4 @@
-# Answers plain HTTP with a permanent redirect to HTTPS. The redirect is issued at the load balancer, so no request reaches a Pod in clear text.
+# Redirects plain HTTP to HTTPS at the load balancer, before any Pod.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

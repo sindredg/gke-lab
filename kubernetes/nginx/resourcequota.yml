@@ -1,4 +1,3 @@
-# Caps the total resources every Pod in the namespace can reserve and consume.
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -8,21 +7,12 @@ metadata:
     app.kubernetes.io/part-of: k8-lab
 spec:
   hard:
-    # Sized for the worst moment of a deploy at sky's HPA maximum: eight replicas, one surge Pod and two old Pods
-    # still in their preStop sleep, which still count, beside nginx's two new and two old Pods and the deploy's
-    # smoke test Pod. At the previous 3 CPU of limits, the HPA stopped at five of eight sky replicas.
-
-    # Total reserved capacity, which the scheduler counts against nodes. 11 sky Pods at 350m, 4 nginx at 50m and
-    # the smoke Pod's 50m make 4100m.
+    # A deploy at sky's HPA maximum: 11 sky Pods, 4 nginx, 1 smoke test.
     requests.cpu: "5"
     requests.memory: 2Gi
 
-    # Total ceiling the namespace can burst to. 11 sky Pods at 1000m, 4 nginx at 250m and the smoke Pod's 250m
-    # make 12250m. A surge Pod that does not fit stalls a rollout rather than failing it, because of
-    # maxUnavailable 0, which is the hardest shape of problem to recognise. Only requests are scheduled, so a
-    # burst ceiling above the nodes' capacity still bounds the namespace.
+    # Burst ceiling. Too low stalls a rollout rather than failing it.
     limits.cpu: "13"
     limits.memory: 4Gi
 
-    # Object count, independent of resource size: 11 sky, 4 nginx and the smoke Pod.
     pods: "16"

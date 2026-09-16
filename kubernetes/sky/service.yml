@@ -1,4 +1,3 @@
-# Provides a stable private address for the sky Pods.
 apiVersion: v1
 kind: Service
 metadata:

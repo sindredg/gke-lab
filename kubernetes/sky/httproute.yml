@@ -1,6 +1,4 @@
-# Publishes the sky workload at /sky on the same hostname as the project page.
-#
-# The application asks for its assets and data at absolute paths, so /static and /api are routed to it as well. Gateway API matches the longest prefix first, which is why these rules win over the nginx route's / without either route knowing about the other.
+# Publishes sky at /sky, plus /static and /api, which it asks for absolutely.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -18,7 +16,7 @@ spec:
     - sindrg.com
 
   rules:
-    # The application is not prefix aware, so the prefix is removed before it arrives. /sky and /sky/tromso reach it as / and /tromso.
+    # The app is not prefix aware, so /sky is stripped before it arrives.
     - matches:
         - path:
             type: PathPrefix
@@ -33,7 +31,7 @@ spec:
         - name: sky
           port: 80
 
-    # Requested by the page the rule above returns, so these arrive unchanged. No rule sends /health or /version here, but the rewrite above still reaches them as /sky/health and /sky/version: stripping a prefix exposes every path behind it. The load balancer uses /health through the HealthCheckPolicy rather than through any of these rules.
+    # Stripping the prefix also exposes /health and /version behind it.
     - matches:
         - path:
             type: PathPrefix

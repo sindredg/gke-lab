@@ -1,15 +1,4 @@
-# Opens the pin bump that deploy-sky.yml would otherwise wait for someone to type.
-#
-# The pin lives in .github/sky-upstream.ref rather than in deploy-sky.yml because
-# GitHub rejects a workflow-token push that touches .github/workflows, and there is no
-# permission that lifts it: the workflow scope belongs to personal access tokens. A
-# data file keeps this job credential-free, which is the whole point of it.
-#
-# The pin is the point: deploy-sky.yml fetches a commit rather than a branch, so what
-# is built is exactly what was reviewed, and a re-run of an old run rebuilds the same
-# source. Tracking main directly would remove the bumping and that property together.
-# So this proposes the bump and leaves the merge as the review, which is where the
-# decision belonged anyway.
+# Opens the pull request that moves the sky pin to upstream's head.
 name: Watch sky
 
 on:
@@ -35,7 +24,7 @@ jobs:
       - name: Check out this repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The application repository is public, so reading its head needs no credential.
+      # The application repository is public, so this needs no credential.
       - name: Read the application's head and the pin
         id: read
         env:
@@ -64,9 +53,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # A branch fetches by name; this pipeline fetches by commit, and a commit that
-      # is not reachable from a ref can stop resolving once it is collected. Proposing
-      # one that cannot be fetched would move the failure to the deploy.
+      # A commit unreachable from a ref can stop resolving; check it now.
       - name: Check the commit can still be fetched
         if: steps.read.outputs.changed == 'true'
         env:
@@ -93,10 +80,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # The checkout fetched main alone. Without a local copy of the bump branch,
-          # --force-with-lease has nothing to compare the remote against, and rejects
-          # every push once the branch exists. The fetch fails while the branch does
-          # not exist yet, which is expected.
+          # Without a local branch copy, --force-with-lease rejects a push.
           git fetch --depth 1 origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
           carried=$(git show "origin/${branch}:${pin}" 2>/dev/null | tr -d '[:space:]' || true)
 
@@ -114,15 +98,13 @@ jobs:
             git push --force-with-lease origin "$branch"
           fi
 
-          # gh pr view also finds closed and merged pull requests, so only an open one counts.
+          # gh pr view also finds closed ones, so only an open one counts.
           if [ "$(gh pr view "$branch" --json state -q .state 2>/dev/null)" = "OPEN" ]; then
             echo "The open pull request carries ${HEAD_SHA:0:7}."
             exit 0
           fi
 
-          # GitHub refuses a pull request from the workflow token unless the repository
-          # allows Actions to create them. The branch is pushed either way, so a refusal
-          # is reported with the link to open it by hand rather than failing the run.
+          # GitHub can refuse this; the branch is pushed either way.
           if ! gh pr create \
             --base main \
             --head "$branch" \

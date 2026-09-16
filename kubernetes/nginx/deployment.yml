@@ -1,4 +1,3 @@
-# Runs and maintains two healthy NGINX replicas.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,15 +29,12 @@ spec:
       serviceAccountName: nginx
       automountServiceAccountToken: false
 
-      # The preStop sleep counts against this, so 60 leaves 25s for in-flight requests once the sleep ends.
+      # 60 covers the 35s preStop sleep and the requests still in flight.
       terminationGracePeriodSeconds: 60
 
-      # Spreads the replicas across nodes when the pool has more than one, and schedules anyway when it does not. A required anti-affinity rule would instead leave the second replica Pending whenever the pool sits at its single-node floor. The value is in node upgrades, which replace nodes underneath a running workload.
+      # Prefers one replica per node. Required would leave one Pending.
       topologySpreadConstraints:
-        # Without this, the calculation counts Pods from the old ReplicaSet too, so every
-        # replacement sees the old node as full and picks the other one. Both land together
-        # and a rolling restart cannot undo it. Confining the count to one ReplicaSet is
-        # what makes the spread hold across a rollout.
+        # Counts only this ReplicaSet, so the spread survives a rollout.
         - matchLabelKeys: ["pod-template-hash"]
           maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -55,11 +51,11 @@ spec:
 
       containers:
         - name: nginx
-          # Deployed by digest, so this manifest names one fixed set of bytes. The tag is the commit that built it, kept for readers only.
+          # Deployed by digest. The tag names the commit that built it.
           image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/frontend:2bb5f3a-multiarch@sha256:9f95c44c693fe186af2785917a8476fe5cfed5baad6a7b03a39e7312f65d0195
           imagePullPolicy: IfNotPresent
 
-          # The page reports the Pod answering the request, so these are read from the running Pod instead of being written into the image.
+          # Read from the running Pod, so the page reports who answered.
           env:
             - name: POD_NAME
               valueFrom:
@@ -78,8 +74,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
 
-            # The downward API cannot read the image, so the pipeline sets this in the same patch that sets the image.
-            # The value here matches the digest above, for an apply that does not go through the pipeline.
+            # The downward API cannot read the image; the pipeline sets it.
             - name: IMAGE_DIGEST
               value: sha256:9f95c44c693fe186af2785917a8476fe5cfed5baad6a7b03a39e7312f65d0195
 
@@ -113,7 +108,7 @@ spec:
             timeoutSeconds: 1
             failureThreshold: 3
 
-          # Keeps a stopping Pod serving until the load balancer has let it go. Without it, NGINX stopped listening within a second while the endpoint detach took about 12s to complete, and a few requests still reached a stopped Pod 28.6s after it stopped. SIGTERM reaches the server only after the sleep.
+          # Keeps a stopping Pod serving until the load balancer lets go.
           lifecycle:
             preStop:
               sleep:

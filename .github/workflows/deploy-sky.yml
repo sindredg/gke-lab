@@ -1,4 +1,4 @@
-# Builds the sky workload from the application's own repository at a pinned commit, publishes it here, and rolls it out.
+# Builds sky from a pinned upstream commit, publishes it, and rolls it out.
 name: Deploy sky
 
 on:
@@ -15,16 +15,12 @@ on:
         type: boolean
         default: false
 
-# id-token: write lets the runner request a signed OIDC token. Without it,
-# authentication cannot start.
+# id-token: write lets the runner request the OIDC token. Required.
 permissions:
   contents: read
   id-token: write
 
-# Shared with deploy.yml. Both roll Pods in the demo namespace, and two rollouts at
-# once hold old Pods in their preStop sleep alongside the new ones, which filled
-# limits.cpu and refused the smoke test. The second deploy waits for the first, and a
-# running deploy is left to finish rather than cancelled.
+# Shared with deploy.yml: two rollouts at once filled limits.cpu.
 concurrency:
   group: deploy-demo
   cancel-in-progress: false
@@ -39,15 +35,10 @@ env:
   CONTAINER: sky
   IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/sky
 
-  # The application source. The repository publishes no image of its own since its workflows were removed upstream, so the image is built here from a pinned commit.
-  # Renamed from aca-prod, which still redirects. Named for what it is now.
+  # Upstream publishes no image of its own, so it is built here.
   UPSTREAM_REPOSITORY: https://github.com/sindredg/sky.git
 
-  # The commit itself lives in .github/sky-upstream.ref rather than on a line here.
-  # GitHub refuses a workflow-token push that touches .github/workflows, and no
-  # permission grants it: the workflow scope exists for personal access tokens only.
-  # Keeping the pin as data is what lets Watch sky propose a bump without this
-  # pipeline having to hold a credential, which is the property it is built around.
+  # The pin is data, because a workflow token cannot push to .github/workflows.
   PIN_FILE: .github/sky-upstream.ref
 
 jobs:
@@ -69,7 +60,6 @@ jobs:
           echo "UPSTREAM_REF=$ref" >> "$GITHUB_ENV"
           echo "Building ${ref}."
 
-      # Fetched by commit rather than by branch, so the build input is exactly the reviewed one and no token is involved.
       - name: Fetch the application source at the pinned commit
         run: |
           git init upstream
@@ -95,8 +85,7 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
-      # platforms pins the node architecture. The run id keeps the tag unique,
-      # because the repository refuses to move an existing tag.
+      # platforms pins the architecture; the run id keeps the tag unique.
       - name: Build and push
         id: build
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
@@ -109,7 +98,7 @@ jobs:
             SERVICE_VERSION=${{ env.UPSTREAM_REF }}
           tags: ${{ env.IMAGE }}:${{ env.UPSTREAM_REF }}-${{ github.run_id }}.${{ github.run_attempt }}
 
-      # Bootstrapping: the digest is the only output, and it goes into kubernetes/sky/deployment.yml before the manifests are applied by hand.
+      # Bootstrapping: the digest goes into deployment.yml by hand first.
       - name: Report the digest
         if: ${{ inputs.build_only }}
         env:
@@ -134,7 +123,7 @@ jobs:
           location: ${{ env.ZONE }}
           use_dns_endpoint: true
 
-      # apply against an object that does not exist is a create, and the Role holds patch only. The manifests in kubernetes/sky/ are applied once by an operator; the Service, HTTPRoute, ServiceAccount, HealthCheckPolicy and NetworkPolicies cannot be created by this pipeline either, so widening the Role would not remove that step. Report the ordering problem as an ordering problem rather than letting kubectl report it as a permissions error.
+      # The Role holds patch, not create, so the Deployment must already exist.
       - name: Check the workload exists
         if: ${{ !inputs.build_only }}
         env:
@@ -166,7 +155,6 @@ jobs:
           exit 1
 
       # The digest is what deploys. The tag above is only for a reader.
-      # The pipeline Role holds patch and not create, so the Deployment has to exist already: the manifests in kubernetes/sky/ are applied once by an operator, and the pipeline only ever updates the image after that.
       - name: Apply the Deployment with the new digest
         if: ${{ !inputs.build_only }}
         env:
@@ -182,8 +170,7 @@ jobs:
         if: ${{ !inputs.build_only }}
         run: kubectl rollout status "deployment/$DEPLOYMENT" -n "$NAMESPACE" --timeout=180s
 
-      # The label satisfies the NetworkPolicy; the securityContext satisfies
-      # the restricted Pod Security standard.
+      # The label satisfies the NetworkPolicy, the securityContext the standard.
       - name: Smoke test from inside the cluster
         if: ${{ !inputs.build_only }}
         env:

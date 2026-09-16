@@ -1,4 +1,3 @@
-# Keeps the build context to the files the image actually needs.
 *
 !Dockerfile
 !default.conf.template

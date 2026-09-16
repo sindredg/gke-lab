@@ -1,4 +1,4 @@
-# Stores the container images this project builds, in the same region as the cluster.
+# The container images this project builds, in the cluster's region.
 resource "google_artifact_registry_repository" "main" {
   project       = var.project_id
   location      = var.region
@@ -7,11 +7,11 @@ resource "google_artifact_registry_repository" "main" {
   format        = "DOCKER"
 
   docker_config {
-    # Refuses to move a tag that already exists, so a tag names the same bytes for life.
+    # A tag cannot move, so it names the same bytes for life.
     immutable_tags = true
   }
 
-  # Untagged images accumulate on every rebuild and are unreachable once superseded.
+  # Untagged images accumulate on every rebuild and are unreachable.
   cleanup_policies {
     id     = "delete-untagged"
     action = "DELETE"
@@ -22,7 +22,7 @@ resource "google_artifact_registry_repository" "main" {
     }
   }
 
-  # Protects the most recent images from the rule above regardless of their state.
+  # Protects the most recent images from the rule above.
   cleanup_policies {
     id     = "keep-recent"
     action = "KEEP"
@@ -35,7 +35,7 @@ resource "google_artifact_registry_repository" "main" {
   labels = var.resource_labels
 }
 
-# Lets the nodes pull from this repository only, rather than from every repository in the project.
+# Lets the nodes pull from this repository only, not from every one.
 resource "google_artifact_registry_repository_iam_member" "node_reader" {
   project    = var.project_id
   location   = google_artifact_registry_repository.main.location

@@ -1,4 +1,4 @@
-# Restores cluster DNS for every Pod in the namespace, which the default deny removed.
+# Restores cluster DNS, which the default deny removed.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

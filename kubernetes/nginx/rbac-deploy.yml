@@ -1,4 +1,4 @@
-# Grants the delivery pipeline exactly the verbs a rollout needs in this namespace, and nothing anywhere else in the cluster.
+# The verbs a rollout needs in this namespace, and nothing else anywhere.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: k8-lab
 rules:
-  # Apply the Deployment and read rollout progress. apply on an existing object is a patch.
+  # Apply the Deployment and read progress; apply is a patch here.
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "patch"]
@@ -25,7 +25,7 @@ rules:
     resources: ["pods/log"]
     verbs: ["get"]
 ---
-# Binds the Google service account to that Role. On GKE a Google identity is a valid RBAC subject, named by its email under the User kind.
+# On GKE a Google identity is a valid RBAC subject, named under User.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:

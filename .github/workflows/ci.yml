@@ -1,5 +1,4 @@
-# Credential-free validation for every pull request.
-# Checks that the configuration in this repo is well formed and internally consistent.
+# Credential-free validation for every pull request and push to main.
 name: CI
 
 on:
@@ -8,11 +7,9 @@ on:
   push:
     branches: [main]
 
-# The workflow only needs to read repository contents.
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the previous, still-running check.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

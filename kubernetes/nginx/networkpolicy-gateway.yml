@@ -1,4 +1,4 @@
-# Allows traffic and health checks from Google Cloud's fixed load balancer IP ranges.
+# Allows traffic and health checks from Google's load balancer ranges.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

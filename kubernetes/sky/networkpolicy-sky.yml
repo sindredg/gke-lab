@@ -1,4 +1,4 @@
-# Allows traffic and health checks from Google Cloud's fixed load balancer IP ranges.
+# Allows traffic and health checks from Google's load balancer ranges.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -26,7 +26,7 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# Allows labelled clients in the namespace to reach the sky Pods, which is what the pipeline's smoke test is.
+# Lets labelled clients reach sky, which is what the smoke test is.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -52,7 +52,7 @@ spec:
         - protocol: TCP
           port: 8080
 ---
-# Allows those same clients to open the connection, which their own default deny egress blocks.
+# Lets those clients open the connection, which their egress deny blocks.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

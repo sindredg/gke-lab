@@ -1,4 +1,4 @@
-# A reserved address the DNS record can point at for the life of the project, independent of any Gateway object that happens to be using it.
+# A reserved address the DNS record can point at for the project's life.
 resource "google_compute_global_address" "gateway" {
   project      = var.project_id
   name         = var.address_name
@@ -6,18 +6,18 @@ resource "google_compute_global_address" "gateway" {
   description  = "Static frontend address for the external Gateway"
 }
 
-# Certificate Manager stores resource references by project number, while a resource ID built from var.project_id carries the project ID. Reading the number lets the certificate below be written in the form the API returns.
+# The API stores project numbers, so the certificate is written that way.
 data "google_project" "this" {
   project_id = var.project_id
 }
 
-# Proves control of the domain through a DNS record, so the certificate can be issued and renewed without depending on live traffic.
+# Proves domain control by DNS record, so renewal needs no live traffic.
 resource "google_certificate_manager_dns_authorization" "default" {
   project = var.project_id
   name    = "${var.address_name}-dns-auth"
   domain  = var.domain
 
-  # The default, FIXED_RECORD, validates at _acme-challenge.<domain>. Cloudflare already serves its own hidden TXT records there for Universal SSL, and a name holding both a CNAME and a TXT answers TXT queries from the TXT set alone, so the CNAME to Google is never followed and every attempt fails with CONFIG. PER_PROJECT_RECORD moves validation to _acme-challenge_<hash>.<domain>, which nothing else claims.
+  # FIXED_RECORD collides with Cloudflare's own TXT at _acme-challenge.
   type = "PER_PROJECT_RECORD"
 }
 
@@ -29,14 +29,14 @@ resource "google_certificate_manager_certificate" "default" {
   managed {
     domains = [var.domain]
 
-    # Not the authorization's own id. That is projects/PROJECT_ID/..., the API stores projects/PROJECT_NUMBER/..., and the whole managed block is immutable, so the difference plans a replacement on every apply forever. Naming the authorization by resource still orders the two correctly.
+    # By resource, not id: the id's project form plans a replacement.
     dns_authorizations = [
       "projects/${data.google_project.this.number}/locations/global/dnsAuthorizations/${google_certificate_manager_dns_authorization.default.name}",
     ]
   }
 }
 
-# A map lets one Gateway serve several certificates, chosen by hostname. The Gateway references the map, not the certificate.
+# A map lets one Gateway serve several certificates, chosen by hostname.
 resource "google_certificate_manager_certificate_map" "default" {
   project = var.project_id
   name    = "${var.address_name}-cert-map"

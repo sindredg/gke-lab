@@ -1,13 +1,4 @@
-// Holds a constant rate against both workloads while an operator rolls a Deployment, and logs every failed request
-// with its timestamp. The error window is the time between the first and the last failure.
-//
-// Run it for longer than the rollouts take, and keep RATE well below the saturation rate from ramp.js, so a failure
-// belongs to the rollout rather than to load.
-//
-// Usage, from this directory:
-//   k6 run -e RUN=a-rollout -e DURATION=8m --log-output=file=results/a-rollout-failures.log rollout.js
-// then, from the operator's machine:
-//   kubectl rollout restart deployment/sky -n demo && kubectl rollout status deployment/sky -n demo
+// Holds a constant rate through a rollout and logs every failed request.
 import http from 'k6/http';
 import { check } from 'k6';
 import { textSummary } from 'https://jslib.k6.io/k6-summary/0.1.0/index.js';
@@ -24,14 +15,14 @@ export const options = {
       rate: RATE,
       timeUnit: '1s',
       duration: DURATION,
-      // Allocated up front, as in ramp.js. At RATE=60 a pool of 20 grew mid-run and k6 dropped 11 iterations.
+      // Allocated up front; at RATE=60 a pool of 20 dropped 11 iterations.
       preAllocatedVUs: RATE + 10,
       maxVUs: RATE * 4,
     },
   },
   thresholds: {
     dropped_iterations: ['count==0'],
-    // The claim under test is no failed requests at all, so the threshold is exact and never aborts the run.
+    // The claim is no failed requests, so the threshold never aborts.
     'http_req_failed{workload:sky}': ['rate==0'],
     'http_req_failed{workload:nginx}': ['rate==0'],
   },

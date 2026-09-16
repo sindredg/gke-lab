@@ -1,4 +1,3 @@
-# Creates isolated namespace for the NGINX workload and applies Pod Security Standards to Pods admitted into it.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -6,11 +5,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: k8-lab
 
-    # Reject Pods that violate the restricted standard.
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: v1.35
 
-    # Keep reporting at the same level, so a violation also reaches the audit log.
+    # Report at the same level, so violations reach the audit log too.
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/warn-version: v1.35
     pod-security.kubernetes.io/audit: restricted

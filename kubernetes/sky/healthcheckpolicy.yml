@@ -1,4 +1,4 @@
-# Points the load balancer's health check at the application's own /health endpoint, which is not routed publicly.
+# Health-checks the app's own /health, which is not routed publicly.
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:

@@ -1,4 +1,3 @@
-# Provides a stable private address for the NGINX Pods.
 apiVersion: v1
 kind: Service
 metadata:

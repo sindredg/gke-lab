@@ -1,4 +1,3 @@
-# Creates the dedicated VPC, subnet, and Pod address range used by GKE.
 module "network" {
   source = "./modules/network"
 
@@ -12,7 +11,6 @@ module "network" {
   depends_on = [google_project_service.required]
 }
 
-# Creates the private GKE cluster and its separately managed general-purpose node pool.
 module "gke" {
   source = "./modules/gke"
 
@@ -28,16 +26,12 @@ module "gke" {
   node_pool_name = "general"
   machine_type   = "e2-standard-2"
 
-  # Two is the floor rather than one so a replica has somewhere to land when a node
-  # is drained, which is what lets the disruption budgets hold. At one node both
-  # replicas of a workload share a failure domain and the second replica buys only
-  # rollout continuity.
+  # Two so an evicted replica has somewhere to land, which the budgets need.
   min_node_count = 2
   max_node_count = 3
   disk_size_gb   = 50
 
-  # Node replacements land at night in Helsinki rather than whenever the release
-  # channel reaches this cluster.
+  # Node replacements land at night in Helsinki rather than at random.
   maintenance_start_time = "01:00"
 
   deletion_protection = true
@@ -50,7 +44,6 @@ module "gke" {
   depends_on = [module.network]
 }
 
-# Creates the private image repository and grants the nodes read access to it.
 module "registry" {
   source = "./modules/registry"
 
@@ -67,7 +60,6 @@ module "registry" {
   depends_on = [google_project_service.required]
 }
 
-# Federates GitHub Actions into the project and creates the delivery identity.
 module "delivery" {
   source = "./modules/delivery"
 
@@ -79,7 +71,6 @@ module "delivery" {
   depends_on = [google_project_service.required, module.registry]
 }
 
-# Reserves the public address the external Gateway attaches to.
 module "gateway" {
   source = "./modules/gateway"
 
@@ -90,7 +81,6 @@ module "gateway" {
   depends_on = [google_project_service.required]
 }
 
-# Watches the published site from outside Google's network, and gives an incident somewhere to start.
 module "observability" {
   source = "./modules/observability"
 

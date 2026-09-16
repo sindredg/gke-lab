@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Records what the cluster does during a load test, so the client's view in k6 can be lined up against the platform's by timestamp.
-# Runs from the operator's machine, not the load generator, and stops on Ctrl+C.
-#
-# Usage: loadtest/record.sh [run-name]
+# Records cluster state during a load test. Usage: record.sh [run-name]
 set -euo pipefail
 
 NAMESPACE="${NAMESPACE:-demo}"
@@ -15,8 +12,7 @@ EVENTS="$DIR/$RUN-$STAMP-events.log"
 
 mkdir -p "$DIR"
 
-# Events expire after an hour and a later `kubectl get events` loses the order, so they are streamed as they happen.
-# FailedCreate carries a quota rejection and TriggeredScaleUp carries the cluster autoscaler's decision.
+# Events expire after an hour and lose their order, so they are streamed.
 kubectl get events -n "$NAMESPACE" --watch-only \
   -o custom-columns='TIME:.lastTimestamp,TYPE:.type,REASON:.reason,OBJECT:.involvedObject.name,MESSAGE:.message' \
   >> "$EVENTS" &
@@ -32,7 +28,7 @@ while true; do
     # Absent until the HPA exists, which is itself worth seeing in the baseline.
     kubectl get hpa -n "$NAMESPACE" --no-headers 2>/dev/null || true
 
-    # Declared against available is the quota stall: the HPA raises the first and the second stops following.
+    # Declared above available is the quota stall.
     kubectl get deployments -n "$NAMESPACE" --no-headers \
       -o custom-columns='NAME:.metadata.name,DECLARED:.spec.replicas,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas,UPDATED:.status.updatedReplicas'
 

@@ -1,5 +1,4 @@
-# Scales sky on CPU, which tracks its load because uvicorn serves each Pod from one process.
-# Applied by an operator: the pipeline Role holds patch on Deployments and nothing on HorizontalPodAutoscalers.
+# Scales sky on CPU. Applied by an operator, not by the pipeline.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -14,12 +13,11 @@ spec:
     kind: Deployment
     name: sky
 
-  # Two keeps a replica on each node and the disruption budget satisfiable at rest. The quota admits eight at sky's
-  # size, and eight at a 350m request is more than two nodes hold, so the top of the range adds a node.
+  # Two holds the budget at rest; eight needs a third node and fits the quota.
   minReplicas: 2
   maxReplicas: 8
 
-  # Utilization is measured against the container's CPU request of 100m, so the target is 70m a Pod.
+  # Utilization is measured against the 350m request, so 70% is 245m a Pod.
   metrics:
     - type: Resource
       resource:
@@ -28,8 +26,7 @@ spec:
           type: Utilization
           averageUtilization: 70
 
-  # The Kubernetes defaults, written down so the timing is a reviewed choice: add Pods as soon as load calls for
-  # them, and wait five minutes of lower load before removing one, so a short dip does not cycle Pods.
+  # The Kubernetes defaults, written down so the timing is a reviewed choice.
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 0
