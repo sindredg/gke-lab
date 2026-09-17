@@ -22,3 +22,8 @@ output "ssl_policy_name" {
   description = "Name the GCPGatewayPolicy references"
   value       = google_compute_ssl_policy.default.name
 }
+
+output "security_policy_name" {
+  description = "Name each GCPBackendPolicy references"
+  value       = google_compute_security_policy.default.name
+}

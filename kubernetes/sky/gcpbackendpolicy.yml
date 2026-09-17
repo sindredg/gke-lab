@@ -1,0 +1,17 @@
+# Names the Cloud Armor policy Terraform owns; each backend attaches its own.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: sky
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: sky
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  default:
+    securityPolicy: k8-lab-gateway-rate-limit
+
+  targetRef:
+    group: ""
+    kind: Service
+    name: sky

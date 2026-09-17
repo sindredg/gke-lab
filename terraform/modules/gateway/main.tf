@@ -14,6 +14,51 @@ resource "google_compute_ssl_policy" "default" {
   min_tls_version = "TLS_1_2"
 }
 
+# Phase 12 measured one client reaching the namespace quota; 5 rps per address
+# is an eighth of what two replicas serve, and more than a reader generates.
+resource "google_compute_security_policy" "default" {
+  project = var.project_id
+  name    = "${var.address_name}-rate-limit"
+
+  rule {
+    action      = "throttle"
+    priority    = 1000
+    description = "Throttle a single address rather than banning it"
+
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+
+    rate_limit_options {
+      conform_action = "allow"
+      exceed_action  = "deny(429)"
+      enforce_on_key = "IP"
+
+      rate_limit_threshold {
+        count        = 300
+        interval_sec = 60
+      }
+    }
+  }
+
+  # Cloud Armor requires a default rule, and it must be the lowest priority.
+  rule {
+    action      = "allow"
+    priority    = 2147483647
+    description = "Default rule, allow everything the rules above did not"
+
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+}
+
 # The API stores project numbers, so the certificate is written that way.
 data "google_project" "this" {
   project_id = var.project_id

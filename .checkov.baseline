@@ -23,6 +23,17 @@
             ]
         },
         {
+            "file": "/terraform/modules/gateway/main.tf",
+            "findings": [
+                {
+                    "resource": "module.gateway.google_compute_security_policy.default",
+                    "check_ids": [
+                        "CKV_GCP_73"
+                    ]
+                }
+            ]
+        },
+        {
             "file": "/terraform/modules/gke/main.tf",
             "findings": [
                 {

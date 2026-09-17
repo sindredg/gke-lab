@@ -538,6 +538,16 @@ Cost: Rewriting a prefix away exposes everything behind it, so `/sky/health` and
 
 Alternatives: A `sky.` subdomain, which keeps each workload's path namespace whole at the cost of a DNS record and a certificate map entry, and remains the answer if a second application ever wants `/api`. Or patch a vendored copy to be prefix-clean, which forks the application to solve a routing problem.
 
+### Edge rate limiting
+
+Decision: Throttle a single address to 300 requests a minute with Cloud Armor, attached to each backend by a `GCPBackendPolicy`, and enable no preconfigured WAF rules.
+
+Why: Phase 12 measured one client driving the namespace into its quota, which stalled the autoscaler at five Pods of eight and failed a deploy during the stall. This is the top ranked path in the [threat model](reference/threat-model.md) because it is the one an adversary exercises without effort. The threshold is 5 requests a second, an eighth of what two replicas serve at saturation and well above what reading the site generates. `throttle` rejects the excess rather than banning the address, which is the recoverable choice for a false positive.
+
+Cost: A misjudged threshold rejects real visitors, and the uptime check counts against it at three requests a minute. `preview` on the rule turns enforcement into logging if the threshold needs observing first.
+
+Alternatives: The preconfigured WAF rules, including the Log4Shell signature `CKV_GCP_73` asks for. Nothing in this estate runs a JVM, and the application has no database, no authentication and no input beyond bounded query parameters, so the OWASP signatures defend nothing here while adding a false positive surface. Adding them would be hardening by category rather than against an adversary, which is what the threat model exists to avoid. The finding is recorded in `.checkov.baseline` rather than skipped, so the acceptance stays visible.
+
 ## Observability
 
 ### Telemetry scope
