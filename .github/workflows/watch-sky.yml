@@ -53,9 +53,53 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The pin is what production builds and this pull request is its review.
+      - name: Check the upstream commit passed its own CI
+        id: upstream
+        if: steps.read.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          runs=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs" \
+            -q '.check_runs[] | "\(.status):\(.conclusion):\(.name)"')
+
+          if [ -z "$runs" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${HEAD_SHA:0:7} has no checks yet. Leaving the pin for tomorrow."
+            exit 0
+          fi
+
+          # Anything unfinished means the answer is not known yet, not that it passed.
+          pending=$(printf '%s\n' "$runs" | grep -cv '^completed:' || true)
+          if [ "$pending" -gt 0 ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${HEAD_SHA:0:7} still has ${pending} check(s) running. Leaving the pin for tomorrow."
+            exit 0
+          fi
+
+          # neutral and skipped are not failures; everything else is.
+          bad=$(printf '%s\n' "$runs" | grep -vE '^completed:(success|neutral|skipped):' || true)
+          if [ -n "$bad" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Upstream commit not proposed"
+              echo ""
+              echo "\`${HEAD_SHA:0:7}\` did not pass its own CI:"
+              echo ""
+              printf '%s\n' "$bad" | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${HEAD_SHA:0:7} did not pass its own CI. The pin stays where it is."
+            exit 0
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "${HEAD_SHA:0:7} passed $(printf '%s\n' "$runs" | wc -l) check(s)."
+
       # A commit unreachable from a ref can stop resolving; check it now.
       - name: Check the commit can still be fetched
-        if: steps.read.outputs.changed == 'true'
+        if: steps.read.outputs.changed == 'true' && steps.upstream.outputs.eligible == 'true'
         env:
           REPOSITORY: ${{ steps.read.outputs.repository }}
           HEAD_SHA: ${{ steps.read.outputs.head }}
@@ -67,7 +111,7 @@ jobs:
           test -f upstream/Dockerfile
 
       - name: Open or update the bump
-        if: steps.read.outputs.changed == 'true'
+        if: steps.read.outputs.changed == 'true' && steps.upstream.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ steps.read.outputs.repository }}
