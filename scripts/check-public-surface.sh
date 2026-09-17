@@ -89,15 +89,29 @@ handshake() {
     </dev/null 2>&1 || true
 }
 
+# s_client prints "New, (NONE), Cipher is (NONE)" when it never connected, so a
+# negotiated cipher is the only evidence that the server answered at all.
+negotiated() {
+  # No match is an answer here, and pipefail would otherwise make it an error.
+  printf '%s' "$1" | sed -n 's/^New, TLSv[0-9.]*, Cipher is \(..*\)$/\1/p' |
+    grep -v '^(NONE)$' | head -1 || true
+}
+
+unreached() {
+  printf '%s' "$1" | grep -qE 'HTTP CONNECT failed|Connection refused|connect:errno'
+}
+
 check_refused() {
   local version=$1 id=$2 out
   out=$(handshake "$version")
 
-  if printf '%s' "$out" | grep -q 'no protocols available'; then
+  if unreached "$out"; then
+    report inconclusive "$id" "the host was never reached, so $version was not offered"
+  elif printf '%s' "$out" | grep -q 'no protocols available'; then
     report inconclusive "$id" "this openssl will not offer $version, so the server was never asked"
   elif printf '%s' "$out" | grep -qE 'alert protocol version|wrong version number|unsupported protocol'; then
     report pass "$id" "server refused $version"
-  elif printf '%s' "$out" | grep -q '^New,'; then
+  elif [ -n "$(negotiated "$out")" ]; then
     report fail "$id" "server accepted $version"
   else
     report inconclusive "$id" "no verdict from the $version handshake"
@@ -105,11 +119,14 @@ check_refused() {
 }
 
 check_accepted() {
-  local version=$1 id=$2 out
+  local version=$1 id=$2 out cipher
   out=$(handshake "$version")
+  cipher=$(negotiated "$out")
 
-  if printf '%s' "$out" | grep -q '^New,'; then
+  if [ -n "$cipher" ]; then
     report pass "$id" "server accepted $version"
+  elif unreached "$out"; then
+    report inconclusive "$id" "the host was never reached, so $version was not offered"
   else
     report fail "$id" "server did not complete a $version handshake"
   fi
@@ -190,6 +207,36 @@ check_redirect() {
   esac
 }
 
+# Google renews about 30 days out, so this only fires once renewal has stalled.
+EXPIRY_FLOOR_DAYS=21
+
+check_certificate_expiry() {
+  local pem end_date end_epoch days
+  pem=$(handshake tls1_2 |
+    sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p')
+
+  if [ -z "$pem" ]; then
+    report inconclusive "cert-expiry" "no certificate was served"
+    return
+  fi
+
+  end_date=$(printf '%s\n' "$pem" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+  end_epoch=$(date -d "$end_date" +%s 2>/dev/null || true)
+
+  if [ -z "$end_epoch" ]; then
+    report inconclusive "cert-expiry" "could not read an expiry from the certificate"
+    return
+  fi
+
+  days=$(((end_epoch - $(date +%s)) / 86400))
+
+  if [ "$days" -ge "$EXPIRY_FLOOR_DAYS" ]; then
+    report pass "cert-expiry" "${days} days remaining"
+  else
+    report fail "cert-expiry" "${days} days remaining, under the ${EXPIRY_FLOOR_DAYS} day floor"
+  fi
+}
+
 check_dns() {
   local id=$1 type=$2 description=$3 out
   if ! command -v dig >/dev/null 2>&1; then
@@ -220,6 +267,8 @@ check_header csp content-security-policy '.'
 check_header nosniff x-content-type-options 'nosniff'
 check_header referrer-policy referrer-policy '.'
 check_header frame-ancestors content-security-policy 'frame-ancestors'
+
+check_certificate_expiry
 
 check_dns caa CAA "certificate issuance is restricted"
 check_dns dnssec DS "the zone is signed"
