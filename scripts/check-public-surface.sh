@@ -23,13 +23,8 @@ PATHS=("/" "/sky/")
 
 # Findings the threat model records. Delete a line when its finding closes.
 KNOWN_OPEN=(
-  "tls10-refused"    # finding 5, no SSL policy is attached to the Gateway
-  "tls11-refused"    # finding 5
-  "hsts"             # finding 6
-  "csp"              # finding 6
-  "nosniff"          # finding 6
-  "referrer-policy"  # finding 6
-  "frame-ancestors"  # finding 6
+  "csp"              # finding 6, sky's policy is in an unmerged PR; nginx has none
+  "frame-ancestors"  # finding 6, same as csp
   "caa"              # finding 3, unverified until this runs
   "dnssec"           # finding 9, unverified until this runs
 )

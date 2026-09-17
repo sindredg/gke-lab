@@ -247,6 +247,8 @@ The frame is [the threat model](reference/threat-model.md): eight trust boundari
 
 ### Phase 13: Security baseline
 
+**Status:** Complete
+
 - Assess the platform against the GKE hardening guide, the MITRE ATT&CK container matrix, and CIS, with a tool rather than by reading.
 - Run external checks that need no cluster access: TLS, response headers, DNS CAA, and DNSSEC.
 - Run static checks over `terraform/` and `kubernetes/`, the published image, and the pinned Python dependencies.
@@ -258,13 +260,19 @@ The frame is [the threat model](reference/threat-model.md): eight trust boundari
 
 Kept thin deliberately: the ATT&CK mapping records the techniques that apply, with control and evidence, not a grid of mostly empty rows.
 
-**Exit criteria:** Every threat model finding is confirmed, closed, or reclassified against measured state. A scheduled workflow fails when TLS, headers, or DNS regress, and it is proven by a deliberate regression.
+**Exit criteria met:** Every threat model finding is confirmed, closed, or reclassified against measured state. `scripts/check-public-surface.sh` runs daily in `security-scan.yml` and fails on a listed finding that regresses, proven by the deliberate-regression test recorded in the worklog. checkov runs on every pull request via `ci.yml`. kubescape ran one-shot against MITRE and NSA. Security Command Center was checked and found disabled, itself a finding. The three account controls (MFA, write access, branch protection) are all verified, and one was found broken: `k8-lab`'s branch ruleset existed but targeted no branch, fixed during this phase.
+
+Not closed by this phase, carried to Phase 14: findings 2, 3, 4, 9 and 10, finding 6's CSP and `frame-ancestors`, and `sky`'s branch protection. Findings 3 and 9 were measured open rather than left unverified. The [threat model's findings table](reference/threat-model.md#findings) carries the status of all twelve.
+
+Evidence: [Phase 13 worklog](worklog/phase-13-security-baseline.md)
 
 Documentation: [hardening your GKE cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster), [MITRE ATT&CK for Containers](https://attack.mitre.org/matrices/enterprise/containers/), [Security Command Center](https://cloud.google.com/security-command-center/docs/security-command-center-overview), [Kubescape](https://kubescape.io/docs/), [Trivy](https://trivy.dev/latest/docs/), [testssl.sh](https://testssl.sh/)
 
 ### Phase 14: Close the baseline
 
 Ordered by the threat model's ranking rather than by ease. The first item defends the only path an adversary is exercising today; the last is the one with six controls already on it.
+
+Four bullets below shipped and were deployed during Phase 13: Cloud Armor rate limiting, the SSL policy, the response headers (except sky's CSP), and the pin-bump CI check. See the [Phase 13 worklog](worklog/phase-13-security-baseline.md).
 
 - Add Cloud Armor rate limiting to the Gateway, sized from the Phase 12 measurements.
 - Re-decide the federation trust boundary with its consequence written down, and record the outcome either way.

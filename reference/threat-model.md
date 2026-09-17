@@ -60,11 +60,13 @@ Public, unauthenticated, and unrated. The only boundary an opportunistic adversa
 | | Threat | State |
 | --- | --- | --- |
 | S | No client identity exists to spoof | Not applicable by design |
-| T | Downgrade or interception in transit | **Open.** The load balancer runs Google's default SSL policy, which accepts TLS 1.0 and 1.1. No SSL policy is defined in `terraform/` or attached in `kubernetes/` |
+| T | Downgrade or interception in transit | **Closed, measured.** `k8-lab-gateway-ssl-policy` sets a TLS 1.2 floor on the `MODERN` profile, attached by `GCPGatewayPolicy`. The script reports TLS 1.0 and 1.1 refused, 1.2 and 1.3 accepted, and HSTS present on both paths at `max-age=86400`. SSL Labs grades `A`. The short `max-age` is deliberate, so it is `A` rather than `A+` |
 | R | Request attribution | Accepted. `sky` runs with `--no-access-log`, so request-level records come from the load balancer alone. Nothing here is transacted, so there is nothing to repudiate |
 | I | Disclosure of served content | Not applicable. Nothing served is confidential. `/version` reveals the exact upstream commit, which is public already |
-| D | Exhaustion from a single client | **Open.** No rate limiting. Phase 12 measured that one client can drive the namespace to its quota. `ResourceQuota` bounds the blast radius at eight Pods; the cluster autoscaler converts the remainder into cost |
+| D | Exhaustion from a single client | **Mitigated, unproven under load.** `k8-lab-gateway-rate-limit` throttles one address to 300 requests a minute, attached to each backend by `GCPBackendPolicy`. Phase 12 measured that one client can otherwise drive the namespace to its quota. `ResourceQuota` still bounds the blast radius at eight Pods. The flood test that would prove it is Phase 14's exit criterion |
 | E | No authorization exists at this boundary | Not applicable |
+
+Response headers other than HSTS sit on this boundary too, and finding 6 is only partly closed. `X-Content-Type-Options` and `Referrer-Policy` are present on both paths; CSP and `frame-ancestors` are absent from the nginx root and from `/sky/`, pending [sky#59](https://github.com/sindredg/sky/pull/59).
 
 ## Boundary 2: Gateway to Pod
 
@@ -118,11 +120,11 @@ Blast radius if this boundary falls, stated plainly: push an image, and patch th
 
 | | Threat | State |
 | --- | --- | --- |
-| T | An unreviewed upstream commit reaching production | **Open.** `watch-sky.yml` reads the head of `sky`'s `main`, writes it to the pin, and opens a pull request. The workflow's own body states that CI does not run on it, because GitHub raises no workflow events from a workflow token. The single pull request that changes which code runs in production is the one with no automated validation |
+| T | An unreviewed upstream commit reaching production | **Mitigated, with a residual.** `watch-sky.yml` now queries the upstream SHA's check runs and refuses to propose a pin whose CI is not green, counting anything unfinished as unknown rather than as a pass. The residual stands: no workflow event fires from a workflow token, so this repository's own CI still does not run on the pin bump. The upstream commit is validated; the bump itself is reviewed by a human reading a diff |
 | S | A commit from an unexpected author | Accepted for now. The workflow fetches by SHA and verifies it resolves, but checks neither signature nor authorship |
 | R | What was deployed and when | Mitigated. The pin is a file with history, and the image tag carries the upstream SHA |
 
-The pin itself is a strong control and is worth keeping in view: production does not follow upstream's `main`, it follows a commit a human merged. The weakness is what informs that human. Querying `sky`'s check runs for the SHA and refusing to propose a red commit is a small change to an existing workflow.
+The pin itself is a strong control and is worth keeping in view: production does not follow upstream's `main`, it follows a commit a human merged. The weakness was what informed that human, and querying `sky`'s check runs for the SHA turned out to be a small change to an existing workflow. It has shipped.
 
 ## Boundary 6: DNS and certificate issuance
 
@@ -138,7 +140,18 @@ The boundary nothing in either repository currently touches.
 
 Outside both repositories, and the highest-impact path in the model. Write access to `k8-lab` leads to Google Cloud by boundary 4; write access to `sky` leads to the same place more slowly by boundary 5.
 
-This model **assumes** multi-factor authentication on the account, that write access is held only by its owner, and that `main` is protected with required checks. None of those are verified by anything in this repository, and all three are load-bearing. They belong in the Phase 13 assessment.
+This model originally **assumed** multi-factor authentication on the account, that write access is held only by its owner, and that `main` is protected with required checks. All three are load-bearing, none were verified by anything in this repository, and Phase 13 measured them. One assumption was wrong.
+
+| Control | Measured state |
+| --- | --- |
+| Multi-factor authentication | Enabled. Not obtainable from the API for a personal account, confirmed by the owner at `github.com/settings/security` |
+| Write access | `sindredg` is the sole collaborator on both repositories, admin on each. No other user or team |
+| `main` on `k8-lab` | Protected by the `Protect main` ruleset, active. It existed from 2026-08-28 with `conditions.ref_name.include` empty, so it matched no branch and enforced nothing for three weeks. Retargeted to `~DEFAULT_BRANCH` with `strict_required_status_checks_policy` on |
+| `main` on `sky` | **Open.** Neither a ruleset nor classic protection. Unaddressed, carried to Phase 14 |
+
+One residual on `k8-lab`: the ruleset requires `Terraform`, `Kubernetes` and `Docs and scripts`, three of the five checks that run. `Static analysis` (checkov) and `Public surface` report but do not gate, so a pull request merges with either of them red.
+
+Evidence: [Phase 13 worklog](../worklog/phase-13-security-baseline.md#slice-4-account-controls).
 
 ## Boundary 8: Public registries to the running image
 
@@ -152,18 +165,18 @@ The last row matters less than it first appears, and the ordering below reflects
 
 ## Attack paths, ranked
 
-Ranked by likelihood multiplied by impact against the assets above, not by how interesting they are.
+Ranked by likelihood multiplied by impact against the assets above, not by how interesting they are. The ranking is as modelled, before Phase 13; the last column records what has since been put on each path.
 
-| Path | Likelihood | Impact | Net |
-| --- | --- | --- | --- |
-| Exhaustion from an unrated public endpoint | Happening continuously | Cost and availability | **Highest** |
-| Account compromise to arbitrary content on the domain | Low | Crown jewel | **High** |
-| Certificate issued through the DNS zone | Low | Crown jewel, and invisible from inside the platform | **High** |
-| Downgrade against TLS 1.0 or 1.1 | Low | Low; nothing confidential in transit | Medium, and visibly wrong |
-| An upstream commit reaching production unvalidated | Moderate | Depends entirely on the commit | Medium |
-| RCE in the application | Low | Very low; the Pod is close to inert | **Lowest** |
+| Path | Likelihood | Impact | Net | Control now |
+| --- | --- | --- | --- | --- |
+| Exhaustion from an unrated public endpoint | Happening continuously | Cost and availability | **Highest** | Rate limiting, 300 a minute per address |
+| Account compromise to arbitrary content on the domain | Low | Crown jewel | **High** | MFA and a ruleset that now matches `main`. `sky` still open |
+| Certificate issued through the DNS zone | Low | Crown jewel, and invisible from inside the platform | **High** | None. Findings 3 and 9 both open |
+| Downgrade against TLS 1.0 or 1.1 | Low | Low; nothing confidential in transit | Medium, and visibly wrong | TLS 1.2 floor. Closed |
+| An upstream commit reaching production unvalidated | Moderate | Depends entirely on the commit | Medium | Upstream CI queried before the pin is proposed |
+| RCE in the application | Low | Very low; the Pod is close to inert | **Lowest** | Six overlapping, unchanged |
 
-The shape of that table is the finding. Six overlapping controls sit on the bottom row, and the top three have one, none, and none.
+The shape of that table was the finding. Six overlapping controls sat on the bottom row, and the top three had one, none, and none. Phase 13 put a control on four of the six rows, including the highest ranked. The third row is the one left untouched, and it is the one nothing in this repository can see.
 
 That is not a criticism of the work. Containment that good is unusual, and it is why the bottom row ranks last. It is what happens when a platform is hardened by category — Pod security, network policy, image provenance — rather than by adversary. Categories are how the guides are organised, so this is the normal outcome of following them well.
 
@@ -180,26 +193,28 @@ Recorded so that the absence is a decision rather than an oversight.
 
 ## Findings
 
-Carried into Phase 13 for verification and Phase 14 for the work. Ranked as above, not by boundary.
+Carried into Phase 13 for verification and Phase 14 for the work. Ranked as above, not by boundary. Status is as Phase 13 measured it.
 
-| # | Boundary | Finding | Proposed response |
-| --- | --- | --- | --- |
-| 1 | 1 | No rate limiting on the public endpoint | Mitigate |
-| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded |
-| 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate |
-| 4 | 6 | Renewal failure is silent | Mitigate |
-| 5 | 1 | TLS 1.0 and 1.1 accepted; no SSL policy defined | Mitigate |
-| 6 | 1 | No HSTS, and no other response security headers | Mitigate |
-| 7 | 5 | The pin bump is the one pull request CI does not validate | Mitigate |
-| 8 | 7 | Account controls are assumed, not verified | Verify |
-| 9 | 6 | No DS record, so the zone is unsigned | Decide |
-| 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 |
-| 11 | 3 | DNS is the one egress channel out of the namespace | Accept |
-| 12 | 2 | Shared Google ranges admitted by NetworkPolicy | Accept |
+| # | Boundary | Finding | Proposed response | Status after Phase 13 |
+| --- | --- | --- | --- | --- |
+| 1 | 1 | No rate limiting on the public endpoint | Mitigate | Closed. 300 requests a minute per address, live. Not yet proven under a flood |
+| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Open. Carried to Phase 14 |
+| 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate | Open, measured. Carried to Phase 14 |
+| 4 | 6 | Renewal failure is silent | Mitigate | Open. Carried to Phase 14 |
+| 5 | 1 | TLS 1.0 and 1.1 accepted; no SSL policy defined | Mitigate | Closed, measured. TLS 1.2 floor, both refused |
+| 6 | 1 | No HSTS, and no other response security headers | Mitigate | Partly closed. HSTS, `nosniff` and `Referrer-Policy` live; CSP and `frame-ancestors` open, carried to Phase 14 |
+| 7 | 5 | The pin bump is the one pull request CI does not validate | Mitigate | Closed. Upstream CI is queried before the pin is proposed |
+| 8 | 7 | Account controls are assumed, not verified | Verify | Closed for `k8-lab`, and one assumption was wrong. `sky`'s `main` is unprotected, carried to Phase 14 |
+| 9 | 6 | No DS record, so the zone is unsigned | Decide | Open, measured. Carried to Phase 14 |
+| 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 | Open. Carried to Phase 14 |
+| 11 | 3 | DNS is the one egress channel out of the namespace | Accept | Accepted |
+| 12 | 2 | Shared Google ranges admitted by NetworkPolicy | Accept | Accepted |
 
-Findings 1, 5, 6, 3 and 9 are measured rather than reasoned: [the Phase 13 worklog](../worklog/phase-13-security-baseline.md) records the run. Findings 3 and 9 were written here as unverified and might have turned out closed; both are open.
+Findings 1, 3, 5, 6 and 9 are measured rather than reasoned: [the Phase 13 worklog](../worklog/phase-13-security-baseline.md) records every run. Findings 3 and 9 were written here as unverified and might have turned out closed; both are open.
 
-Finding 8 remains unverified. It concerns the account controls, which no scan reaches and no file in this repository describes, and it is the one the highest ranked path rests on.
+Finding 8 was the one the highest ranked path rests on, and verifying it found the assumption false. `k8-lab`'s ruleset had been active for three weeks while matching no branch. Nothing in this repository would have shown that, which is the argument for the phase.
+
+Phase 13 closed no finding by writing about it. Each closure above has a command and its output in the worklog.
 
 ## References
 
