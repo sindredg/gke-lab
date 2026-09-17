@@ -370,11 +370,15 @@ Alternatives: A service account key in a GitHub secret, or a self-hosted runner 
 
 ### Federation trust boundary
 
-Decision: Restrict the OIDC provider with an `attribute_condition` on `assertion.repository`, and bind impersonation to a `principalSet://` naming that same attribute.
+Decision: Restrict the OIDC provider with an `attribute_condition` on `assertion.repository` and `assertion.ref`, and bind impersonation to a `principalSet://` naming the repository attribute.
 
-Why: The provider trusts GitHub's issuer, and every repository on GitHub receives tokens from that issuer. Without a condition, a validly signed token from any repository is accepted, including one an attacker creates. The condition is what narrows "signed by GitHub" to "signed by GitHub, for this repository". `principalSet` rather than `principal` binds every workflow in the repository rather than one exact subject, because the branch and workflow will change over this project's life and the repository will not.
+Why: The provider trusts GitHub's issuer, and every repository on GitHub receives tokens from that issuer. Without a condition, a validly signed token from any repository is accepted, including one an attacker creates. The condition narrows "signed by GitHub" to "signed by GitHub, for this repository, on this branch".
 
-Alternatives: Scope trust to a branch or environment as well, which is stricter and breaks on every branch rename.
+Repository alone was the earlier decision, on the grounds that a branch changes over a project's life and a repository does not. That is true and it left a consequence unstated, which Phase 13's [threat model](reference/threat-model.md) recorded as finding 2: pushing a branch is enough to mint pipeline credentials, so required checks and pull request review do not govern the path to Google Cloud. Merge protection decides what reaches `main`, not what a branch push can do.
+
+Cost: A branch rename breaks delivery until the condition follows it. Delivery can no longer be exercised from a branch, so `workflow_dispatch` runs from `main` only. The ref is enforced at the provider rather than in the binding, so the `principalSet` still authorizes every workflow in the repository once a token is through.
+
+Alternatives: Repository only, which this replaces. Binding the `principalSet` to `attribute.ref` as well, which moves the same control into IAM and makes pool membership depend on the branch.
 
 ### Pipeline authorization
 

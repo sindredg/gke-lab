@@ -95,7 +95,7 @@ Conditions use [Common Expression Language](https://cloud.google.com/iam/docs/wo
 assertion.repository == 'owner/name' && assertion.ref == 'refs/heads/main'
 ```
 
-Scoping to a ref is stricter and breaks on every branch rename. This platform scopes to the repository only, and records that trade-off in [decisions.md](../decisions.md#federation-trust-boundary).
+Scoping to a ref is stricter and breaks on every branch rename. This platform scopes to both, because the repository alone lets any branch of it mint credentials, and a branch push is not something merge protection governs. The trade-off is recorded in [decisions.md](../decisions.md#federation-trust-boundary).
 
 ## principal, principalSet, and principalSetHierarchy
 

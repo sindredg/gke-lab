@@ -20,8 +20,11 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.ref"        = "assertion.ref"
   }
 
-  # Without this, any repository on GitHub can present a valid token.
-  attribute_condition = "assertion.repository == '${var.github_repository}'"
+  # Repository alone lets any branch of it mint credentials; ref closes that.
+  attribute_condition = join(" && ", compact([
+    "assertion.repository == '${var.github_repository}'",
+    var.github_ref == null ? "" : "assertion.ref == '${var.github_ref}'",
+  ]))
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

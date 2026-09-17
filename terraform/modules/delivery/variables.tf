@@ -23,6 +23,12 @@ variable "github_repository" {
   }
 }
 
+variable "github_ref" {
+  description = "The only ref whose tokens this provider accepts, or null for any"
+  type        = string
+  default     = "refs/heads/main"
+}
+
 variable "pool_id" {
   description = "Identifier of the Workload Identity Pool"
   type        = string

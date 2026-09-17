@@ -106,13 +106,13 @@ No key exists to steal, which is the point of federation. The consequence is tha
 | R | Attribution of a deployment | Mitigated. Cloud Audit Logs record the federated principal |
 | I | Reading project state | Bounded by the same grants |
 | D | Filling the namespace quota | Observed already: Phase 12 recorded two concurrent rollouts exhausting `limits.cpu`, which is why both delivery workflows share a concurrency group |
-| E | **Branch push to Google Cloud credentials** | **Open as a residual, not as a defect.** The condition and the `principalSet` both bind on `attribute.repository`. `attribute.ref` is mapped but not conditioned. Any workflow on any branch of this repository can therefore mint pipeline credentials |
+| E | Branch push to Google Cloud credentials | Mitigated in Phase 14. The condition binds `assertion.repository` and `assertion.ref`, so only `refs/heads/main` reaches the pool. The `principalSet` still binds the repository, so the provider is the single place the ref is enforced |
 
-The last row needs care, because the choice was made deliberately and is recorded in [decisions.md](../decisions.md#federation-trust-boundary): binding to the repository is stable where a branch is not, and the alternative breaks on every branch rename. That reasoning stands.
+This was open when the model was written, and open deliberately: [decisions.md](../decisions.md#federation-trust-boundary) had chosen the repository alone because a branch changes over a project's life and a repository does not. That reasoning was sound and left a consequence unstated.
 
-What the decision does not state is the consequence: **merge protection is not a control on the path to Google Cloud.** Required checks and pull request review govern what reaches `main`. They do not govern what a branch push can do, and a branch carrying a workflow that calls `google-github-actions/auth` receives the pipeline identity without ever being reviewed. The path is only open to an actor who already holds write access, which makes this a question of how much the account compromise in the adversary table is worth, not a question of whether an outsider can walk in.
+The consequence is that **merge protection was not a control on the path to Google Cloud.** Required checks and pull request review govern what reaches `main`; they do not govern what a branch push can do, and a branch carrying a workflow that calls `google-github-actions/auth` received the pipeline identity without ever being reviewed. The path was only open to an actor who already held write access, which made it a question of what the account compromise in the adversary table is worth rather than whether an outsider could walk in.
 
-The trade-off should be re-decided with that consequence written down. Scoping the condition to `refs/heads/main` would close it at the cost of the `workflow_dispatch` bootstrap path, which currently exists to publish an image before the Deployment exists.
+Written down that way, the trade-off reversed. The cost is smaller than it first looked: `workflow_dispatch` still works from `main`, so the bootstrap path survives, and what is actually lost is exercising delivery from a branch, plus a branch rename breaking it until the condition follows.
 
 Blast radius if this boundary falls, stated plainly: push an image, and patch the Deployment to run it. That is arbitrary content served at `sindrg.com/sky` — the crown jewel, reached without touching any of boundary 3's defences. PSA still blocks a privileged Pod, the quota still bounds the compute, and egress is still denied, so the project is not a mining platform. The integrity of the domain is what is lost.
 
@@ -198,7 +198,7 @@ Carried into Phase 13 for verification and Phase 14 for the work. Ranked as abov
 | # | Boundary | Finding | Proposed response | Status after Phase 13 |
 | --- | --- | --- | --- | --- |
 | 1 | 1 | No rate limiting on the public endpoint | Mitigate | Closed. 300 requests a minute per address, live. Not yet proven under a flood |
-| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Open. Carried to Phase 14 |
+| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Re-decided in Phase 14. Condition scoped to `refs/heads/main`; not yet applied |
 | 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate | Open, measured. Carried to Phase 14 |
 | 4 | 6 | Renewal failure is silent | Mitigate | Open. Carried to Phase 14 |
 | 5 | 1 | TLS 1.0 and 1.1 accepted; no SSL policy defined | Mitigate | Closed, measured. TLS 1.2 floor, both refused |
