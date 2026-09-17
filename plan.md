@@ -237,11 +237,54 @@ Evidence: [Phase 12a worklog](worklog/phase-12a-load-baseline.md), [Phase 12b wo
 
 Documentation: [Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/), [migrating a Deployment to an HPA](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/#migrating-deployments-and-statefulsets-to-horizontal-autoscaling), [container lifecycle hooks](https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/), [container-native load balancing](https://cloud.google.com/kubernetes-engine/docs/concepts/container-native-load-balancing), [GKE cluster autoscaler](https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-autoscaler), [kube state metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/kube-state-metrics), [cAdvisor and kubelet metrics](https://cloud.google.com/kubernetes-engine/docs/how-to/cadvisor-kubelet-metrics), [k6 executors](https://grafana.com/docs/k6/latest/using-k6/scenarios/executors/)
 
-## Milestone 3: AI reference workload
+## Milestone 3: Security baseline and hardening
 
-Follows Milestone 2.
+Phase 11 was a security pass by inspection, and it found real things. This milestone replaces inspection with measurement, because the two most recent findings arrived by routes inspection does not cover. A public TLS scan graded the load balancer `B` on a default SSL policy nobody had chosen, and writing a threat model showed that merge protection is not a control on the path to Google Cloud. Neither is visible by reading a manifest.
 
-### Phase 13: Deterministic manifest review
+It runs before the AI workload rather than after. Accepting submitted YAML from the internet changes the threat model substantially, and a baseline is worth more established against the system as it stands than against one that is moving.
+
+The frame is [the threat model](reference/threat-model.md): eight trust boundaries, twelve findings, and the ranking those produce.
+
+### Phase 13: Security baseline
+
+- Assess the platform against the GKE hardening guide, the MITRE ATT&CK container matrix, and CIS, with a tool rather than by reading.
+- Run external checks that need no cluster access: TLS, response headers, DNS CAA, and DNSSEC.
+- Run static checks over `terraform/` and `kubernetes/`, the published image, and the pinned Python dependencies.
+- Read what Security Command Center already reports, which costs nothing and predates this phase.
+- Verify the three account controls the threat model assumes rather than knows.
+- Keep the scanners one-shot. A permanent in-cluster agent needs broad cluster read, which is a security decision of its own, and this node pool has no room for it.
+- Reconcile every finding against the threat model, and drop the ones that do not apply to a platform with no data and one operator.
+- Promote the external and static checks to a scheduled workflow, so the baseline is a control rather than a snapshot.
+
+Kept thin deliberately: the ATT&CK mapping records the techniques that apply, with control and evidence, not a grid of mostly empty rows.
+
+**Exit criteria:** Every threat model finding is confirmed, closed, or reclassified against measured state. A scheduled workflow fails when TLS, headers, or DNS regress, and it is proven by a deliberate regression.
+
+Documentation: [hardening your GKE cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster), [MITRE ATT&CK for Containers](https://attack.mitre.org/matrices/enterprise/containers/), [Security Command Center](https://cloud.google.com/security-command-center/docs/security-command-center-overview), [Kubescape](https://kubescape.io/docs/), [Trivy](https://trivy.dev/latest/docs/), [testssl.sh](https://testssl.sh/)
+
+### Phase 14: Close the baseline
+
+Ordered by the threat model's ranking rather than by ease. The first item defends the only path an adversary is exercising today; the last is the one with six controls already on it.
+
+- Add Cloud Armor rate limiting to the Gateway, sized from the Phase 12 measurements.
+- Re-decide the federation trust boundary with its consequence written down, and record the outcome either way.
+- Restrict certificate issuance with CAA records, and alert when the certificate leaves `ACTIVE`.
+- Define an SSL policy with a TLS 1.2 floor and attach it to the Gateway.
+- Add HSTS and the other response headers at the Gateway, so both workloads carry them from one declaration, and a Content Security Policy in `sky`, which is the only thing that knows what it loads.
+- Refuse to propose a pin bump whose upstream CI is red.
+- Add provenance, an SBOM, and signing to the build, and enforce them at admission.
+
+Two cautions carried from the threat model. `includeSubDomains` and `preload` are one-way doors, so HSTS starts with a short `max-age`. Scoping federation to a ref costs the `workflow_dispatch` bootstrap path, which is the reason to decide rather than assume.
+
+**Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance.
+
+Documentation: [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/rate-limiting-overview), [SSL policies](https://cloud.google.com/load-balancing/docs/ssl-policies-concepts), [GKE Gateway configuration](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources), [CAA records](https://letsencrypt.org/docs/caa/), [Binary Authorization](https://cloud.google.com/binary-authorization/docs), [SLSA](https://slsa.dev/)
+
+## Milestone 4: AI reference workload
+
+Follows Milestone 3.
+
+### Phase 15: Deterministic manifest review
 
 - Add a small API for submitted Kubernetes YAML.
 - Treat all submissions as untrusted input.
@@ -251,7 +294,7 @@ Follows Milestone 2.
 
 **Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
 
-### Phase 14: AI explanation with closed validation
+### Phase 16: AI explanation with closed validation
 
 - Use Vertex AI only to explain findings and propose corrections.
 - Authenticate from GKE with Workload Identity Federation.
@@ -275,11 +318,11 @@ These are not implementation commitments yet.
 - Add Pub/Sub and workers only if synchronous review processing becomes a limitation.
 - Add remote Terraform state before automated infrastructure apply or collaboration.
 - Create a regional cluster temporarily for availability and recovery validation.
-- Evaluate advanced supply-chain controls after the basic image pipeline is complete.
-- Add Cloud Armor rate limiting if load testing shows a single client can drive the namespace to its quota.
 - Test sudden node loss and drain under load once autoscaling is in place.
 
-Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters), [Binary Authorization](https://cloud.google.com/binary-authorization/docs), [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/rate-limiting-overview)
+Two gates closed into Milestone 3. Cloud Armor rate limiting was conditional on load testing showing that a single client can drive the namespace to its quota, and Phase 12 showed exactly that. Advanced supply-chain controls were conditional on the basic image pipeline being complete, and it is.
+
+Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters)
 
 ## Cost posture
 
@@ -294,4 +337,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
 
-Next is Phase 13, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
+Next is Milestone 3. [The threat model](reference/threat-model.md) is written and ranks twelve findings; Phase 13 measures the platform against that frame instead of against a reading of it, and Phase 14 closes what the measurement confirms. The AI reference workload follows in Milestone 4, on a platform whose security posture has been tested rather than described.

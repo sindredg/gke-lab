@@ -98,7 +98,7 @@ Milestones 1 and 2 are complete. Every platform claim has recorded commands, res
 | Hardened | One network, vulnerability scanning on, logs queryable |
 | Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 
-Next: Milestone 3, the deterministic manifest reviewer, which is the first workload this platform exists to carry.
+Next: Milestone 3, a measured security baseline and the hardening it ranks, guided by [the threat model](reference/threat-model.md). The deterministic manifest reviewer follows in Milestone 4.
 
 ## Measured
 
