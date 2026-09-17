@@ -17,3 +17,8 @@ output "certificate_map_name" {
   description = "Name the Gateway annotation references"
   value       = google_certificate_manager_certificate_map.default.name
 }
+
+output "ssl_policy_name" {
+  description = "Name the GCPGatewayPolicy references"
+  value       = google_compute_ssl_policy.default.name
+}

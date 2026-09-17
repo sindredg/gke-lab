@@ -6,6 +6,14 @@ resource "google_compute_global_address" "gateway" {
   description  = "Static frontend address for the external Gateway"
 }
 
+# Google's default accepts TLS 1.0 and 1.1, and applies until one is attached.
+resource "google_compute_ssl_policy" "default" {
+  project         = var.project_id
+  name            = "${var.address_name}-ssl-policy"
+  profile         = "MODERN"
+  min_tls_version = "TLS_1_2"
+}
+
 # The API stores project numbers, so the certificate is written that way.
 data "google_project" "this" {
   project_id = var.project_id

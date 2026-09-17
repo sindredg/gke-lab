@@ -87,3 +87,27 @@ jobs:
 
       - name: Lint manifests for security and reliability
         run: kube-linter lint --config .kube-linter.yaml kubernetes/
+
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-24.04
+    env:
+      CHECKOV_VERSION: 3.3.19
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # A venv: Ubuntu marks the system interpreter externally managed.
+      - name: Install checkov
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check \
+            "checkov==${CHECKOV_VERSION}"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      # Reads the Terraform too; the baseline holds what Phase 13 is triaging.
+      - name: Scan the Terraform and the manifests
+        run: |
+          checkov -d . --compact \
+            --config-file .checkov.yml \
+            --baseline .checkov.baseline

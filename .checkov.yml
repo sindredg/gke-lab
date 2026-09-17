@@ -1,0 +1,11 @@
+# Only checks verified wrong are skipped; acceptable ones go in the baseline.
+framework:
+  - terraform
+  - kubernetes
+
+skip-check:
+  # Dataplane V2 enforces NetworkPolicy without the legacy block this reads.
+  - CKV_GCP_12
+
+  # GKE_METADATA is set on the node pool; this check reads the cluster.
+  - CKV_GCP_69

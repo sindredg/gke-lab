@@ -1,0 +1,56 @@
+# Checks the published surface from outside, on a schedule. Needs no credential.
+name: Security scan
+
+on:
+  schedule:
+    # An hour before Watch sky, so a morning review sees both.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/check-public-surface.sh'
+      - '.github/workflows/security-scan.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+env:
+  DOMAIN: sindrg.com
+
+jobs:
+  surface:
+    name: Public surface
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # openssl and curl ship with the runner; dig queries CAA and DS.
+      - name: Install dig
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bind9-dnsutils
+
+      # Known findings are listed in the script; a new or a fixed one fails here.
+      - name: Check TLS, headers, and DNS
+        id: check
+        run: |
+          set -o pipefail
+          ./scripts/check-public-surface.sh "$DOMAIN" | tee "$RUNNER_TEMP/surface.txt"
+
+      - name: Record the result
+        if: always()
+        run: |
+          {
+            echo "### Public surface of ${DOMAIN}"
+            echo ""
+            echo '```'
+            cat "$RUNNER_TEMP/surface.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

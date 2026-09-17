@@ -1,0 +1,16 @@
+# Names the SSL policy Terraform owns, the way the Gateway names the cert map.
+apiVersion: networking.gke.io/v1
+kind: GCPGatewayPolicy
+metadata:
+  name: external
+  namespace: demo
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  default:
+    sslPolicy: k8-lab-gateway-ssl-policy
+
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: external

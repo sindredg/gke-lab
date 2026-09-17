@@ -15,6 +15,18 @@ spec:
     - sindrg.com
 
   rules:
-    - backendRefs:
+    # Filters attach to a rule, so every rule serving this host repeats the set.
+    - filters:
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              # One day, no includeSubDomains, no preload: both are one-way doors.
+              - name: Strict-Transport-Security
+                value: max-age=86400
+              - name: X-Content-Type-Options
+                value: nosniff
+              - name: Referrer-Policy
+                value: strict-origin-when-cross-origin
+      backendRefs:
         - name: nginx
           port: 80

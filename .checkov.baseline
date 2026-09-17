@@ -1,0 +1,69 @@
+{
+    "failed_checks": [
+        {
+            "file": "/kubernetes/nginx/deployment.yml",
+            "findings": [
+                {
+                    "resource": "Deployment.demo.nginx",
+                    "check_ids": [
+                        "CKV_K8S_40"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/modules/delivery/main.tf",
+            "findings": [
+                {
+                    "resource": "module.delivery.google_iam_workload_identity_pool_provider.github",
+                    "check_ids": [
+                        "CKV_GCP_125"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/modules/gke/main.tf",
+            "findings": [
+                {
+                    "resource": "module.gke.google_container_cluster.main",
+                    "check_ids": [
+                        "CKV_GCP_13",
+                        "CKV_GCP_20",
+                        "CKV_GCP_61",
+                        "CKV_GCP_65",
+                        "CKV_GCP_66"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/modules/network/main.tf",
+            "findings": [
+                {
+                    "resource": "module.network.google_compute_network.main",
+                    "check_ids": [
+                        "CKV2_GCP_18"
+                    ]
+                },
+                {
+                    "resource": "module.network.google_compute_subnetwork.main",
+                    "check_ids": [
+                        "CKV_GCP_26"
+                    ]
+                }
+            ]
+        },
+        {
+            "file": "/terraform/modules/registry/main.tf",
+            "findings": [
+                {
+                    "resource": "module.registry.google_artifact_registry_repository.main",
+                    "check_ids": [
+                        "CKV_GCP_84"
+                    ]
+                }
+            ]
+        }
+    ]
+}

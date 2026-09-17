@@ -130,8 +130,8 @@ The boundary nothing in either repository currently touches.
 
 | | Threat | State |
 | --- | --- | --- |
-| S | A certificate issued for this domain by another CA | **Open, unverified.** Certificate issuance is proved by a DNS record. Anyone with access to the Cloudflare zone can prove control to any CA and obtain a valid certificate for `sindrg.com`. None of the cluster's hardening is on this path. CAA records would restrict issuance to the intended CA; whether any exist has not been checked |
-| T | Redirecting the domain | **Open, unverified.** A zone edit points the name anywhere. DNSSEC state unchecked |
+| S | A certificate issued for this domain by another CA | **Open, measured.** Certificate issuance is proved by a DNS record. Anyone with access to the Cloudflare zone can prove control to any CA and obtain a valid certificate for `sindrg.com`. None of the cluster's hardening is on this path. `scripts/check-public-surface.sh` reports no CAA record, so no CA is excluded |
+| T | Redirecting the domain | **Open, measured.** A zone edit points the name anywhere, and the same run reports no DS record, so the zone is unsigned and its answers are not authenticated |
 | D | Silent renewal failure | **Open.** Google renews automatically, so a broken authorization surfaces only when the certificate expires. This has precedent here: `PER_PROJECT_RECORD` is in the Terraform specifically because `FIXED_RECORD` collided with Cloudflare's own TXT record at `_acme-challenge` |
 
 ## Boundary 7: The GitHub account
@@ -186,18 +186,20 @@ Carried into Phase 13 for verification and Phase 14 for the work. Ranked as abov
 | --- | --- | --- | --- |
 | 1 | 1 | No rate limiting on the public endpoint | Mitigate |
 | 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded |
-| 3 | 6 | Certificate issuance is not restricted to a CA | Mitigate, after verifying current state |
+| 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate |
 | 4 | 6 | Renewal failure is silent | Mitigate |
 | 5 | 1 | TLS 1.0 and 1.1 accepted; no SSL policy defined | Mitigate |
 | 6 | 1 | No HSTS, and no other response security headers | Mitigate |
 | 7 | 5 | The pin bump is the one pull request CI does not validate | Mitigate |
 | 8 | 7 | Account controls are assumed, not verified | Verify |
-| 9 | 6 | DNSSEC state unknown | Verify |
+| 9 | 6 | No DS record, so the zone is unsigned | Decide |
 | 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 |
 | 11 | 3 | DNS is the one egress channel out of the namespace | Accept |
 | 12 | 2 | Shared Google ranges admitted by NetworkPolicy | Accept |
 
-Findings 8, 9 and 3 are marked unverified because they concern state this repository does not describe. Assessing them is the first task of Phase 13, and any of them may turn out to be already closed.
+Findings 1, 5, 6, 3 and 9 are measured rather than reasoned: [the Phase 13 worklog](../worklog/phase-13-security-baseline.md) records the run. Findings 3 and 9 were written here as unverified and might have turned out closed; both are open.
+
+Finding 8 remains unverified. It concerns the account controls, which no scan reaches and no file in this repository describes, and it is the one the highest ranked path rests on.
 
 ## References
 

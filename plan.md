@@ -270,7 +270,7 @@ Ordered by the threat model's ranking rather than by ease. The first item defend
 - Re-decide the federation trust boundary with its consequence written down, and record the outcome either way.
 - Restrict certificate issuance with CAA records, and alert when the certificate leaves `ACTIVE`.
 - Define an SSL policy with a TLS 1.2 floor and attach it to the Gateway.
-- Add HSTS and the other response headers at the Gateway, so both workloads carry them from one declaration, and a Content Security Policy in `sky`, which is the only thing that knows what it loads.
+- Add HSTS and the other response headers to every HTTPRoute rule serving the domain, and a Content Security Policy in `sky`, which is the only thing that knows what it loads.
 - Refuse to propose a pin bump whose upstream CI is red.
 - Add provenance, an SBOM, and signing to the build, and enforce them at admission.
 
