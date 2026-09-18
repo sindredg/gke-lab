@@ -270,7 +270,7 @@ Documentation: [hardening your GKE cluster](https://cloud.google.com/kubernetes-
 
 ### Phase 14: Close the baseline
 
-**Status:** In progress
+**Status:** Complete
 
 Ordered by the threat model's ranking rather than by ease. The first item defends the only path an adversary is exercising today; the last is the one with six controls already on it.
 
@@ -296,12 +296,14 @@ A second was overstated and is corrected here. Scoping federation to a ref does 
 | Certificate renewal alerting | Done, as `cert-expiry` in the surface script rather than a Cloud Monitoring alert |
 | Content Security Policy | Served on both paths |
 | CAA records | Added and verified. Universal SSL disabled, because it was widening the set |
-| DNSSEC | Not decided |
+| DNSSEC | Signed 2026-09-18. DS published in `.com`, verified on two resolvers |
 | Security Command Center | Premium trial active to 2026-10-18, then Standard. One finding, which is its own onboarding. The first Security Health Analytics scan has not completed |
-| Provenance, SBOM, signing, admission policy | Not started |
-| Single-client flood | Run 2026-09-18. 593 of 1200 requests refused, the namespace quota unmoved. The exit criterion is met |
+| Provenance, SBOM, signing, admission policy | Deferred past Milestone 4, and accepted for now in the threat model |
+| Single-client flood | Run twice on 2026-09-18. 593 of 1200 refused at 15 rps, and at 125 rps the throttle held sky to 3 of 8 replicas against 8 of 8 unthrottled. The exit criterion is met |
 
-**Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance.
+The last bullet is not done. Provenance, an SBOM, signing and admission enforcement are a phase of their own, and the threat model ranks the row they answer last, so it is [accepted for now](reference/threat-model.md#boundary-8-public-registries-to-the-running-image) rather than half started. It comes back after Milestone 4, with the next pass over the threat model, which Phase 15 requires anyway because accepting submitted manifests changes the model.
+
+**Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance. All three are met.
 
 Documentation: [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/rate-limiting-overview), [SSL policies](https://cloud.google.com/load-balancing/docs/ssl-policies-concepts), [GKE Gateway configuration](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources), [CAA records](https://letsencrypt.org/docs/caa/), [Binary Authorization](https://cloud.google.com/binary-authorization/docs), [SLSA](https://slsa.dev/)
 
@@ -362,4 +364,6 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
 
-Milestone 3 is under way. [The threat model](reference/threat-model.md) ranks twelve findings, Phase 13 measured the platform against that frame rather than against a reading of it, and Phase 14 is closing what the measurement confirmed. What Phase 14 has not done is listed in its own entry above; the single-client flood is its exit criterion and has not been run. The AI reference workload follows in Milestone 4, on a platform whose security posture has been tested rather than described.
+Milestone 3 is closed. [The threat model](reference/threat-model.md) ranks twelve findings, Phase 13 measured the platform against that frame rather than against a reading of it, and Phase 14 closed eleven of them with evidence: federation scoped to a ref and both directions proven, both repositories protected under one mechanism, a Content Security Policy on both paths, CAA restricting issuance on a signed zone, and a rate limit measured under a flood at the rate Phase 12d used unthrottled. The twelfth, provenance and signing, is accepted for now with its reason recorded.
+
+Phase 15 is next. The AI reference workload lands on a platform whose security posture has been tested rather than described, and it is also what brings the threat model back: accepting submitted manifests from the internet changes the model substantially.

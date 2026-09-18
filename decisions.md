@@ -522,6 +522,16 @@ Cost: Universal SSL is console state rather than configuration, so nothing here 
 
 Alternatives: `issue "pki.goog"` alone, which leaves wildcard issuance authorised. Flags `128`, which adds nothing for tags every compliant CA understands. Leaving Universal SSL on, rejected because the partner set is undisclosed and Cloudflare's to change. Moving the zone to Cloud DNS, which would put the record in Terraform; out of scope because DNS is not this repository's to move.
 
+### Zone signing
+
+Decision: Sign `sindrg.com` with DNSSEC through Cloudflare, which is both the DNS host and the registrar, so it publishes the DS in `.com` itself.
+
+Why: Certificate issuance is proved by a DNS answer, and so is the CAA record that restricts issuance to `pki.goog`. Unsigned, both are unauthenticated, which is the compounding the [threat model](reference/threat-model.md#boundary-6-dns-and-certificate-issuance) ranks second. Signing authenticates the answers the platform depends on. The alternative was to accept it in writing, and finding 9 closes either way, because its proposed response was Decide.
+
+Cost: A key rollover this project now owns, and a second way to break resolution. A DS in `.com` that names a key the zone no longer uses makes every validating resolver return `SERVFAIL` for the whole domain, while resolvers that do not validate keep working, so the outage is invisible from wherever you happen to be testing. Cloudflare manages the rollover while it holds both halves, and the risk arrives the day DNS or the registration moves. Like Universal SSL, this is console state rather than configuration: nothing in `terraform/` enforces it.
+
+Alternatives: Accept the zone unsigned, recording that its answers are forgeable by anyone who can intercept them. Rejected because the CAA record closed in the same phase rests on those answers. Sign while keeping the registration elsewhere, which means carrying the DS by hand and owning the rollover directly.
+
 ### Redirect to HTTPS
 
 Decision: Answer plain HTTP with a `301` from a second `HTTPRoute` attached to the HTTP listener, rather than redirecting in NGINX.
@@ -568,7 +578,7 @@ Decision: Throttle a single address to 300 requests a minute with Cloud Armor, a
 
 Why: Phase 12 measured one client driving the namespace into its quota, which stalled the autoscaler at five Pods of eight and failed a deploy during the stall. This is the top ranked path in the [threat model](reference/threat-model.md) because it is the one an adversary exercises without effort. The threshold is 5 requests a second, an eighth of what two replicas serve at saturation and well above what reading the site generates. `throttle` rejects the excess rather than banning the address, which is the recoverable choice for a false positive.
 
-Cost: A misjudged threshold rejects real visitors, and the uptime check counts against it at three requests a minute. `preview` on the rule turns enforcement into logging if the threshold needs observing first.
+Cost: A misjudged threshold rejects real visitors, and the uptime check counts against it at three requests a minute. `preview` on the rule turns enforcement into logging if the threshold needs observing first. Phase 14 measured two more. The policy is attached per backend service, so one address gets 300 a minute on nginx and another 300 on sky rather than 300 across the site. And the throttle caps scale-out without preventing it: at 125 rps from one address sky still scaled from two replicas to three, well inside the quota but not at rest.
 
 Alternatives: The preconfigured WAF rules, including the Log4Shell signature `CKV_GCP_73` asks for. Nothing in this estate runs a JVM, and the application has no database, no authentication and no input beyond bounded query parameters, so the OWASP signatures defend nothing here while adding a false positive surface. Adding them would be hardening by category rather than against an adversary, which is what the threat model exists to avoid. The finding is recorded in `.checkov.baseline` rather than skipped, so the acceptance stays visible.
 

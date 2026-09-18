@@ -63,7 +63,7 @@ Public, unauthenticated, and unrated. The only boundary an opportunistic adversa
 | T | Downgrade or interception in transit | **Closed, measured.** `k8-lab-gateway-ssl-policy` sets a TLS 1.2 floor on the `MODERN` profile, attached by `GCPGatewayPolicy`. The script reports TLS 1.0 and 1.1 refused, 1.2 and 1.3 accepted, and HSTS present on both paths at `max-age=86400`. SSL Labs grades `A`. The short `max-age` is deliberate, so it is `A` rather than `A+` |
 | R | Request attribution | Accepted. `sky` runs with `--no-access-log`, so request-level records come from the load balancer alone. Nothing here is transacted, so there is nothing to repudiate |
 | I | Disclosure of served content | Not applicable. Nothing served is confidential. `/version` reveals the exact upstream commit, which is public already |
-| D | Exhaustion from a single client | **Mitigated, measured under load.** `k8-lab-gateway-rate-limit` throttles one address to 300 requests a minute, attached to each backend by `GCPBackendPolicy`. Phase 14 flooded it from one address at 15 rps: 593 of 1200 requests refused with `429`, the first at t+18.0s after 292 consecutive `200`s, and `demo-budget` flat at `pods: 4/16` throughout. `ResourceQuota` still bounds the blast radius at eight Pods. That the throttle is what keeps the HPA from scaling is consistent with the run but not isolated by it, because 15 rps would not scale the HPA unthrottled either |
+| D | Exhaustion from a single client | **Mitigated, measured under load.** `k8-lab-gateway-rate-limit` throttles one address to 300 requests a minute, attached to each backend by `GCPBackendPolicy`. Phase 14 flooded it from one address at 15 rps: 593 of 1200 requests refused with `429`, the first at t+18.0s after 292 consecutive `200`s, and `demo-budget` flat at `pods: 4/16` throughout. A second run at 125 rps isolates the throttle against Phase 12d, which drove that rate unthrottled: sky reached 3 of 8 replicas where Phase 12d reached 8 of 8, so the throttle caps scale-out rather than preventing it. `ResourceQuota` still bounds the blast radius at eight Pods |
 | E | No authorization exists at this boundary | Not applicable |
 
 Response headers other than HSTS sit on this boundary too, and finding 6 is closed. `X-Content-Type-Options` and `Referrer-Policy` are present on both paths, and so is a Content Security Policy: `default-src 'none'` on the nginx root from [#100](https://github.com/sindredg/k8-lab/pull/100), and the application's own `default-src 'self'` on `/sky/` once [#106](https://github.com/sindredg/k8-lab/pull/106) moved the pin to [sky#59](https://github.com/sindredg/sky/pull/59).
@@ -133,7 +133,7 @@ The boundary nothing in either repository currently touches.
 | | Threat | State |
 | --- | --- | --- |
 | S | A certificate issued for this domain by another CA | **Mitigated 2026-09-18, measured.** `sindrg.com` now publishes `0 issue "pki.goog"` and `0 issuewild ";"`, verified on two public resolvers, so Google Trust Services is the only authorised CA and no CA may issue a wildcard. The residual is unchanged in kind: CAA binds a compliant CA at issuance, and anyone with access to the Cloudflare zone can still edit the record before proving control. None of the cluster's hardening is on this path |
-| T | Redirecting the domain | **Open, measured.** A zone edit points the name anywhere, and the same run reports no DS record, so the zone is unsigned and its answers are not authenticated |
+| T | Redirecting the domain | **Mitigated 2026-09-18, measured.** The zone is signed: the DS is published in `.com`, two public resolvers return it, and `dig +dnssec` sets `ad`, so the answers are authenticated. The residual is a zone edit, which signing does not address. Anyone holding the Cloudflare account can still point the name anywhere, and sign it |
 | D | Silent renewal failure | **Mitigated.** Google renews automatically, so a broken authorization would otherwise surface only at expiry, and there is precedent: `PER_PROJECT_RECORD` is in the Terraform because `FIXED_RECORD` collided with Cloudflare's own TXT at `_acme-challenge`. `cert-expiry` now reads the served certificate daily and fails below 21 days, which is a stalled renewal rather than a healthy one |
 
 The record only means what it says while Cloudflare's Universal SSL is off. With it on, Cloudflare adds CAA records for its own partner CAs to any zone that has one, does not show them in its dashboard, and documents the list as not exhaustive. Phase 14 measured eleven records where the zone held two, and RFC 8659 takes the union at a name, so the injected `issuewild` entries re-authorised the issuance `issuewild ";"` exists to forbid. Turning Universal SSL back on silently reverses this row. Evidence: [Phase 14](../worklog/phase-14-close-the-baseline.md#finding-universal-ssl-makes-the-authorised-issuer-set-cloudflares-to-change).
@@ -165,6 +165,8 @@ Evidence: [Phase 13 worklog](../worklog/phase-13-security-baseline.md#slice-4-ac
 
 The last row matters less than it first appears, and the ordering below reflects that. Attestation proves *this pipeline built it*. It says nothing about whether the commit should have been built, which is boundary 5's question and the cheaper one to answer first.
 
+That question is answered, so the last row is accepted for now rather than carried as work in progress. The pipeline identity is the only writer to the registry, the image is pulled by digest, and finding 7 closed the path an unvalidated commit took to get built. Signing and admission enforcement are a phase of their own, and this model is revisited when Phase 15 changes it substantially, so the acceptance is reconsidered there rather than expiring quietly.
+
 ## Attack paths, ranked
 
 Ranked by likelihood multiplied by impact against the assets above, not by how interesting they are. The ranking is as modelled, before Phase 13; the last column records what has since been put on each path.
@@ -173,7 +175,7 @@ Ranked by likelihood multiplied by impact against the assets above, not by how i
 | --- | --- | --- | --- | --- |
 | Exhaustion from an unrated public endpoint | Happening continuously | Cost and availability | **Highest** | Rate limiting, 300 a minute per address |
 | Account compromise to arbitrary content on the domain | Low | Crown jewel | **High** | MFA and a ruleset that now matches `main`. `sky` still open |
-| Certificate issued through the DNS zone | Low | Crown jewel, and invisible from inside the platform | **High** | CAA restricting issuance to `pki.goog`. Finding 9 still open |
+| Certificate issued through the DNS zone | Low | Crown jewel, and invisible from inside the platform | **High** | CAA restricting issuance to `pki.goog`, on a signed zone |
 | Downgrade against TLS 1.0 or 1.1 | Low | Low; nothing confidential in transit | Medium, and visibly wrong | TLS 1.2 floor. Closed |
 | An upstream commit reaching production unvalidated | Moderate | Depends entirely on the commit | Medium | Upstream CI queried before the pin is proposed |
 | RCE in the application | Low | Very low; the Pod is close to inert | **Lowest** | Six overlapping, unchanged |
@@ -199,7 +201,7 @@ Carried into Phase 13 for verification and Phase 14 for the work. Ranked as abov
 
 | # | Boundary | Finding | Proposed response | Status |
 | --- | --- | --- | --- | --- |
-| 1 | 1 | No rate limiting on the public endpoint | Mitigate | Closed, proven under a flood. 593 of 1200 requests from one address refused with `429`, the namespace quota unmoved |
+| 1 | 1 | No rate limiting on the public endpoint | Mitigate | Closed, proven under a flood and isolated at 125 rps. 593 of 1200 requests from one address refused with `429`; at the rate Phase 12d drove unthrottled to 8 of 8 replicas, the throttle held sky to 3 of 8 inside the namespace quota |
 | 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Closed. Scoped to `refs/heads/main`, both directions measured: `main` still deploys, a dispatch from another branch is rejected by the attribute condition |
 | 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate | Closed. `0 issue "pki.goog"` and `0 issuewild ";"` verified on two public resolvers, with Universal SSL disabled to stop Cloudflare widening the set |
 | 4 | 6 | Renewal failure is silent | Mitigate | Closed. `cert-expiry` reads the served certificate and fails below 21 days remaining |
@@ -207,12 +209,12 @@ Carried into Phase 13 for verification and Phase 14 for the work. Ranked as abov
 | 6 | 1 | No HSTS, and no other response security headers | Mitigate | Closed. HSTS, `nosniff` and `Referrer-Policy` live, and both paths serve a policy: the nginx root's from #100, sky's own once #106 moved the pin |
 | 7 | 5 | The pin bump is the one pull request CI does not validate | Mitigate | Closed. Upstream CI is queried before the pin is proposed |
 | 8 | 7 | Account controls are assumed, not verified | Verify | Closed. Both assumptions that were wrong are fixed: `k8-lab`'s ruleset matched no branch, and `sky`'s `main` was unprotected |
-| 9 | 6 | No DS record, so the zone is unsigned | Decide | Open, measured. Carried to Phase 14 |
-| 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 | Open. Carried to Phase 14 |
+| 9 | 6 | No DS record, so the zone is unsigned | Decide | Closed. Decided in favour of signing, and signed: DS `2371 13 2`, verified on two resolvers, with the `ad` flag set |
+| 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 | Accepted for now, with the reason on [boundary 8](#boundary-8-public-registries-to-the-running-image). Reconsidered when this model is revisited |
 | 11 | 3 | DNS is the one egress channel out of the namespace | Accept | Accepted |
 | 12 | 2 | Shared Google ranges admitted by NetworkPolicy | Accept | Accepted |
 
-Findings 1, 3, 5, 6 and 9 are measured rather than reasoned: [the Phase 13 worklog](../worklog/phase-13-security-baseline.md) records every run, and [Phase 14](../worklog/phase-14-close-the-baseline.md) records the runs that closed 1 and 3. Findings 3 and 9 were written here as unverified and might have turned out closed; both were open when measured, and 9 still is.
+Findings 1, 3, 5, 6 and 9 are measured rather than reasoned: [the Phase 13 worklog](../worklog/phase-13-security-baseline.md) records every run, and [Phase 14](../worklog/phase-14-close-the-baseline.md) records the runs that closed 1, 3 and 9. Findings 3 and 9 were written here as unverified and might have turned out closed. Both were open when measured, and both are closed now.
 
 Finding 8 was the one the highest ranked path rests on, and verifying it found the assumption false. `k8-lab`'s ruleset had been active for three weeks while matching no branch. Nothing in this repository would have shown that, which is the argument for the phase.
 
