@@ -234,6 +234,16 @@ Cost: The page publishes internal names to the internet, which suits a lab whose
 
 Alternatives: Serve the facts as a JSON endpoint, which keeps the page static and puts the evidence where nobody looks. State nothing, which is what a production service should do.
 
+### Platform explained on the page
+
+Decision: Explain the platform on the page with diagrams that animate, driven by CSS alone: one cluster map the reader switches between five scenarios, a delivery chain, and the controls a request crosses.
+
+Why: The evidence for the claims here is in [plan.md](plan.md) and the worklogs, which is a lot of reading for someone deciding whether any of it is real. A map that shows a rollout surging one Pod, or a cordoned node handing its Pods to another zone, makes the same point in the time it takes to read a sentence. CSS rather than script is what keeps that feature free: Phase 14 closed a finding by adding a Content Security Policy with no `script-src`, and a page that animates without JavaScript leaves the header exactly as it was.
+
+Cost: The scenarios are drawn from the manifests rather than read from the cluster, so a change to a replica count, a zone or a rate limit has to be made in the page as well, and the page can go stale without anything failing. Scenario switching needs `:has()`; a browser without it shows the steady scene and the tabs do nothing. The file grew from 17 KB to 42 KB, all inline, and `sub_filter` now runs over that much more of each response.
+
+Alternatives: Read the live cluster through a small API, which would make the map true by construction, and would need a ServiceAccount with read on Pods and nodes, a policy that allows script, and node names and Pod IPs published to the internet. Draw the same thing as a static image, which costs nothing to keep correct and shows nothing happening.
+
 ### Application source for the second workload
 
 Decision: Build the sky image here, from [sindredg/sky](https://github.com/sindredg/sky) at a commit pinned in `.github/sky-upstream.ref`, rather than vendoring its source or pulling its published image.

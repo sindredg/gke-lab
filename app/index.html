@@ -384,6 +384,380 @@
       .r3 { --c: var(--neon); width: 17.8rem; height: 17.8rem; animation-duration: 19s; }
       .r4 { --c: #ffd36b; width: 22.6rem; height: 22.6rem; animation-duration: 31s; }
 
+      /* ---------- scenario tabs ---------- */
+      .scenes { padding: 1.5rem; }
+
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .tab {
+        position: relative;
+        padding: 0.45rem 0.9rem;
+        border: 1px solid var(--line);
+        color: var(--dim);
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+
+      /* Clipped rather than hidden: a hidden radio leaves the tab order. */
+      .tab input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+      }
+
+      .tab:hover { color: var(--ink); }
+      .tab:has(:checked) {
+        border-color: var(--neon);
+        background: rgb(57 255 159 / 10%);
+        color: var(--neon);
+      }
+      .tab:has(:focus-visible) { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+      .note {
+        display: none;
+        max-width: 62ch;
+        margin: 1.5rem 0 0;
+        color: var(--dim);
+        font-size: 0.78rem;
+      }
+      .note b { color: var(--ink); font-weight: 400; }
+
+      /* ---------- cluster map ---------- */
+      .map { display: grid; gap: 1rem; }
+
+      /* Boxes over one rail. They are opaque, so the rail shows in the gaps
+         and a packet passing behind reads as a hop through each one. */
+      .chain {
+        position: relative;
+        display: grid;
+        gap: 0.75rem;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+      }
+      .chain::before {
+        position: absolute;
+        top: 50%;
+        right: 1rem;
+        left: 1rem;
+        height: 1px;
+        background: linear-gradient(90deg, var(--dim), var(--neon));
+        content: "";
+      }
+
+      .chip {
+        position: relative;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--line);
+        background: var(--void);
+        text-align: center;
+      }
+      .chip strong { display: block; font-size: 0.76rem; }
+      .chip small { color: var(--dim); font-size: 0.64rem; }
+      .chip-live { border-color: var(--neon); }
+      .chip-live strong { color: var(--neon); }
+
+      /* One packet, shared by every rail. The rail gives it a position. */
+      .pk {
+        position: absolute;
+        width: 0.4rem;
+        height: 0.4rem;
+        background: var(--cyan);
+        box-shadow: 0 0 0.7rem var(--cyan), 0 0 1.4rem var(--cyan);
+      }
+      .chain .pk {
+        top: calc(50% - 0.2rem);
+        animation: flow 3.2s cubic-bezier(0.55, 0, 0.45, 1) infinite;
+      }
+
+      .drop {
+        position: relative;
+        width: 0;
+        height: 2rem;
+        margin: 0 auto;
+        border-left: 1px dashed var(--line);
+      }
+      .drop .pk {
+        left: -0.2rem;
+        animation: fall 3.2s linear infinite;
+      }
+
+      /* Control traffic, so it reads as the other direction and the other colour. */
+      .drop-up { height: 1.6rem; }
+      .drop-up .pk {
+        background: var(--hot);
+        box-shadow: 0 0 0.7rem var(--hot);
+        animation: rise 4.4s linear infinite;
+      }
+
+      .cluster {
+        display: grid;
+        gap: 1.1rem;
+        padding: 1.25rem;
+        border: 1px solid rgb(45 226 255 / 25%);
+        background: rgb(45 226 255 / 3%);
+      }
+
+      .cluster-head {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.75rem;
+        color: var(--dim);
+        font-size: 0.66rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      /* The three columns every row inside the cluster lines up against. */
+      .lanes {
+        display: grid;
+        gap: 1rem;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+      }
+
+      .node {
+        padding: 0.8rem;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .node-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem 0.5rem;
+      }
+      .node-head strong { font-size: 0.76rem; }
+
+      /* Its own line, so a badge never pushes the zone out of the header. */
+      .node-head small {
+        flex-basis: 100%;
+        order: 3;
+        color: var(--dim);
+        font-size: 0.64rem;
+      }
+
+      /* Dashed until the autoscaler has a reason to add it. */
+      .node-spare { border-style: dashed; opacity: 0.55; }
+
+      .kubelet {
+        margin-left: auto;
+        padding: 0.05rem 0.35rem;
+        border: 1px solid rgb(255 46 136 / 45%);
+        color: var(--hot);
+        font-size: 0.56rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        animation: beat 3.2s ease-in-out infinite;
+      }
+
+      .pods {
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 0.35rem;
+        min-height: 4.6rem;
+        margin-top: 0.8rem;
+      }
+
+      .pod {
+        padding: 0.2rem 0.4rem;
+        border: 1px solid var(--neon);
+        background: rgb(57 255 159 / 12%);
+        color: var(--neon);
+        font-size: 0.62rem;
+      }
+      .pod-sky {
+        border-color: var(--cyan);
+        background: rgb(45 226 255 / 12%);
+        color: var(--cyan);
+      }
+
+      .rail-note {
+        margin: 0;
+        color: var(--dim);
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
+      .plane {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.9rem 1rem;
+        border: 1px dashed rgb(255 46 136 / 45%);
+        background: rgb(255 46 136 / 5%);
+      }
+      .plane strong { display: block; color: var(--hot); font-size: 0.76rem; }
+      .plane small { color: var(--dim); font-size: 0.64rem; }
+      .plane ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .plane li {
+        padding: 0.2rem 0.4rem;
+        border: 1px solid rgb(255 46 136 / 30%);
+        color: var(--dim);
+        font-size: 0.6rem;
+      }
+
+      .tag {
+        padding: 0.05rem 0.35rem;
+        border: 1px solid currentcolor;
+        font-size: 0.56rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .tag-hot { color: var(--hot); }
+      .tag-neon { color: var(--neon); }
+
+      /* ---------- scenarios ---------- */
+
+      /* Every rule below hangs off :has(), which keeps the radio next to its
+         own label. A browser without it drops the rules and shows steady. */
+
+      /* What a scenario brings in stays out of the flow until it runs. */
+      .pod-x,
+      .pod-surge,
+      .pod-move,
+      .pk-flood,
+      .scene-tag { display: none; }
+
+      /* deploy: the extra Pod arrives first, then the old one drains */
+      .scenes:has(#sc-deploy:checked) .pod-surge {
+        display: block;
+        animation: surge 7s infinite;
+      }
+      .scenes:has(#sc-deploy:checked) .pod-old { animation: drained 7s infinite; }
+      .scenes:has(#sc-deploy:checked) .tag-deploy { display: inline-block; }
+
+      /* scale: sky to eight Pods, and a third node to hold them */
+      .scenes:has(#sc-scale:checked) .pod-x {
+        display: block;
+        animation: pop 0.6s both;
+      }
+      .scenes:has(#sc-scale:checked) .pod-x + .pod-x { animation-delay: 0.45s; }
+      .scenes:has(#sc-scale:checked) .node-spare {
+        border-style: solid;
+        opacity: 1;
+        animation: pop 0.6s both;
+      }
+      .scenes:has(#sc-scale:checked) .tag-scale { display: inline-block; }
+
+      /* drain: the node goes, the budget holds, the Pods land elsewhere */
+      .scenes:has(#sc-drain:checked) .node-drain { animation: cordon 9s infinite; }
+      .scenes:has(#sc-drain:checked) .node-drain .pod { animation: evict 9s infinite; }
+      .scenes:has(#sc-drain:checked) .node-spare { border-style: solid; opacity: 1; }
+      .scenes:has(#sc-drain:checked) .pod-move {
+        display: block;
+        animation: land 9s infinite;
+      }
+
+      /* Endpoints drop, so the Service stops sending to the drained node. */
+      .scenes:has(#sc-drain:checked) .lane-b .pk {
+        animation: fall 3.2s linear infinite, cut 9s infinite;
+      }
+      .scenes:has(#sc-drain:checked) .tag-drain { display: inline-block; }
+
+      /* shed: the flood dies at the edge, the rest of the path is unchanged */
+      .scenes:has(#sc-shed:checked) .pk-flood {
+        display: block;
+        animation: flood 2.4s linear infinite;
+      }
+      .scenes:has(#sc-shed:checked) .f2 { animation-delay: 0.5s; }
+      .scenes:has(#sc-shed:checked) .f3 { animation-delay: 1.1s; }
+      .scenes:has(#sc-shed:checked) .chip-armor {
+        border-color: var(--hot);
+        box-shadow: 0 0 1.5rem rgb(255 46 136 / 25%);
+      }
+      .scenes:has(#sc-shed:checked) .chip-armor strong { color: var(--hot); }
+      .scenes:has(#sc-shed:checked) .tag-shed {
+        display: inline-block;
+        animation: blink 1.1s steps(1) infinite;
+      }
+
+      .scenes:has(#sc-steady:checked) .note-steady,
+      .scenes:has(#sc-deploy:checked) .note-deploy,
+      .scenes:has(#sc-scale:checked) .note-scale,
+      .scenes:has(#sc-drain:checked) .note-drain,
+      .scenes:has(#sc-shed:checked) .note-shed { display: block; }
+
+      /* ---------- delivery ---------- */
+      .delivery { padding: 2.5rem 1.5rem; }
+
+      /* ---------- defense ---------- */
+      .layers {
+        position: relative;
+        display: grid;
+        gap: 0.5rem;
+        padding: 1.5rem 1.5rem 1.5rem 2.75rem;
+      }
+      .layers .pk {
+        left: 1.6rem;
+        animation: fall 4.6s linear infinite;
+      }
+
+      .layer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.75rem;
+        padding: 0.7rem 0.9rem;
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--cyan);
+        background: var(--panel);
+      }
+      .layer strong { min-width: 9rem; font-size: 0.78rem; }
+      .layer small { color: var(--dim); font-size: 0.68rem; }
+
+      .layer-deny {
+        position: relative;
+        border-left-color: var(--hot);
+        overflow: hidden;
+      }
+
+      /* A Pod reaching for another Pod, stopped by the deny-all policy. */
+      .lateral {
+        position: absolute;
+        top: calc(50% - 0.2rem);
+        right: 1rem;
+        width: 0.4rem;
+        height: 0.4rem;
+        background: var(--hot);
+        box-shadow: 0 0 0.7rem var(--hot);
+        animation: bounce 4.2s ease-in-out infinite;
+      }
+      .denied {
+        margin-left: auto;
+        color: var(--hot);
+        font-size: 0.6rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        animation: deny 4.2s steps(1) infinite;
+      }
+
+      /* Staggered, so the three lanes never pulse in lockstep. */
+      .lane-b .pk { animation-delay: 0.8s; }
+      .lane-c .pk { animation-delay: 1.6s; }
+      .u2 .pk { animation-delay: 1.4s; }
+      .u3 .pk { animation-delay: 2.8s; }
+
       /* ---------- footer ---------- */
       footer {
         display: flex;
@@ -416,12 +790,104 @@
         95% { transform: translate(-0.02em, 0); opacity: 0.7; }
       }
 
+
+      @keyframes flow {
+        0% { left: 4%; opacity: 0; }
+        8% { opacity: 1; }
+        92% { opacity: 1; }
+        100% { left: 96%; opacity: 0; }
+      }
+
+      @keyframes fall {
+        0% { top: -0.2rem; opacity: 0; }
+        15% { opacity: 1; }
+        85% { opacity: 1; }
+        100% { top: calc(100% - 0.2rem); opacity: 0; }
+      }
+
+      @keyframes rise {
+        0% { top: calc(100% - 0.2rem); opacity: 0; }
+        20% { opacity: 1; }
+        80% { opacity: 1; }
+        100% { top: -0.2rem; opacity: 0; }
+      }
+
+      /* Cloud Armor answers 429 before the rail reaches the load balancer. */
+      @keyframes flood {
+        0% { left: 4%; opacity: 0; }
+        10% { opacity: 1; }
+        70% { left: 52%; opacity: 1; }
+        80%, 100% { left: 54%; opacity: 0; }
+      }
+
+      @keyframes beat {
+        0%, 100% { box-shadow: 0 0 0 rgb(255 46 136 / 0%); }
+        50% { box-shadow: 0 0 0.9rem rgb(255 46 136 / 45%); }
+      }
+
+      @keyframes pop {
+        from { opacity: 0; transform: scale(0.5); }
+        to { opacity: 1; transform: none; }
+      }
+
+      @keyframes surge {
+        0%, 10% { opacity: 0; transform: scale(0.5); }
+        25%, 92% { opacity: 1; transform: none; }
+        100% { opacity: 0; transform: scale(0.5); }
+      }
+
+      /* Still serving at 35%, drained by 60%, back for the next rollout. */
+      @keyframes drained {
+        0%, 35% { opacity: 1; filter: none; }
+        60%, 92% { opacity: 0.2; filter: grayscale(1); }
+        100% { opacity: 1; filter: none; }
+      }
+
+      @keyframes cordon {
+        0%, 15% { border-color: var(--line); }
+        25%, 95% { border-color: rgb(255 46 136 / 55%); background: rgb(255 46 136 / 6%); }
+        100% { border-color: var(--line); }
+      }
+
+      @keyframes evict {
+        0%, 25% { opacity: 1; }
+        50%, 92% { opacity: 0.12; }
+        100% { opacity: 1; }
+      }
+
+      @keyframes land {
+        0%, 45% { opacity: 0; transform: scale(0.5); }
+        60%, 92% { opacity: 1; transform: none; }
+        100% { opacity: 0; transform: scale(0.5); }
+      }
+
+      @keyframes cut {
+        0%, 20% { opacity: 1; }
+        32%, 92% { opacity: 0; }
+        100% { opacity: 1; }
+      }
+
+      @keyframes bounce {
+        0%, 100% { opacity: 0; transform: translateX(6rem); }
+        20% { opacity: 1; transform: translateX(3rem); }
+        50% { opacity: 1; transform: none; }
+        58% { transform: translateX(0.5rem); }
+        80% { opacity: 0; transform: translateX(6rem); }
+      }
+
+      @keyframes deny {
+        0%, 48% { opacity: 0; }
+        50%, 74% { opacity: 1; }
+        76%, 100% { opacity: 0; }
+      }
+
       /* ---------- layout ---------- */
       @media (max-width: 860px) {
         .metrics,
         .caps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .sky { grid-template-columns: 1fr; }
         .orbits { height: 22rem; border-top: 1px solid var(--line); border-left: 0; overflow: hidden; }
+        .layer strong { min-width: 0; }
       }
 
       @media (max-width: 560px) {
@@ -436,6 +902,30 @@
 
         .metrics,
         .caps { grid-template-columns: 1fr; }
+
+        .map { gap: 0.75rem; }
+        .chain,
+        .lanes { grid-auto-flow: row; }
+
+        /* Stacked, a centred box per hop costs four screens of scroll. */
+        .chip {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 0.75rem;
+          padding: 0.5rem 0.7rem;
+          text-align: left;
+        }
+        .chain::before,
+        .chain .pk,
+        .lanes[aria-hidden],
+        .layers .pk { display: none; }
+        .scenes,
+        .delivery,
+        .layers { padding: 1.25rem; }
+
+        /* One column per node, so the Pods no longer need reserved rows. */
+        .pods { min-height: 2.2rem; }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -443,6 +933,9 @@
         *,
         *::before,
         *::after { animation: none !important; }
+
+        .pk,
+        .lateral { display: none; }
       }
     </style>
   </head>
@@ -483,6 +976,184 @@
 <span class="k">image</span>      __IMAGE_DIGEST__</pre>
           </div>
         </section>
+        <section id="cluster">
+          <p class="label">The same cluster, five ways</p>
+          <div class="window">
+            <div class="window-bar"><i></i><i></i><i></i><span>pick a scenario</span></div>
+            <div class="scenes">
+              <div class="tabs" role="group" aria-label="Cluster scenario">
+                <label class="tab"><input type="radio" name="scene" id="sc-steady" checked><span>steady</span></label>
+                <label class="tab"><input type="radio" name="scene" id="sc-deploy"><span>deploy</span></label>
+                <label class="tab"><input type="radio" name="scene" id="sc-scale"><span>scale</span></label>
+                <label class="tab"><input type="radio" name="scene" id="sc-drain"><span>drain</span></label>
+                <label class="tab"><input type="radio" name="scene" id="sc-shed"><span>shed</span></label>
+              </div>
+
+              <div class="map">
+                <p class="rail-note">outside the cluster</p>
+                <div class="chain chain-edge">
+                  <span class="pk" aria-hidden="true"></span>
+                  <span class="pk pk-flood f1" aria-hidden="true"></span>
+                  <span class="pk pk-flood f2" aria-hidden="true"></span>
+                  <span class="pk pk-flood f3" aria-hidden="true"></span>
+                  <div class="chip"><strong>you</strong><small>sindrg.com</small></div>
+                  <div class="chip"><strong>tls</strong><small>1.2 minimum, modern</small></div>
+                  <div class="chip chip-armor">
+                    <strong>cloud armor</strong><small>300 a minute per ip</small>
+                    <span class="tag tag-hot scene-tag tag-shed">429</span>
+                  </div>
+                  <div class="chip"><strong>load balancer</strong><small>global, one address</small></div>
+                </div>
+
+                <div class="drop"><span class="pk" aria-hidden="true"></span></div>
+
+                <div class="cluster">
+                  <div class="cluster-head">
+                    <span>gke cluster</span>
+                    <span>
+                      europe-north1, private nodes
+                      <span class="tag tag-neon scene-tag tag-deploy">surge 1, unavailable 0</span>
+                      <span class="tag tag-neon scene-tag tag-scale">hpa 70% cpu, 2 to 8</span>
+                      <span class="tag tag-hot scene-tag tag-drain">pdb holds 1</span>
+                    </span>
+                  </div>
+
+                  <div class="chain">
+                    <span class="pk" aria-hidden="true"></span>
+                    <div class="chip"><strong>gateway</strong><small>external, one hostname</small></div>
+                    <div class="chip"><strong>httproute</strong><small>sindrg.com</small></div>
+                    <div class="chip"><strong>service</strong><small>endpoints, not pod ips</small></div>
+                  </div>
+
+                  <div class="lanes" aria-hidden="true">
+                    <div class="drop lane-a"><span class="pk"></span></div>
+                    <div class="drop lane-b"><span class="pk"></span></div>
+                    <div class="drop lane-c"><span class="pk"></span></div>
+                  </div>
+
+                  <div class="lanes">
+                    <div class="node">
+                      <div class="node-head">
+                        <strong>node-1</strong><small>zone a</small>
+                        <span class="kubelet">kubelet</span>
+                      </div>
+                      <div class="pods">
+                        <span class="pod pod-old">nginx</span>
+                        <span class="pod pod-sky">sky</span>
+                        <span class="pod pod-sky pod-x">sky</span>
+                        <span class="pod pod-sky pod-x">sky</span>
+                        <span class="pod pod-surge">nginx</span>
+                        <span class="pod pod-sky pod-move">sky</span>
+                      </div>
+                    </div>
+
+                    <div class="node node-drain">
+                      <div class="node-head">
+                        <strong>node-2</strong><small>zone b</small>
+                        <span class="kubelet">kubelet</span>
+                        <span class="tag tag-hot scene-tag tag-drain">cordoned</span>
+                      </div>
+                      <div class="pods">
+                        <span class="pod">nginx</span>
+                        <span class="pod pod-sky">sky</span>
+                        <span class="pod pod-sky pod-x">sky</span>
+                        <span class="pod pod-sky pod-x">sky</span>
+                      </div>
+                    </div>
+
+                    <div class="node node-spare">
+                      <div class="node-head">
+                        <strong>node-3</strong><small>zone c, added on demand</small>
+                        <span class="kubelet">kubelet</span>
+                      </div>
+                      <div class="pods">
+                        <span class="pod pod-sky pod-x">sky</span>
+                        <span class="pod pod-sky pod-x">sky</span>
+                        <span class="pod pod-move">nginx</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="lanes" aria-hidden="true">
+                    <div class="drop drop-up u1"><span class="pk"></span></div>
+                    <div class="drop drop-up u2"><span class="pk"></span></div>
+                    <div class="drop drop-up u3"><span class="pk"></span></div>
+                  </div>
+
+                  <p class="rail-note">kubelet to api server: watch for work, report back</p>
+
+                  <div class="plane">
+                    <span>
+                      <strong>control plane</strong>
+                      <small>Google runs it. You never reach a node directly.</small>
+                    </span>
+                    <ul>
+                      <li>api server</li>
+                      <li>scheduler</li>
+                      <li>controller manager</li>
+                      <li>etcd</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <p class="note note-steady">Two nginx Pods and two sky Pods, one of each per node, across two zones. Traffic only enters through the Gateway. The pink lines under the nodes are not traffic: that is each <b>kubelet</b> watching the control plane for work and reporting what it is running.</p>
+              <p class="note note-deploy">The new Pod has to pass its readiness probe before the old one starts its <b>35 second</b> drain, so nothing lands on a Pod that is leaving. <b>maxSurge 1, maxUnavailable 0</b>, and a median of <b>70.5 s</b> from merge to serving.</p>
+              <p class="note note-scale">The HPA holds sky at <b>70% CPU</b> and adds Pods up to <b>8</b>. When the running nodes cannot fit them, the node autoscaler adds the third, which is its limit. Measured at <b>125 rps</b>, p95 <b>394 ms</b>, no failures.</p>
+              <p class="note note-drain">An upgrade cordons a node. The PodDisruptionBudget keeps <b>at least one</b> Pod of each app serving while the rest reschedule into the other zones, and the Service stops sending traffic to that node as soon as its endpoints go.</p>
+              <p class="note note-shed">Cloud Armor allows <b>300 requests a minute</b> from one address and answers <b>429</b> past that. The flood dies at the edge, before it costs a node anything, and nobody else's traffic changes.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p class="label">How a change gets here</p>
+          <div class="window">
+            <div class="window-bar"><i></i><i></i><i></i><span>70.5 s median, merge to serving</span></div>
+            <div class="delivery">
+              <div class="chain">
+                <span class="pk" aria-hidden="true"></span>
+                <div class="chip"><strong>commit</strong><small>on a pull request</small></div>
+                <div class="chip"><strong>gates</strong><small>validate, lint, scan</small></div>
+                <div class="chip"><strong>auth</strong><small>federated, no stored key</small></div>
+                <div class="chip"><strong>registry</strong><small>pinned by digest</small></div>
+                <div class="chip chip-live"><strong>rollout</strong><small>surge 1, drop 0</small></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p class="label">What a request has to cross</p>
+          <div class="window">
+            <div class="layers">
+              <span class="pk" aria-hidden="true"></span>
+              <div class="layer">
+                <strong>TLS</strong>
+                <small>1.2 minimum on a modern profile, and CAA lets one CA issue for the domain</small>
+              </div>
+              <div class="layer">
+                <strong>Cloud Armor</strong>
+                <small>300 requests a minute per address, 429 past that</small>
+              </div>
+              <div class="layer">
+                <strong>Gateway</strong>
+                <small>one hostname, one certificate, plain HTTP redirected rather than served</small>
+              </div>
+              <div class="layer layer-deny">
+                <strong>NetworkPolicy</strong>
+                <small>deny by default, both directions: only the load balancer ranges reach a Pod</small>
+                <span class="denied">denied</span>
+                <span class="lateral" aria-hidden="true"></span>
+              </div>
+              <div class="layer">
+                <strong>Pod</strong>
+                <small>non-root, read-only root filesystem, all capabilities dropped, no token mounted</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
 
         <section>
           <p class="label">Measured, not promised</p>
