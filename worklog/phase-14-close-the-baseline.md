@@ -61,6 +61,8 @@ gcloud iam workload-identity-pools providers describe github-oidc \
 }
 ```
 
+![The condition on the provider, in gcloud's default output](../images/federation-condition.png)
+
 State matches configuration afterwards:
 
 ```bash
@@ -284,6 +286,28 @@ https://github.com/sindredg/k8-lab/tree/main/worklog
 
 The single `<style>` block is covered by `style-src 'unsafe-inline'`. `img-src 'self'` is declared and currently unused by any element; it still governs the browser's implicit `/favicon.ico` request, which is same-origin.
 
+### The other path, closed 2026-09-18
+
+`/sky/` served no policy when this was written. [sky#59](https://github.com/sindredg/sky/pull/59) had merged upstream, but the pin still named the commit before it, so the cluster kept building a `sky` without one. [#106](https://github.com/sindredg/k8-lab/pull/106) moved the pin and `deploy-sky.yml` rolled that commit out.
+
+```bash
+curl -sS -o /dev/null -D - https://sindrg.com/sky/
+```
+
+![The application's own policy, served alongside the Phase 13 header set](../images/csp-sky-headers.png)
+
+The policy is the application's rather than the platform's: `default-src 'self'` with Google Fonts named explicitly, where the project page serves `default-src 'none'`. Each is correct for what it serves, and both are declared by the workload rather than by the Gateway, for the reason [Phase 13](phase-13-security-baseline.md#what-the-run-settles) gives.
+
+With both paths covered, the surface check reported the closure instead of a pass:
+
+![The gate reporting two findings resolved, and naming the lines to delete](../images/surface-resolved.png)
+
+That is the `RESOLVED` direction firing on a real change rather than on a copy of the script, and exiting `1` as [the deliberate test](phase-13-security-baseline.md#the-gate-tested-deliberately) forced it to. Deleting both lines from `KNOWN_OPEN` leaves the surface at:
+
+![Eleven checks passing, with CAA and DNSSEC the only findings open](../images/surface-clean.png)
+
+`caa` and `dnssec` are what remain, and both belong to Slice 4.
+
 ## Slice 4: CAA derivation
 
 Status: Derived. **Not applied.** One question unresolved that decides correctness.
@@ -433,7 +457,7 @@ The question is what the free tier covers for this project today, specifically w
 | 2 | Rate limit under flood | Not run. Phase 14's exit criterion |
 | 3 | Security Command Center tier | Not started |
 | 4 | CAA record | Derived, not added. Cloudflare proxy question unresolved |
-| 5 | Two protection mechanisms on `k8-lab` main | Consolidate into ruleset 21742516 |
+| 5 | Two protection mechanisms on `k8-lab` main | Closed 2026-09-18. `Static analysis` added to ruleset 21742516, classic protection deleted |
 
 ## Where this is recorded elsewhere
 

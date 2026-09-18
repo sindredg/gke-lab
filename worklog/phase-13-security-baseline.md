@@ -9,6 +9,8 @@ Measure the platform against its own [threat model](../reference/threat-model.md
 
 Phase 11 audited by inspection and found real things. Two findings since did not arrive that way. A public TLS scan graded the load balancer `B` on an SSL policy nobody had chosen, and modelling the trust boundaries showed that merge protection is not a control on the path to Google Cloud. Neither is visible in a manifest, which is the argument for this phase.
 
+![SSL Labs grading the load balancer B, with protocol support the only bar short](../images/surface-ssllabs-grade-b.png)
+
 ## Slice 1: The public surface
 
 Status: Complete
@@ -207,6 +209,8 @@ Failed resources by severity: Critical 0, High 255, Medium 328, Low 47
 Resource Summary: 175/388 failed (61.56% compliance)
 ```
 
+![Kubescape scanning MITRE and NSA from an operator kubeconfig](../images/kubescape-scan.png)
+
 Worst-scoring controls:
 
 | Control | Compliance | Failed / total |
@@ -217,6 +221,16 @@ Worst-scoring controls:
 | Ingress/egress network policy coverage | 16% | 53 / 63 |
 
 Expect noise from `kube-system` and GKE-managed namespaces. Those are Google's to fix, not the platform's. Full JSON kept out of git; re-run to reproduce.
+
+### Two controls returned no verdict
+
+The summary counts 41 controls. The CLI evaluated 39.
+
+`C-0069` and `C-0070`, anonymous access to the Kubelet and Kubelet client TLS authentication, both report `Action Required` against zero resources out of zero. Neither ran. They read `KubeletInfo`, which the Kubescape operator collects and the CLI does not, and the host scanner fails to initialise at the top of every run for the same reason. The scan prints its own coverage as 95%.
+
+Both are Critical, so the two highest-severity controls in either framework are absent from the scores above rather than passing them. That is the shape Slice 1 was built to refuse, arriving in Slice 3: a check that could not run, reported in a way that reads as a result.
+
+Unmeasured, not closed. The operator runs in-cluster, and the note above on why this scan uses an operator kubeconfig is also why the operator is not installed: the node pool has no headroom under the `ResourceQuota`.
 
 **Security Command Center**: not enabled on the project. The threat model assumed Standard tier had run since project creation, with an unread backlog. It has not.
 
