@@ -348,13 +348,13 @@ Decision: Require a pull request and the status checks on `main` through a repos
 
 Why: Validation that can be pushed past is documentation, not enforcement. `sky` is where production's pinned commit comes from, so it is governed too.
 
-Cost: `k8-lab` now carries a ruleset and a classic rule with disjoint check lists, because Phase 14 read a `404` from the classic endpoint as no protection at all when the ruleset was already in force. GitHub applies both, so nothing is weaker, but one branch governed by two mechanisms is harder to read than it should be. Consolidating into the ruleset is open.
+Cost: `k8-lab` briefly carried a ruleset and a classic rule with disjoint check lists, because Phase 14 read a `404` from the classic endpoint as no protection at all when the ruleset was already in force. Consolidated on 2026-09-18: `Static analysis` moved into ruleset 21742516, which now requires all four checks, and the classic rule was deleted.
 
 `Public surface` is deliberately not required. It runs on two paths only, so requiring it would leave every pull request that touches neither one pending forever.
 
 `enforce_admins` is off on both. With no required reviewer, turning it on locks the sole owner out of their own repositories.
 
-Alternatives: Advisory checks only, or an admin bypass for the repository owner. `strict` on the classic rule, which would require a branch to be up to date before merging; the ruleset already sets it, and the classic rule was left without it.
+Alternatives: Advisory checks only, or an admin bypass for the repository owner. Leaving both mechanisms in place, rejected because a required-check list split across two API surfaces gives whoever reads either one an incomplete answer.
 
 ### Initial delivery model
 
@@ -507,6 +507,20 @@ Why: Cloudflare serves its own hidden `TXT` records at `_acme-challenge` for Uni
 Cost: The challenge record's name is generated rather than predictable, so it cannot be written before the authorization exists. `type` is immutable, so changing it later replaces the authorization, the certificate and the map entry together.
 
 Alternatives: Disable Cloudflare's Universal SSL, which removes the conflicting records but is console state rather than configuration and may be reprovisioned. Move DNS to Cloud DNS, which removes the conflict and the registrar's edge features with it.
+
+The first alternative was taken later, for the reason in the next entry. `PER_PROJECT_RECORD` stays: it is configuration, and nothing contests it.
+
+### Certificate issuance restriction
+
+Decision: Publish `0 issue "pki.goog"` and `0 issuewild ";"` on `sindrg.com`, and disable Cloudflare's Universal SSL so that pair is the whole record.
+
+Why: Certificate issuance is proved by a DNS record, so without CAA any CA will issue for this domain and none of the cluster's hardening is on that path. `pki.goog` is Google Trust Services' Issuer Domain Name, and GTS issues the live certificate. `issuewild ";"` is the second half rather than an extra: RFC 8659 falls back to `issue` for a wildcard request when no `issuewild` record exists, so `issue "pki.goog"` alone would still authorise a wildcard this platform never issues.
+
+Universal SSL is why the pair needs a second decision. With it on, Cloudflare adds CAA records for its own partner CAs to any zone that has one, shows none of them in its dashboard, and documents the list as [not exhaustive](https://developers.cloudflare.com/ssl/edge-certificates/caa-records/). Phase 14 measured eleven records where the zone held two, and because RFC 8659 takes the union at a name, the injected `issuewild` entries re-authorised the wildcard issuance the pair exists to forbid.
+
+Cost: Universal SSL is console state rather than configuration, so nothing here prevents it being switched back on, and `scripts/check-public-surface.sh` reads CAA for presence rather than contents. Changing CA means editing the zone by hand first, and a wrong record fails at renewal rather than at request time.
+
+Alternatives: `issue "pki.goog"` alone, which leaves wildcard issuance authorised. Flags `128`, which adds nothing for tags every compliant CA understands. Leaving Universal SSL on, rejected because the partner set is undisclosed and Cloudflare's to change. Moving the zone to Cloud DNS, which would put the record in Terraform; out of scope because DNS is not this repository's to move.
 
 ### Redirect to HTTPS
 

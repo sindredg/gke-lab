@@ -23,7 +23,6 @@ PATHS=("/" "/sky/")
 
 # Findings the threat model records. Delete a line when its finding closes.
 KNOWN_OPEN=(
-  "caa"              # finding 3, unverified until this runs
   "dnssec"           # finding 9, unverified until this runs
 )
 

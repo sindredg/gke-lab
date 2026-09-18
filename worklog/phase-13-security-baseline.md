@@ -170,6 +170,8 @@ checkov 3.3.19 over both trees, wired into `ci.yml` so it runs on every pull req
 | `kubernetes/` | 194 | 1 |
 | `terraform/` | 30 | 9 |
 
+Re-run on 2026-09-18: `terraform/` reads 31 passed and 10 failed. The tenth is `CKV_GCP_73` on `module.gateway.google_compute_security_policy.default`, the Cloud Armor policy from #98, which this phase applied after the table was written. It is in `.checkov.baseline`, so the gated run still exits `0`. `kubernetes/` is unchanged.
+
 ### Two checks verified wrong here
 
 Skipped in `.checkov.yml` with their reason, because a false positive silently carried in a baseline becomes indistinguishable from an accepted risk.

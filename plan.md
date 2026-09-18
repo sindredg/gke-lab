@@ -274,7 +274,7 @@ Documentation: [hardening your GKE cluster](https://cloud.google.com/kubernetes-
 
 Ordered by the threat model's ranking rather than by ease. The first item defends the only path an adversary is exercising today; the last is the one with six controls already on it.
 
-Four bullets below shipped and were deployed during Phase 13: Cloud Armor rate limiting, the SSL policy, the response headers (except sky's CSP), and the pin-bump CI check. See the [Phase 13 worklog](worklog/phase-13-security-baseline.md).
+Four bullets below shipped and were deployed during Phase 13: Cloud Armor rate limiting, the SSL policy, the response headers, and the pin-bump CI check. sky's own CSP followed later, when #106 moved the pin onto it. See the [Phase 13 worklog](worklog/phase-13-security-baseline.md).
 
 - Add Cloud Armor rate limiting to the Gateway, sized from the Phase 12 measurements.
 - Re-decide the federation trust boundary with its consequence written down, and record the outcome either way.
@@ -291,15 +291,15 @@ A second was overstated and is corrected here. Scoping federation to a ref does 
 | Item | State |
 | --- | --- |
 | Rate limiting, SSL policy, response headers, pin-bump check | Shipped and deployed |
-| Federation scoped to `refs/heads/main` | Applied. Allow path proven, deny path untested |
-| Branch protection on both repositories | Done. `k8-lab` carries two mechanisms, consolidation open |
+| Federation scoped to `refs/heads/main` | Applied. Both directions proven |
+| Branch protection on both repositories | Done. Consolidated onto `k8-lab`'s ruleset |
 | Certificate renewal alerting | Done, as `cert-expiry` in the surface script rather than a Cloud Monitoring alert |
-| Content Security Policy | Served on `/`. `/sky/` waits on a pin bump to deploy it |
-| CAA records | Derived from the live issuer, not added. Blocked on whether the zone is Cloudflare-proxied |
+| Content Security Policy | Served on both paths |
+| CAA records | Added and verified. Universal SSL disabled, because it was widening the set |
 | DNSSEC | Not decided |
-| What the Security Command Center free tier covers | Not looked up. Phase 13 established only that it is disabled |
+| Security Command Center | Premium trial active to 2026-10-18, then Standard. One finding, which is its own onboarding. The first Security Health Analytics scan has not completed |
 | Provenance, SBOM, signing, admission policy | Not started |
-| Single-client flood | Not run. This is the exit criterion |
+| Single-client flood | Run 2026-09-18. 593 of 1200 requests refused, the namespace quota unmoved. The exit criterion is met |
 
 **Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance.
 
