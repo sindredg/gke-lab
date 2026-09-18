@@ -23,8 +23,6 @@ PATHS=("/" "/sky/")
 
 # Findings the threat model records. Delete a line when its finding closes.
 KNOWN_OPEN=(
-  "csp"              # finding 6, sky's policy is in an unmerged PR; nginx has none
-  "frame-ancestors"  # finding 6, same as csp
   "caa"              # finding 3, unverified until this runs
   "dnssec"           # finding 9, unverified until this runs
 )
