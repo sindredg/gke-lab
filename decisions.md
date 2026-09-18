@@ -136,7 +136,7 @@ Decision: Run both workloads with `readOnlyRootFilesystem: true`, and give each 
 
 Why: A process that cannot write to its own image cannot persist a change to it. The restricted standard does not require it, so it has to be declared. nginx's paths come from the image rather than from guessing: `nginx.conf` puts the PID and every temp path under `/tmp`, and the entrypoint renders the page's template into `conf.d` at startup.
 
-Cost: The nginx entrypoint does not fail when `conf.d` is unwritable. It logs an error and starts nginx with no server block, which runs, reports healthy workers, and refuses every connection. The readiness probe is the only thing that catches that, which is one more reason the probe targets `/healthz` rather than being removed. The [worklog](worklog/manifest-linting.md) records the local runs that found it.
+Cost: The nginx entrypoint does not fail when `conf.d` is unwritable. It logs an error and starts nginx with no server block, which runs, reports healthy workers, and refuses every connection. The readiness probe is the only thing that catches that, which is one more reason the probe targets `/healthz` rather than being removed. The [worklog](worklog/notes/manifest-linting.md) records the local runs that found it.
 
 Alternatives: Leave the root writable, which kube-linter flags. Point `NGINX_ENVSUBST_OUTPUT_DIR` under `/tmp` and change the `include` in `nginx.conf` to match, which saves one volume by editing the image's own configuration.
 
@@ -338,17 +338,23 @@ Decision: Run [kube-linter](https://docs.kubelinter.io/) with its default checks
 
 Why: It started advisory in Phase 3, because its findings needed a non-root image and a scheduling decision that came later. The plan was to make it blocking once Phases 4 and 5 closed them. That did not happen until 2026-09-16, and by then it reported four findings nobody was required to read, two of them real. An advisory check proves nothing on its own. `no-anti-affinity` is excluded because it only recognises `podAntiAffinity`, and replicas here spread with `topologySpreadConstraints` for the reasons in [replica placement](#replica-placement).
 
-Cost: A new manifest has to satisfy every default check or name the one it disagrees with. The exclusion applies to the whole repository, so a future workload that genuinely lacks any spreading would not be flagged. The [worklog](worklog/manifest-linting.md) records each finding and the injected failures that prove the gate.
+Cost: A new manifest has to satisfy every default check or name the one it disagrees with. The exclusion applies to the whole repository, so a future workload that genuinely lacks any spreading would not be flagged. The [worklog](worklog/notes/manifest-linting.md) records each finding and the injected failures that prove the gate.
 
 Alternatives: Stay advisory, which is what let the findings sit. Per-object `ignore-check.kube-linter.io` annotations instead of a config file, which scope the exclusion to one Deployment but put linter configuration into the live object.
 
 ### Merge protection
 
-Decision: Require a pull request and both status checks on `main` through a repository ruleset, with no bypass actors.
+Decision: Require a pull request and the status checks on `main` through a repository ruleset, with no bypass actors. `sky` uses classic protection requiring its two test jobs.
 
-Why: Validation that can be pushed past is documentation, not enforcement.
+Why: Validation that can be pushed past is documentation, not enforcement. `sky` is where production's pinned commit comes from, so it is governed too.
 
-Alternatives: Advisory checks only, or an admin bypass for the repository owner.
+Cost: `k8-lab` now carries a ruleset and a classic rule with disjoint check lists, because Phase 14 read a `404` from the classic endpoint as no protection at all when the ruleset was already in force. GitHub applies both, so nothing is weaker, but one branch governed by two mechanisms is harder to read than it should be. Consolidating into the ruleset is open.
+
+`Public surface` is deliberately not required. It runs on two paths only, so requiring it would leave every pull request that touches neither one pending forever.
+
+`enforce_admins` is off on both. With no required reviewer, turning it on locks the sole owner out of their own repositories.
+
+Alternatives: Advisory checks only, or an admin bypass for the repository owner. `strict` on the classic rule, which would require a branch to be up to date before merging; the ruleset already sets it, and the classic rule was left without it.
 
 ### Initial delivery model
 
@@ -436,7 +442,7 @@ Decision: A scheduled workflow, `Watch sky`, opens a pull request that moves the
 
 Why: `deploy-sky.yml` fetches a commit rather than a branch, so what is built is what was reviewed and a re-run of an old run rebuilds the same source. Tracking `main` would remove the bump and that property together, and leaving the bump to be typed by hand lets the pin drift until someone remembers. Proposing it keeps the decision on a merge. The workflow fetches the commit during the run, so a pin that cannot resolve fails there rather than in a deploy.
 
-Cost: The pin is a data file only because GitHub rejects a workflow-token push that touches `.github/workflows`, and no permission lifts it. The job holds `contents: write` and `pull-requests: write`, more than any other workflow here, which is what keeps the pin as data rather than as a credential. Two gaps remain open and are recorded in the [worklog](worklog/upstream-pin-automation.md): the repository does not allow Actions to create pull requests, so every bump so far has been opened by hand from the link in the run's warning, and a pull request opened by the workflow token raises no workflow events, so `ci.yml` would not run on it before merge. Turning the setting on without closing the second would trade a manual click for a hole in [merge protection](#merge-protection).
+Cost: The pin is a data file only because GitHub rejects a workflow-token push that touches `.github/workflows`, and no permission lifts it. The job holds `contents: write` and `pull-requests: write`, more than any other workflow here, which is what keeps the pin as data rather than as a credential. Two gaps remain open and are recorded in the [worklog](worklog/notes/upstream-pin-automation.md): the repository does not allow Actions to create pull requests, so every bump so far has been opened by hand from the link in the run's warning, and a pull request opened by the workflow token raises no workflow events, so `ci.yml` would not run on it before merge. Turning the setting on without closing the second would trade a manual click for a hole in [merge protection](#merge-protection).
 
 Alternatives: Track `main` and rebuild on a schedule, which removes the review boundary. Hold a personal access token, which buys the workflow-file write and gives this repository the one long-lived credential it does not otherwise have. Dependabot or Renovate, neither of which tracks a bare commit in a data file.
 

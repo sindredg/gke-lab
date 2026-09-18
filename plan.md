@@ -270,6 +270,8 @@ Documentation: [hardening your GKE cluster](https://cloud.google.com/kubernetes-
 
 ### Phase 14: Close the baseline
 
+**Status:** In progress
+
 Ordered by the threat model's ranking rather than by ease. The first item defends the only path an adversary is exercising today; the last is the one with six controls already on it.
 
 Four bullets below shipped and were deployed during Phase 13: Cloud Armor rate limiting, the SSL policy, the response headers (except sky's CSP), and the pin-bump CI check. See the [Phase 13 worklog](worklog/phase-13-security-baseline.md).
@@ -282,7 +284,22 @@ Four bullets below shipped and were deployed during Phase 13: Cloud Armor rate l
 - Refuse to propose a pin bump whose upstream CI is red.
 - Add provenance, an SBOM, and signing to the build, and enforce them at admission.
 
-Two cautions carried from the threat model. `includeSubDomains` and `preload` are one-way doors, so HSTS starts with a short `max-age`. Scoping federation to a ref costs the `workflow_dispatch` bootstrap path, which is the reason to decide rather than assume.
+One caution carried from the threat model: `includeSubDomains` and `preload` are one-way doors, so HSTS starts with a short `max-age`.
+
+A second was overstated and is corrected here. Scoping federation to a ref does not cost the `workflow_dispatch` bootstrap path, because a dispatch from `main` resolves to `refs/heads/main`. What it costs is exercising delivery from a branch, and a branch rename breaking delivery until the condition follows it.
+
+| Item | State |
+| --- | --- |
+| Rate limiting, SSL policy, response headers, pin-bump check | Shipped and deployed |
+| Federation scoped to `refs/heads/main` | Applied. Allow path proven, deny path untested |
+| Branch protection on both repositories | Done. `k8-lab` carries two mechanisms, consolidation open |
+| Certificate renewal alerting | Done, as `cert-expiry` in the surface script rather than a Cloud Monitoring alert |
+| Content Security Policy | Served on `/`. `/sky/` waits on a pin bump to deploy it |
+| CAA records | Derived from the live issuer, not added. Blocked on whether the zone is Cloudflare-proxied |
+| DNSSEC | Not decided |
+| What the Security Command Center free tier covers | Not looked up. Phase 13 established only that it is disabled |
+| Provenance, SBOM, signing, admission policy | Not started |
+| Single-client flood | Not run. This is the exit criterion |
 
 **Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance.
 
@@ -345,4 +362,4 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 
 Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
 
-Next is Milestone 3. [The threat model](reference/threat-model.md) is written and ranks twelve findings; Phase 13 measures the platform against that frame instead of against a reading of it, and Phase 14 closes what the measurement confirms. The AI reference workload follows in Milestone 4, on a platform whose security posture has been tested rather than described.
+Milestone 3 is under way. [The threat model](reference/threat-model.md) ranks twelve findings, Phase 13 measured the platform against that frame rather than against a reading of it, and Phase 14 is closing what the measurement confirmed. What Phase 14 has not done is listed in its own entry above; the single-client flood is its exit criterion and has not been run. The AI reference workload follows in Milestone 4, on a platform whose security posture has been tested rather than described.

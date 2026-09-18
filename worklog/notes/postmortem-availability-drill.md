@@ -6,7 +6,7 @@ Impact: `/` returned 503. `/sky`, `/api` and `/static` were unaffected.
 
 ## Summary
 
-`nginx` was scaled to zero to test whether the alert built in [Phase 8](phase-08-observability.md) fires. It did. It also arrived as the site was already recovering.
+`nginx` was scaled to zero to test whether the alert built in [Phase 8](../phase-08-observability.md) fires. It did. It also arrived as the site was already recovering.
 
 ## Timeline
 
@@ -44,13 +44,13 @@ The alert carries five commands, Pods outwards to the edge. Walked against what 
 
 Step 1 was correct and sufficient. The ordering holds.
 
-The runbook does not say what to do when the Pods are simply gone. It assumes a rollout that failed readiness, which is the [Phase 10](phase-10-failure-drills.md) drill B case. A deleted or scaled-away workload has no rollout to inspect.
+The runbook does not say what to do when the Pods are simply gone. It assumes a rollout that failed readiness, which is the [Phase 10](../phase-10-failure-drills.md) drill B case. A deleted or scaled-away workload has no rollout to inspect.
 
 ## Actions
 
 | Action | Status |
 | --- | --- |
-| Record the three minute detection floor | Done, [Phase 10](phase-10-failure-drills.md) |
+| Record the three minute detection floor | Done, [Phase 10](../phase-10-failure-drills.md) |
 | Add "if Pods are absent rather than unready, check recent scale and apply operations" to the alert documentation | Open |
 | Reduce detection below three minutes | Rejected |
 

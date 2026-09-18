@@ -2,6 +2,35 @@
 
 Faults encountered while building this platform. Each entry states the issue, the cause, and the fix, then records the evidence that connected them.
 
+## Symptoms
+
+Entries sit in the phase that met them. This table is the way in by symptom.
+
+| Area | Symptom | Phase |
+| --- | --- | --- |
+| Networking | [DNS stops resolving after the default deny](#dns-stops-resolving-after-the-default-deny) | 4 |
+| Networking | [A Pod restart does not reload network policy](#a-pod-restart-does-not-reload-network-policy) | 4 |
+| Networking | [A denied connection hangs instead of failing](#a-denied-connection-hangs-instead-of-failing) | 4 |
+| Terraform | [A Terraform plan proposes the same change after every apply](#a-terraform-plan-proposes-the-same-change-after-every-apply) | 5 |
+| Workload | [An NGINX response carries the same header twice](#an-nginx-response-carries-the-same-header-twice) | 5 |
+| Workload | [A container will not start because its user is a name rather than a number](#a-container-will-not-start-because-its-user-is-a-name-rather-than-a-number) | 6 |
+| Images | [An image pull fails with NotFound although the digest exists](#an-image-pull-fails-with-notfound-although-the-digest-exists) | 5 |
+| Delivery | [A federated token exchange fails with ECONNRESET](#a-federated-token-exchange-fails-with-econnreset) | 6 |
+| Delivery | [A merged manifest change never reaches the cluster](#a-merged-manifest-change-never-reaches-the-cluster) | 6 |
+| Delivery | [A pull request shows no changes although the fix is committed](#a-pull-request-shows-no-changes-although-the-fix-is-committed) | 6 |
+| Delivery | [A rerun of a deploy rolls out again](#a-rerun-of-a-deploy-rolls-out-again) | 12 |
+| Ingress and TLS | [A Gateway provisions cleanly and every backend is unhealthy](#a-gateway-provisions-cleanly-and-every-backend-is-unhealthy) | 7 |
+| Ingress and TLS | [A managed certificate stays in PROVISIONING](#a-managed-certificate-stays-in-provisioning) | 7 |
+| Ingress and TLS | [A certificate cannot be replaced while its map entry references it](#a-certificate-cannot-be-replaced-while-its-map-entry-references-it) | 7 |
+| Ingress and TLS | [GatewayClasses appear in waves](#gatewayclasses-appear-in-waves) | 7 |
+| Scaling and quota | [A deploy smoke test is forbidden by the quota](#a-deploy-smoke-test-is-forbidden-by-the-quota) | 12 |
+| Scaling and quota | [Pods stay Pending because the scale-up fails](#pods-stay-pending-because-the-scale-up-fails) | 12 |
+| Scaling and quota | [Adding zones to a node pool creates nodes above its maximum](#adding-zones-to-a-node-pool-creates-nodes-above-its-maximum) | 12 |
+| Tooling | [A committed script fails with Permission denied](#a-committed-script-fails-with-permission-denied) | 12 |
+| Tooling | [An IAP SSH session drops as a k6 run ends](#an-iap-ssh-session-drops-as-a-k6-run-ends) | 12 |
+| Tooling | [A documentation check reports ok without reading the new file](#a-documentation-check-reports-ok-without-reading-the-new-file) | 13 |
+| Tooling | [A policy CRD applies cleanly and does nothing](#a-policy-crd-applies-cleanly-and-does-nothing) | 13 |
+
 ## Phase 4: Workload guardrails
 
 ### DNS stops resolving after the default deny
@@ -737,3 +766,42 @@ gcloud container node-pools describe general --cluster k8-lab --zone europe-nort
 ```
 
 **Fix:** None needed. The cluster autoscaler removed three nodes at 17:55:29 and 17:56:11, and running Pods were rescheduled under their disruption budgets with no failed requests. Wait for the pool to settle before a load test, or the run measures capacity the pool will not keep.
+
+## Phase 13: Security baseline
+
+Both of these are the same fault: a check reported success without examining
+the thing it was asked about. That is worse than no check, because the result
+goes into a worklog as evidence.
+
+### A documentation check reports ok without reading the new file
+
+Issue: `scripts/check-docs.sh` was run against a newly written document and
+printed `ok: 411 links and 259 images resolve`. It had examined none of it.
+
+Cause: the script iterates `git ls-files '*.md'`. A file that has never been
+staged is not in the index, so it is invisible to the check.
+
+Fix: `git add` the file first. Staging it and re-running took the count from
+411 to 417, and those six links were the ones under test.
+
+What to check first next time: a link count that did not move is a check that
+read nothing new.
+
+### A policy CRD applies cleanly and does nothing
+
+Issue: `kubeconform` passes a manifest whose fields the schema would reject,
+so a misspelled field in a GKE policy reaches the cluster, applies without
+error, and has no effect. A security control that appears to exist.
+
+Cause: `ci.yml` runs `kubeconform` with `-ignore-missing-schemas`, and every
+`networking.gke.io` policy is a missing schema unless the CRD catalog happens
+to carry it.
+
+Fix: read field names from the controller's own type definitions rather than
+from an example. Writing `GCPBackendPolicy`, a published example showed
+`targetRef` nested under `default`; the Go type has it as a direct child of
+`spec`, with only `securityPolicy` under `default`.
+
+What to check first next time: if the kind is not in the Kubernetes API,
+`kubeconform` did not check it.
+

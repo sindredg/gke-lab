@@ -435,11 +435,7 @@ The question is what the free tier covers for this project today, specifically w
 | 4 | CAA record | Derived, not added. Cloudflare proxy question unresolved |
 | 5 | Two protection mechanisms on `k8-lab` main | Consolidate into ruleset 21742516 |
 
-## Notes for the span documents
+## Where this is recorded elsewhere
 
-Not edited here, by instruction. What this work suggests they should say:
-
-- **`reference/threat-model.md`** — Boundary 4 finding 2: scoped to `refs/heads/main` and the allow path is proven, but record it as half-verified until a non-main ref is tested, rather than as closed. Boundary 1: the rate limit claim is unchanged, still not proven under a flood. Boundary 6: no CAA record is still open; the derivation exists but nothing was added. Boundary 7: `sky`'s `main` is no longer unprotected.
-- **`decisions.md`** — the branch protection mechanism is worth a decision entry: `k8-lab` now carries a ruleset and a classic rule, and the choice between consolidating or keeping both has not been made. `strict: false` and `enforce_admins: false` are recorded above with reasons and belong there rather than here.
-- **`plan.md`** — Phase 14 is not complete. Slices 5 and 6 are unstarted, and slice 1 is partial.
-- **`scripts/check-public-surface.sh`** — **no `KNOWN_OPEN` entry should be deleted on the strength of this work.** The `csp` and `frame-ancestors` entries are the only candidates, from Slice 3, and that slice measured the nginx root alone while those findings were recorded against `/` and `/sky/` both. The `caa` entry is still accurate: no record was added.
+The threat model's findings table, `decisions.md` on branch protection, and
+Phase 14 in `plan.md` were reconciled against this worklog after it landed.

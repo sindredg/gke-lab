@@ -186,4 +186,4 @@ kubectl get endpointslices -n demo -l kubernetes.io/service-name=nginx -o yaml |
 
 Drill A cut a notch in the uptime panel. Drill B left it flat while the pipeline went red.
 
-Postmortem: [the availability drill](postmortem-availability-drill.md).
+Postmortem: [the availability drill](notes/postmortem-availability-drill.md).

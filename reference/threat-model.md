@@ -134,7 +134,7 @@ The boundary nothing in either repository currently touches.
 | --- | --- | --- |
 | S | A certificate issued for this domain by another CA | **Open, measured.** Certificate issuance is proved by a DNS record. Anyone with access to the Cloudflare zone can prove control to any CA and obtain a valid certificate for `sindrg.com`. None of the cluster's hardening is on this path. `scripts/check-public-surface.sh` reports no CAA record, so no CA is excluded |
 | T | Redirecting the domain | **Open, measured.** A zone edit points the name anywhere, and the same run reports no DS record, so the zone is unsigned and its answers are not authenticated |
-| D | Silent renewal failure | **Open.** Google renews automatically, so a broken authorization surfaces only when the certificate expires. This has precedent here: `PER_PROJECT_RECORD` is in the Terraform specifically because `FIXED_RECORD` collided with Cloudflare's own TXT record at `_acme-challenge` |
+| D | Silent renewal failure | **Mitigated.** Google renews automatically, so a broken authorization would otherwise surface only at expiry, and there is precedent: `PER_PROJECT_RECORD` is in the Terraform because `FIXED_RECORD` collided with Cloudflare's own TXT at `_acme-challenge`. `cert-expiry` now reads the served certificate daily and fails below 21 days, which is a stalled renewal rather than a healthy one |
 
 ## Boundary 7: The GitHub account
 
@@ -147,9 +147,9 @@ This model originally **assumed** multi-factor authentication on the account, th
 | Multi-factor authentication | Enabled. Not obtainable from the API for a personal account, confirmed by the owner at `github.com/settings/security` |
 | Write access | `sindredg` is the sole collaborator on both repositories, admin on each. No other user or team |
 | `main` on `k8-lab` | Protected by the `Protect main` ruleset, active. It existed from 2026-08-28 with `conditions.ref_name.include` empty, so it matched no branch and enforced nothing for three weeks. Retargeted to `~DEFAULT_BRANCH` with `strict_required_status_checks_policy` on |
-| `main` on `sky` | **Open.** Neither a ruleset nor classic protection. Unaddressed, carried to Phase 14 |
+| `main` on `sky` | Protected in Phase 14. Classic protection requiring `Lint and test` and `Frontend tests`, both of which run on every pull request |
 
-One residual on `k8-lab`: the ruleset requires `Terraform`, `Kubernetes` and `Docs and scripts`, three of the five checks that run. `Static analysis` (checkov) and `Public surface` report but do not gate, so a pull request merges with either of them red.
+One residual on `k8-lab`, narrowed rather than closed. The ruleset requires `Terraform`, `Kubernetes` and `Docs and scripts`; Phase 14 added a classic rule requiring `Static analysis`. Two mechanisms now govern one branch with disjoint check lists, which is not weaker than one but is harder to read than it should be. `Public surface` gates nothing by design: it runs on two paths only, so requiring it would leave every other pull request pending.
 
 Evidence: [Phase 13 worklog](../worklog/phase-13-security-baseline.md#slice-4-account-controls).
 
@@ -195,16 +195,16 @@ Recorded so that the absence is a decision rather than an oversight.
 
 Carried into Phase 13 for verification and Phase 14 for the work. Ranked as above, not by boundary. Status is as Phase 13 measured it.
 
-| # | Boundary | Finding | Proposed response | Status after Phase 13 |
+| # | Boundary | Finding | Proposed response | Status |
 | --- | --- | --- | --- | --- |
 | 1 | 1 | No rate limiting on the public endpoint | Mitigate | Closed. 300 requests a minute per address, live. Not yet proven under a flood |
-| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Re-decided in Phase 14. Condition scoped to `refs/heads/main`; not yet applied |
-| 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate | Open, measured. Carried to Phase 14 |
-| 4 | 6 | Renewal failure is silent | Mitigate | Open. Carried to Phase 14 |
+| 2 | 4 | Merge review is not a control on the path to Google Cloud | Re-decide with the consequence recorded | Re-decided and applied in Phase 14. Scoped to `refs/heads/main`. Half-verified: the allow path is proven, a non-main ref was never dispatched |
+| 3 | 6 | No CAA record, so no CA is excluded from issuing for this domain | Mitigate | Open. Phase 14 derived the records from the live issuer; none was added |
+| 4 | 6 | Renewal failure is silent | Mitigate | Closed. `cert-expiry` reads the served certificate and fails below 21 days remaining |
 | 5 | 1 | TLS 1.0 and 1.1 accepted; no SSL policy defined | Mitigate | Closed, measured. TLS 1.2 floor, both refused |
-| 6 | 1 | No HSTS, and no other response security headers | Mitigate | Partly closed. HSTS, `nosniff` and `Referrer-Policy` live; CSP and `frame-ancestors` open, carried to Phase 14 |
+| 6 | 1 | No HSTS, and no other response security headers | Mitigate | Partly closed. HSTS, `nosniff` and `Referrer-Policy` live. A policy is served on `/`; `/sky/` carries one only once a pin bump deploys it |
 | 7 | 5 | The pin bump is the one pull request CI does not validate | Mitigate | Closed. Upstream CI is queried before the pin is proposed |
-| 8 | 7 | Account controls are assumed, not verified | Verify | Closed for `k8-lab`, and one assumption was wrong. `sky`'s `main` is unprotected, carried to Phase 14 |
+| 8 | 7 | Account controls are assumed, not verified | Verify | Closed. Both assumptions that were wrong are fixed: `k8-lab`'s ruleset matched no branch, and `sky`'s `main` was unprotected |
 | 9 | 6 | No DS record, so the zone is unsigned | Decide | Open, measured. Carried to Phase 14 |
 | 10 | 8 | No provenance, SBOM, signature, or admission policy | Mitigate, after 7 | Open. Carried to Phase 14 |
 | 11 | 3 | DNS is the one egress channel out of the namespace | Accept | Accepted |

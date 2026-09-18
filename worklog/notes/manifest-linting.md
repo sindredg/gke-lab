@@ -12,15 +12,15 @@ kube-linter ran on every pull request since Phase 3, advisory, with its exit cod
 | `no-read-only-root-fs` | `Deployment/nginx` | Real. Fixed. |
 | `no-anti-affinity` | `Deployment/nginx` | Disagreement. Excluded. |
 
-The disruption budgets used the default `IfHealthyBudget`, which refuses to evict a Pod while the budget is unmet, even a Pod that is not Ready and serves nothing. A crashlooping replica could then hold a node drain, which is the upgrade path [Phase 9](phase-09-resilience.md) depends on. Both now set `unhealthyPodEvictionPolicy: AlwaysAllow`.
+The disruption budgets used the default `IfHealthyBudget`, which refuses to evict a Pod while the budget is unmet, even a Pod that is not Ready and serves nothing. A crashlooping replica could then hold a node drain, which is the upgrade path [Phase 9](../phase-09-resilience.md) depends on. Both now set `unhealthyPodEvictionPolicy: AlwaysAllow`.
 
 sky already ran with a read-only root filesystem. nginx did not.
 
-`no-anti-affinity` only recognises `podAntiAffinity`. Replicas here spread with `topologySpreadConstraints`, for the reasons in [replica placement](../decisions.md#replica-placement). The check fired on nginx and not on sky only because sky has no `replicas` field for it to read. It is excluded in `.kube-linter.yaml`.
+`no-anti-affinity` only recognises `podAntiAffinity`. Replicas here spread with `topologySpreadConstraints`, for the reasons in [replica placement](../../decisions.md#replica-placement). The check fired on nginx and not on sky only because sky has no `replicas` field for it to read. It is excluded in `.kube-linter.yaml`.
 
 ## Read-only nginx, proven locally first
 
-The [base image decision](../decisions.md#base-image) records this failure shape: a container that starts and then fails. So the image built from `app/` ran under `docker run --read-only` before any manifest changed.
+The [base image decision](../../decisions.md#base-image) records this failure shape: a container that starts and then fails. So the image built from `app/` ran under `docker run --read-only` before any manifest changed.
 
 The image says where it writes. `nginx.conf` puts the PID and every temp path under `/tmp`, and the entrypoint renders the template into `/etc/nginx/conf.d`.
 
@@ -34,7 +34,7 @@ The image says where it writes. `nginx.conf` puts the PID and every temp path un
 
 Run D is the one worth keeping. Docker mounts a tmpfs as `root:root 775`, which uid 101 cannot write. The entrypoint logged `ERROR: /etc/nginx/templates exists, but /etc/nginx/conf.d is not writable` and carried on. nginx then started with no server block, listening on nothing, and reported healthy worker processes. A process check would pass. Only a request fails.
 
-A Kubernetes `emptyDir` is created world-writable, which is what run E reproduces. If a volume ever came up unwritable, the readiness probe on `/healthz` would never pass, the Pod would never become Ready, and `maxUnavailable: 0` would keep the old Pods serving. That is the containment the [rollout drill](phase-10-failure-drills.md) proved.
+A Kubernetes `emptyDir` is created world-writable, which is what run E reproduces. If a volume ever came up unwritable, the readiness probe on `/healthz` would never pass, the Pod would never become Ready, and `maxUnavailable: 0` would keep the old Pods serving. That is the containment the [rollout drill](../phase-10-failure-drills.md) proved.
 
 ## The gate
 

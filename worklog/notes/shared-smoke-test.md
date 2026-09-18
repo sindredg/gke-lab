@@ -6,7 +6,7 @@ Date: 2026-09-17
 
 - Reviewed the repository for refactoring. Roughly 3,300 lines of infrastructure code, no dead CSS, comment density already low after [#79](https://github.com/sindredg/k8-lab/pull/79). The two delivery workflows held the only material duplication: 102 of `deploy.yml`'s 112 non-blank lines also appeared in `deploy-sky.yml`.
 - Extracted the in-cluster smoke test into `.github/actions/smoke-test`, called by both. ([#90](https://github.com/sindredg/k8-lab/pull/90))
-- Recorded [shared smoke test](../decisions.md#shared-smoke-test), linked to the unchanged [delivery workflow separation](../decisions.md#delivery-workflow-separation).
+- Recorded [shared smoke test](../../decisions.md#shared-smoke-test), linked to the unchanged [delivery workflow separation](../../decisions.md#delivery-workflow-separation).
 
 ## Why, since it adds 14 lines
 
