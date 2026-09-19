@@ -718,6 +718,88 @@ Cost: Idle connections from the load balancer's proxies stay open for minutes ra
 
 Alternatives: Keep the defaults and retry on the client, which hides the error from one client and leaves it for every other.
 
+## Agents
+
+### Agent source location
+
+Decision: Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), a separate public repository. This repository keeps the Terraform, the manifests, the identities, the Pub/Sub and Security Command Center configuration, the image pins, and all narrative evidence including worklogs about agent failures.
+
+Why: Phases 15 to 19 are a software project rather than a few deployment scripts, and they would otherwise dilute a repository about platform engineering. The split also separates the agent from its own source: the Phase 19 actuator opens pull requests against `k8-lab`, and the prompts and tests that decide its verdicts are not in the repository it can write to.
+
+It costs nothing at the federation boundary, which is the reason it is safe to do. `k8-lab` will build the agent the way it already builds `sky`, by shallow-fetching a pinned commit and building it under this repository's identity, so `ai-k8s` holds no Google Cloud credential and the provider's `attribute_condition` stays pinned to `sindredg/k8-lab` on `refs/heads/main`. [Threat model](reference/threat-model.md#findings) finding 2, closed in Phase 14 by narrowing exactly that condition, is untouched.
+
+Because the build runs inside a `k8-lab` checkout, both provenance fields fall out of it. The image is stamped with the agent commit it was built from and the corpus commit of the tree that built it, and the corpus is baked into the image rather than fetched at runtime, so no egress to GitHub is opened and finding 11 stands.
+
+Cost: A second repository to protect, pin and watch, and a second edge on [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Evidence and code no longer sit together, which is why the evidence stays here rather than splitting.
+
+Alternatives: Keep everything in `k8-lab`, which mixes model and prompt releases into infrastructure changes and gives the Phase 19 actuator a path to its own prompts. Several repositories, one per component, which is more boundary than five phases need.
+
+### Agent implementation language
+
+Decision: Go, one module in `ai-k8s` with a binary per deployable component.
+
+Why: Phase 18 is a Kubernetes controller and Kubebuilder is the framework this plan already names for it. Writing Phase 15 in Python and Phase 18 in Go would mean two toolchains, two test harnesses and two build pipelines for one agent codebase, so the phase with the least flexibility picks for all of them.
+
+Cost: `sky` is Python and this project now carries both languages. Go is the less familiar of the two here.
+
+Alternatives: Python throughout, which matches `sky` and the existing tooling, and then either reaches for a less established controller framework at Phase 18 or adds Go anyway.
+
+### Inference provider
+
+Decision: Managed inference on [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview), a Flash-class Gemini model, authenticated through Workload Identity. Temperature 0, schema-constrained JSON output, and fixed token and tool-call budgets. Model id and generation parameters are recorded with every verdict, behind an interface that allows a later comparison.
+
+Why: Closes the deferred gate on the condition it was written for. Nothing here trains or serves a model. The work is the machinery around the call, and a hosted endpoint keeps the cost posture's ban on GPU nodes intact while leaving the interesting engineering in the ingestion, correlation and evidence path.
+
+Cost: A per-call charge and a dependency on a model whose behaviour changes under a version that Google controls. The eval set exists to detect that, and the recorded model id is what makes a changed score attributable.
+
+Alternatives: Self-hosted inference on GPU nodes, which conflicts with the cost posture and moves the project's effort into serving rather than operating. A non-Google provider, which would need a second credential path when Workload Identity already covers this one.
+
+### Triage verdict record
+
+Decision: Every verdict is a versioned record carrying the verdict, its severity and confidence, cited evidence, a reasoning summary, missing evidence, a recommended action, an empty tool-call trace, and provenance: model id, generation parameters, prompt digest, corpus commit, agent commit and image digest. Output that does not validate against the schema is rejected rather than parsed.
+
+Every verdict must cite a corpus entry, and the worker resolves each citation against the baked-in corpus deterministically before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`.
+
+Why: The citation check is what makes the output checkable rather than trusted. Drafting this phase, a reading of the live findings paired `CLUSTER_SECRETS_ENCRYPTION_DISABLED` with `CKV_GCP_65` and `INTRANODE_VISIBILITY_DISABLED` with `CKV_GCP_61` on the strength of the names. `CKV_GCP_65` is `GKEKubernetesRBACGoogleGroups` and `CKV_GCP_61` is `GKEEnableVPCFlowLogs`, so both pairings were wrong and the reported overlap was double the real one. A model will make that error more fluently than a human does. Resolving the citation catches it without asking the model to be right.
+
+It also bounds prompt injection. Finding bodies carry resource names chosen by whoever created the resource, so instructions can arrive inside the data. Injected text cannot manufacture a corpus entry that exists, so the worst it achieves is an abstention rather than a forged acceptance.
+
+The tool-call trace is empty in Phase 15 and present anyway, so Phase 17 does not bump the schema version to add it.
+
+Cost: A verdict is only as good as the corpus it can cite, so a real risk that nothing in the corpus describes is reported as new rather than assessed. That is the intended failure direction.
+
+Alternatives: Trust the model's citation, which is what produced the wrong overlap above. Free-text verdicts, which cannot be scored or diffed.
+
+### Triage idempotency
+
+Decision: Key on the finding's canonical name, its event time and its state. Record the verdict durably before notifying, record the notification before acknowledging, and acknowledge the Pub/Sub message last. The ledger is one object per key in a Cloud Storage bucket, written twice: the verdict first, then the notification timestamp.
+
+Why: Pub/Sub is at-least-once, so a restart redelivers. Keying on the finding alone would collapse real events: the four `loadgen` findings went `ACTIVE` at 17:02 on 2026-09-18 and `INACTIVE` at 17:27 when the load generator and its VPC were deleted, which is two events on one canonical name. Recording before acknowledging means a crash between inference and persistence re-infers, costing a fraction of a cent, while a crash between persistence and notification re-notifies without paying for inference again. Duplicate model calls are cheap and duplicate emails are not, so the ordering trades the first away to prevent the second.
+
+Cost: A bucket and its lifecycle to manage, and an object read on the path of every message.
+
+Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker.
+
+### Triage notification path
+
+Decision: The worker writes a structured log entry. A logs-based metric extracts the verdict, category and severity as labels, and one new alert policy interpolates them into its documentation and notifies the existing `Platform owner` channel. Contradictions, new findings and insufficient evidence notify. Accepted findings are recorded and stay quiet.
+
+Why: The phase requires the existing email channel, and a `google_monitoring_notification_channel` has no send API. It delivers only when an alert policy fires, so the log entry and the metric are how a verdict reaches it without creating a second channel.
+
+Cost: The email carries label values rather than the verdict body, so the reader follows a log query for the reasoning. Logs-based metrics also bound label cardinality, which caps how much of the verdict the subject line can carry.
+
+Alternatives: A second notification channel or a direct mail API, both of which the phase rules out. Pub/Sub to a mail service, which is another delivery path to operate.
+
+### Agent namespace
+
+Decision: A namespace of its own, `agents`, with its own quota, limit range and network policies. `demo` keeps the two public workloads.
+
+Why: Closes the deferred gate on the condition it was written for, since the triage worker is the third workload. The trust levels differ: the worker holds Google Cloud credentials through Workload Identity and the public workloads hold none. So do the network requirements. `demo` denies egress except DNS, and the worker needs Pub/Sub, Vertex AI, Cloud Storage and Cloud Logging, so hosting it in `demo` would mean widening the namespace that serves the public site.
+
+Cost: A second set of platform manifests to keep in step, and a new egress channel out of the cluster that [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) did not have. Finding 11 records DNS as the only egress out of `demo`, and that remains true of `demo` while no longer describing the cluster.
+
+Alternatives: Run the worker in `demo`, which widens egress for the public workloads to suit an agent. A separate cluster, which doubles the platform to isolate one Deployment.
+
 ## Project and process
 
 ### Project focus
@@ -769,5 +851,6 @@ Create short entries when these decision gates are reached:
 - Native controls versus Kyverno or Gatekeeper
 - GitHub Actions versus Argo CD or Flux for continued delivery
 - Standard GKE features versus fleet and multi-cluster components
-- Vertex AI versus self-hosted inference
-- One namespace for every workload versus a namespace per workload, when a third workload or a second owner arrives
+- A required approval versus a second identity, to stop the Phase 19 agent merging its own pull request
+
+Two closed into Milestone 4, both on the condition they were written for. Vertex AI against self-hosted inference is [decided](#inference-provider). A namespace per workload was gated on a third workload arriving, and the triage worker is it, [decided](#agent-namespace).

@@ -4,6 +4,8 @@ Date: 2026-09-17
 Scope: the GKE platform, the two workloads it serves, the delivery pipeline, and the DNS and certificate path that publishes them.
 Revisit when: Phase 16 begins. Giving an agent cluster credentials and an audited path to use them adds a trust boundary this model does not have, and the baseline is easier to establish on the system as it stands today.
 
+Phase 15 arrives before that revision and changes two boundaries without closing anything. Those changes are recorded where they land, on [boundary 3](#boundary-3-pod-to-cluster) and [boundary 5](#boundary-5-upstream-repositories-to-the-pipeline), and are rated at the Phase 16 pass rather than here. The findings table below is still as Phase 13 measured it and is not restated for them.
+
 ## Method
 
 Four questions, in order: what are we working on, what can go wrong, what are we going to do about it, and did we do a good job. This document answers the first two and proposes responses for the third. The fourth is Phase 13's continuous verification, because a control's state on the day it was reviewed is not evidence that it holds now.
@@ -37,7 +39,7 @@ The first row is the crown jewel, and it is worth stating plainly because the co
 | 2 | Gateway to Pod | NetworkPolicy on Google's load balancer ranges |
 | 3 | Pod to cluster | PSA `restricted`, no token mounted, default-deny both directions |
 | 4 | GitHub Actions to Google Cloud | Workload Identity Federation, namespaced RBAC |
-| 5 | `sky` repository to the pipeline | The pinned commit in `.github/sky-upstream.ref` |
+| 5 | Upstream repositories to the pipeline | The pinned commit in `.github/sky-upstream.ref`, and in `.github/ai-k8s.ref` from Phase 15 |
 | 6 | DNS and certificate issuance | Domain control proved by DNS record |
 | 7 | The GitHub account to everything | Outside both repositories |
 | 8 | Public registries to the running image | Digest and version pinning, Dependabot |
@@ -95,6 +97,10 @@ A remote code execution in `sky` — the realistic route being a dependency vuln
 
 DNS tunnelling is the honest residual here and is accepted. It is slow, noisy in logs that are already queryable after Phase 11, and there is nothing in the Pod worth the bandwidth.
 
+The table above describes `demo`, and stays true of `demo`. Phase 15 adds a second namespace, `agents`, where two of these rows read differently. The triage worker reaches Pub/Sub, Vertex AI, Cloud Storage and Cloud Logging, so egress is a real channel there rather than DNS alone, and it holds a Google Cloud identity through Workload Identity rather than no token at all. Both are why it is a separate namespace instead of a third Deployment in `demo`, recorded in [decisions.md](../decisions.md#agent-namespace): the alternative was widening egress for the two workloads that serve the public site.
+
+Neither is assessed here. The controls that would bound them, an egress policy naming only the Google APIs the worker calls and a service account scoped to four roles, are Phase 15's to build and Phase 16's revision is where this model rates them. Recorded now so the gap is visible while it is open, and because finding 11 otherwise reads as covering a cluster it no longer describes.
+
 ## Boundary 4: GitHub Actions to Google Cloud
 
 No key exists to steal, which is the point of federation. The consequence is that the **account is the key**.
@@ -116,7 +122,9 @@ Written down that way, the trade-off reversed. The cost is smaller than it first
 
 Blast radius if this boundary falls, stated plainly: push an image, and patch the Deployment to run it. That is arbitrary content served at `sindrg.com/sky` — the crown jewel, reached without touching any of boundary 3's defences. PSA still blocks a privileged Pod, the quota still bounds the compute, and egress is still denied, so the project is not a mining platform. The integrity of the domain is what is lost.
 
-## Boundary 5: The sky repository to the pipeline
+## Boundary 5: Upstream repositories to the pipeline
+
+Two repositories cross this boundary by the same mechanism. `sky` has since 2026-09. `ai-k8s` joins it in Phase 15, and carries more.
 
 | | Threat | State |
 | --- | --- | --- |
@@ -125,6 +133,14 @@ Blast radius if this boundary falls, stated plainly: push an image, and patch th
 | R | What was deployed and when | Mitigated. The pin is a file with history, and the image tag carries the upstream SHA |
 
 The pin itself is a strong control and is worth keeping in view: production does not follow upstream's `main`, it follows a commit a human merged. The weakness was what informed that human, and querying `sky`'s check runs for the SHA turned out to be a small change to an existing workflow. It has shipped.
+
+### The agent edge carries more than the sky edge
+
+The mechanism is identical and the stakes are not. A malicious commit to `sky` changes what a webpage renders, which the integrity asset already ranks first and the pin already governs. A malicious commit to `ai-k8s` changes prompt templates and the deterministic matcher, which together decide whether a security finding is reported as accepted, as contradicting a recorded decision, or not reported at all. That is a control over what the platform's owner gets told about the platform.
+
+Three things narrow it, and none of them is new machinery. The corpus the agent cites stays in this repository, so a commit to `ai-k8s` cannot add the `.checkov.baseline` entry a forged acceptance would have to resolve against. The pin is reviewed here by the same human reading the same kind of diff. And the same check-run query that guards the `sky` pin guards this one from the first bump rather than as a follow-up, because finding 7 already established that a pin proposed without reading upstream CI is the weak step.
+
+The residual is the same one: this repository's CI does not run on a pin bump, so the human reading the diff is the control. Carried forward to the Phase 16 revision rather than closed here.
 
 ## Boundary 6: DNS and certificate issuance
 

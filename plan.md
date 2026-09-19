@@ -313,34 +313,45 @@ Follows Milestone 3. The platform is proven, so the work moves to operating it. 
 
 This milestone replaces a deterministic manifest reviewer that used to sit here. The reason is recorded in [decisions.md](decisions.md#ai-workload-direction).
 
+The agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s) and this repository holds its infrastructure, its identity and its evidence. The reason is recorded in [decisions.md](decisions.md#agent-source-location). Nothing below gives the agent repository a Google Cloud credential: `k8-lab` builds it from a pinned commit, exactly as it builds `sky`.
+
+Two rules hold across every phase here. The model classifies and explains, and owns no delivery semantics, no authorization, no persistence and no notification policy. And every operational string the agent reads is treated as hostile, because Security Command Center finding bodies carry resource names that whoever created the resource chose.
+
 ### Phase 15: Security Command Center triage
 
 - Export findings through a notification config onto Pub/Sub.
 - Consume them in a worker on the cluster.
-- Correlate each finding against `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), and `decisions.md`.
-- Classify each as already accepted and priced, contradicting a recorded decision, or new.
+- Resolve each finding deterministically first, against `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), and `decisions.md`. Call the model only for what deterministic matching cannot settle, and count how many that was.
+- Classify each as already accepted and priced, contradicting a recorded decision, new, or insufficient evidence.
+- Require every verdict to cite a corpus entry, and resolve the citation against the corpus before accepting the verdict. A citation that does not resolve forces insufficient evidence.
+- Emit verdicts against a versioned schema, and reject output that does not validate rather than reading meaning out of prose.
+- Make redelivery safe. Pub/Sub is at-least-once, so key on the finding, its event time and its state, record the verdict durably, and acknowledge last.
+- Triage misconfiguration and external exposure findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently.
 - Notify through the existing email channel rather than adding a second one.
-- Record the model, the prompt and the corpus commit with every verdict, so a verdict can be reproduced.
+- Record the model, its generation parameters, the prompt digest, the corpus commit and the agent commit with every verdict, so a verdict can be reproduced.
 
-**Exit criteria:** The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. A finding that arrives while the worker is stopped is triaged after it returns, proven by stopping the worker during a delivery.
+**Exit criteria:** The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. A finding that arrives while the worker is stopped is triaged after it returns, proven by stopping the worker during a delivery. A finding whose resource name carries an instruction is triaged to the same verdict as one without, proven on a real finding from a real detector rather than a fixture.
 
 ### Phase 16: Cluster access through an audited gateway
 
 - Hold the cluster credentials in one service and expose reads as MCP tools.
-- Allowlist verbs and resources. Start read-only.
-- Authorize and log every call with the identity that made it.
+- Expose tasks rather than verbs: `get_workload_health`, `get_recent_events`, `get_rollout_history`, `query_workload_logs`, `get_alert_metric`. A generic verb and resource allowlist still lets a caller compose a request nobody designed.
+- Expose no generic `kubectl`, no arbitrary API path, no caller-supplied label selector and no unbounded log read. Deny Secrets, `exec`, `attach`, `port-forward`, the proxy endpoints, and cluster-wide listing outright.
+- Authorize and log every call with the identity that made it. Give Phase 15 and Phase 17 separate identities, and enforce authorization at the HTTP boundary and again inside every tool handler.
 - Give no client its own kubeconfig, including the agents from Phase 15 and Phase 17.
 - Bound request rate and response size, because an agent reading the whole cluster is the cheap mistake here.
 - Revisit the threat model. An agent holding cluster credentials is a trust boundary the current model does not have.
 
-**Exit criteria:** A call outside the allowlist is refused and appears in the audit log, proven by making one. Every identity on the path uses Workload Identity Federation and no service account key exists. The threat model carries the new boundary with its findings ranked alongside the existing twelve.
+**Exit criteria:** A call outside the allowlist is refused and appears in the audit log, proven by making one. A denied resource is refused by the tool handler with the HTTP boundary bypassed, proven separately, because two checks that are never tested independently are one check. Every identity on the path uses Workload Identity Federation and no service account key exists. The threat model carries the new boundary with its findings ranked alongside the existing twelve.
 
 ### Phase 17: First responder on alert
 
 - Assemble context when an alert fires: recent events, the last rollout, Pod state, the metric that tripped, and the logs around it.
 - Produce a first diagnosis before a human opens a terminal.
 - Read only through the Phase 16 gateway.
-- Replay the Phase 10 failure drills as a scored evaluation set.
+- Replay the Phase 10 failure drills as a scored evaluation set, and widen it past them. Two drills cannot establish reliability. Add a healthy cluster where the answer is no action, missing and stale telemetry, an unrelated rollout running concurrently, an ambiguous root cause, a log line carrying an instruction, a context that exceeds the budget, and a tool that times out.
+- Score diagnosis accuracy, evidence grounding, false escalation, unsafe severity downgrade, abstention quality, latency, cost, and tool-policy violations. Abstention is a correct answer and is scored as one.
+- Keep a holdout set, and rerun the whole set whenever the model, the prompt, the tools or the corpus changes.
 - Bound cost per alert, and refuse rather than silently truncate when the context exceeds the budget.
 
 **Exit criteria:** The drill set is scored for time to a correct diagnosis, and the score is published including the drills the agent got wrong. A failed drill is recorded with its reason, in the same form as any other failure in this repository.
@@ -358,6 +369,8 @@ Follows Milestone 4. The agents stop being services standing beside the platform
 - Make `kubectl get findings` the interface, with no database beside etcd.
 - Move Phase 15's output onto the resource rather than into a notification that scrolls past.
 - Version the resource from its first release, because it is an interface others will read.
+- Keep the object small. Normalized finding metadata, the verdict, conditions, and digests or links to evidence. No prompt, no log body and no model transcript in etcd.
+- Generate the manifest in [ai-k8s](https://github.com/sindredg/ai-k8s) from the controller's own types and carry it here on the same pinned commit as the image, because a hand-edited copy drifts from the types the controller compiles against.
 
 **Exit criteria:** Findings from Phase 15 land as objects. The controller is killed mid-reconcile and rebuilds state from the cluster with no finding lost and none duplicated, recorded as a drill.
 
@@ -365,10 +378,12 @@ Follows Milestone 4. The agents stop being services standing beside the platform
 
 - Give the agent one actuator: a pull request against this repository.
 - Grant it no cluster write access, not through the Phase 16 gateway and not otherwise.
-- Let the existing controls gate it unchanged: required checks, checkov, kube-linter, branch protection and review.
+- Authenticate it as a GitHub App on short-lived installation tokens, never a personal access token. Grant contents and pull requests, and nothing for Actions, secrets, rulesets or repository administration.
+- Let the existing controls gate it: required checks, checkov and kube-linter. Review is not among them today, and the correction is below.
+- Make a human merge the boundary rather than a claim. `required_approving_review_count` is `0` on `Protect main`, so the merge is currently unguarded, and merging needs the same `contents` permission the agent needs to push its branch. Decide between a required approval and a second identity, and record which, before the agent opens anything.
 - Record every proposal and its outcome, including the rejected ones, because the rejections are the evidence that the boundary holds.
 
-**Exit criteria:** An agent-opened pull request is stopped by an existing status check, proven by watching it happen rather than by reasoning that it would. No agent identity holds a write verb on the cluster, proven the way Phase 14 proved federation scoping.
+**Exit criteria:** An agent-opened pull request is stopped by an existing status check, proven by watching it happen rather than by reasoning that it would. An agent-opened pull request cannot be merged by the agent, proven by attempting it. No agent identity holds a write verb on the cluster, proven the way Phase 14 proved federation scoping.
 
 Documentation: [custom resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/), [the controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/), [Kubebuilder](https://book.kubebuilder.io/), [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning)
 
@@ -387,6 +402,8 @@ These are not implementation commitments yet.
 Two gates closed into Milestone 3. Cloud Armor rate limiting was conditional on load testing showing that a single client can drive the namespace to its quota, and Phase 12 showed exactly that. Advanced supply-chain controls were conditional on the basic image pipeline being complete, and it is.
 
 A third closes into Milestone 4, on a condition it was not written for. Pub/Sub and workers were gated on synchronous processing becoming a limitation, and no such limitation arrived. Security Command Center pushes findings continuously instead, with no synchronous request to attach them to, so Phase 15 commits to the gate for a different reason than the one recorded here.
+
+Two of the [deferred decision records](decisions.md#deferred-decision-records) close with it, both on the condition they were written for. Vertex AI against self-hosted inference is decided in [decisions.md](decisions.md#inference-provider). A namespace per workload was gated on a third workload or a second owner arriving, and the triage worker is the third workload, decided in [decisions.md](decisions.md#agent-namespace).
 
 Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters)
 
