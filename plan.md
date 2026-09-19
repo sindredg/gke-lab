@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build and prove a secure GKE workload delivery platform. The platform is the portfolio project. An AI-assisted Kubernetes manifest reviewer will be a small reference workload after the first platform slice is complete.
+Build and prove a secure GKE workload delivery platform. The platform is the portfolio project. Once it is proven, agents operate it: triaging its security findings, reaching it through an audited path, and answering its alerts, held to the same evidence standard as the platform itself.
 
 ## Current baseline
 
@@ -301,38 +301,76 @@ A second was overstated and is corrected here. Scoping federation to a ref does 
 | Provenance, SBOM, signing, admission policy | Deferred past Milestone 4, and accepted for now in the threat model |
 | Single-client flood | Run twice on 2026-09-18. 593 of 1200 refused at 15 rps, and at 125 rps the throttle held sky to 3 of 8 replicas against 8 of 8 unthrottled. The exit criterion is met |
 
-The last bullet is not done. Provenance, an SBOM, signing and admission enforcement are a phase of their own, and the threat model ranks the row they answer last, so it is [accepted for now](reference/threat-model.md#boundary-8-public-registries-to-the-running-image) rather than half started. It comes back after Milestone 4, with the next pass over the threat model, which Phase 15 requires anyway because accepting submitted manifests changes the model.
+The last bullet is not done. Provenance, an SBOM, signing and admission enforcement are a phase of their own, and the threat model ranks the row they answer last, so it is [accepted for now](reference/threat-model.md#boundary-8-public-registries-to-the-running-image) rather than half started. It comes back after Milestone 5, with the next pass over the threat model, which Phase 16 requires anyway because giving an agent cluster credentials changes the model.
 
 **Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance. All three are met.
 
 Documentation: [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/rate-limiting-overview), [SSL policies](https://cloud.google.com/load-balancing/docs/ssl-policies-concepts), [GKE Gateway configuration](https://cloud.google.com/kubernetes-engine/docs/how-to/configure-gateway-resources), [CAA records](https://letsencrypt.org/docs/caa/), [Binary Authorization](https://cloud.google.com/binary-authorization/docs), [SLSA](https://slsa.dev/)
 
-## Milestone 4: AI reference workload
+## Milestone 4: Agent-operated security
 
-Follows Milestone 3.
+Follows Milestone 3. The platform is proven, so the work moves to operating it. Security Command Center has produced findings continuously since 2026-09-18 and nobody reads them, which is the gap this milestone answers. Every agent here reads and none can change the cluster. The actuator waits for Milestone 5, once the read path has been measured.
 
-### Phase 15: Deterministic manifest review
+This milestone replaces a deterministic manifest reviewer that used to sit here. The reason is recorded in [decisions.md](decisions.md#ai-workload-direction).
 
-- Add a small API for submitted Kubernetes YAML.
-- Treat all submissions as untrusted input.
-- Never execute submitted manifests.
-- Run schema, security, and policy checks.
-- Return reproducible findings with validator and policy versions.
+### Phase 15: Security Command Center triage
 
-**Exit criteria:** Known invalid manifests produce stable, testable findings without AI.
+- Export findings through a notification config onto Pub/Sub.
+- Consume them in a worker on the cluster.
+- Correlate each finding against `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), and `decisions.md`.
+- Classify each as already accepted and priced, contradicting a recorded decision, or new.
+- Notify through the existing email channel rather than adding a second one.
+- Record the model, the prompt and the corpus commit with every verdict, so a verdict can be reproduced.
 
-### Phase 16: AI explanation with closed validation
+**Exit criteria:** The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. A finding that arrives while the worker is stopped is triaged after it returns, proven by stopping the worker during a delivery.
 
-- Use Vertex AI only to explain findings and propose corrections.
-- Authenticate from GKE with Workload Identity Federation.
-- Revalidate every proposed manifest through the deterministic checks.
-- Show a proposed manifest only when it passes revalidation.
-- State clearly that submitted content is sent to a managed Google Cloud service.
-- Limit request size, output tokens, rate, retries, and timeouts.
+### Phase 16: Cluster access through an audited gateway
 
-**Exit criteria:** AI suggestions cannot bypass the deterministic policy layer and no service account key is used.
+- Hold the cluster credentials in one service and expose reads as MCP tools.
+- Allowlist verbs and resources. Start read-only.
+- Authorize and log every call with the identity that made it.
+- Give no client its own kubeconfig, including the agents from Phase 15 and Phase 17.
+- Bound request rate and response size, because an agent reading the whole cluster is the cheap mistake here.
+- Revisit the threat model. An agent holding cluster credentials is a trust boundary the current model does not have.
 
-Documentation: [authenticate GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity), [Vertex AI overview](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview), [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing)
+**Exit criteria:** A call outside the allowlist is refused and appears in the audit log, proven by making one. Every identity on the path uses Workload Identity Federation and no service account key exists. The threat model carries the new boundary with its findings ranked alongside the existing twelve.
+
+### Phase 17: First responder on alert
+
+- Assemble context when an alert fires: recent events, the last rollout, Pod state, the metric that tripped, and the logs around it.
+- Produce a first diagnosis before a human opens a terminal.
+- Read only through the Phase 16 gateway.
+- Replay the Phase 10 failure drills as a scored evaluation set.
+- Bound cost per alert, and refuse rather than silently truncate when the context exceeds the budget.
+
+**Exit criteria:** The drill set is scored for time to a correct diagnosis, and the score is published including the drills the agent got wrong. A failed drill is recorded with its reason, in the same form as any other failure in this repository.
+
+Documentation: [Security Command Center notifications](https://cloud.google.com/security-command-center/docs/how-to-notifications), [Pub/Sub](https://cloud.google.com/pubsub/docs/overview), [authenticate GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity), [Model Context Protocol](https://modelcontextprotocol.io/), [Vertex AI overview](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview), [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing)
+
+## Milestone 5: The agent as a platform citizen
+
+Follows Milestone 4. The agents stop being services standing beside the platform and become part of it. Their state becomes Kubernetes state, and their output goes through the same delivery chain as every other change.
+
+### Phase 18: Findings as Kubernetes objects
+
+- Define a custom resource for a finding and its triage verdict.
+- Write a controller that reconciles them, with conditions on `status`.
+- Make `kubectl get findings` the interface, with no database beside etcd.
+- Move Phase 15's output onto the resource rather than into a notification that scrolls past.
+- Version the resource from its first release, because it is an interface others will read.
+
+**Exit criteria:** Findings from Phase 15 land as objects. The controller is killed mid-reconcile and rebuilds state from the cluster with no finding lost and none duplicated, recorded as a drill.
+
+### Phase 19: Remediation by pull request
+
+- Give the agent one actuator: a pull request against this repository.
+- Grant it no cluster write access, not through the Phase 16 gateway and not otherwise.
+- Let the existing controls gate it unchanged: required checks, checkov, kube-linter, branch protection and review.
+- Record every proposal and its outcome, including the rejected ones, because the rejections are the evidence that the boundary holds.
+
+**Exit criteria:** An agent-opened pull request is stopped by an existing status check, proven by watching it happen rather than by reasoning that it would. No agent identity holds a write verb on the cluster, proven the way Phase 14 proved federation scoping.
+
+Documentation: [custom resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/), [the controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/), [Kubebuilder](https://book.kubebuilder.io/), [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning)
 
 ## Later decision gates
 
@@ -342,12 +380,13 @@ These are not implementation commitments yet.
 - Compare Helm only when a reusable, parameterized workload package is needed.
 - Compare Argo CD, Flux, and direct GitHub Actions when pull-based reconciliation or drift correction becomes necessary.
 - Compare native policy controls, Kyverno, and Gatekeeper when policies exceed the native controls.
-- Add Pub/Sub and workers only if synchronous review processing becomes a limitation.
 - Add remote Terraform state before automated infrastructure apply or collaboration.
 - Create a regional cluster temporarily for availability and recovery validation.
 - Test sudden node loss and drain under load once autoscaling is in place.
 
 Two gates closed into Milestone 3. Cloud Armor rate limiting was conditional on load testing showing that a single client can drive the namespace to its quota, and Phase 12 showed exactly that. Advanced supply-chain controls were conditional on the basic image pipeline being complete, and it is.
+
+A third closes into Milestone 4, on a condition it was not written for. Pub/Sub and workers were gated on synchronous processing becoming a limitation, and no such limitation arrived. Security Command Center pushes findings continuously instead, with no synchronous request to attach them to, so Phase 15 commits to the gate for a different reason than the one recorded here.
 
 Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters)
 
@@ -366,4 +405,6 @@ Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the
 
 Milestone 3 is closed. [The threat model](reference/threat-model.md) ranks twelve findings, Phase 13 measured the platform against that frame rather than against a reading of it, and Phase 14 closed eleven of them with evidence: federation scoped to a ref and both directions proven, both repositories protected under one mechanism, a Content Security Policy on both paths, CAA restricting issuance on a signed zone, and a rate limit measured under a flood at the rate Phase 12d used unthrottled. The twelfth, provenance and signing, is accepted for now with its reason recorded.
 
-Phase 15 is next. The AI reference workload lands on a platform whose security posture has been tested rather than described, and it is also what brings the threat model back: accepting submitted manifests from the internet changes the model substantially.
+Phase 15 is next, and Milestone 4 is not the milestone that used to be here. The deterministic manifest reviewer is retired, with the reason recorded in [decisions.md](decisions.md#ai-workload-direction): it needed nothing the cluster provides, and the measurement worth having was already written down. Phase 14 named the Security Command Center overlap as the comparison worth making and left it open, and Security Command Center has been producing findings since 2026-09-18 that nobody reads.
+
+The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.

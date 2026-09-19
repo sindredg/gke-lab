@@ -99,7 +99,7 @@ Milestones 1 and 2 are complete, and Milestone 3 is under way: the security base
 | Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 | Modelled | Eight trust boundaries with [a threat model](reference/threat-model.md), measured rather than assumed, and scanned daily from outside |
 
-Next: finish Milestone 3. The baseline is recorded in [the threat model](reference/threat-model.md) and measured in [Phase 13](worklog/phase-13-security-baseline.md); [Phase 14](worklog/phase-14-close-the-baseline.md) is closing what it ranked, and states its own gaps. The deterministic manifest reviewer follows in Milestone 4.
+Next: Milestone 4. Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance. Agents that operate the platform follow, starting with triage of the Security Command Center findings nobody is reading.
 
 ## Measured
 

@@ -2,7 +2,7 @@
 
 Date: 2026-09-17
 Scope: the GKE platform, the two workloads it serves, the delivery pipeline, and the DNS and certificate path that publishes them.
-Revisit when: Phase 15 begins. Accepting submitted manifests from the internet changes this model substantially, and the baseline is easier to establish on the system as it stands today.
+Revisit when: Phase 16 begins. Giving an agent cluster credentials and an audited path to use them adds a trust boundary this model does not have, and the baseline is easier to establish on the system as it stands today.
 
 ## Method
 
@@ -165,7 +165,7 @@ Evidence: [Phase 13 worklog](../worklog/phase-13-security-baseline.md#slice-4-ac
 
 The last row matters less than it first appears, and the ordering below reflects that. Attestation proves *this pipeline built it*. It says nothing about whether the commit should have been built, which is boundary 5's question and the cheaper one to answer first.
 
-That question is answered, so the last row is accepted for now rather than carried as work in progress. The pipeline identity is the only writer to the registry, the image is pulled by digest, and finding 7 closed the path an unvalidated commit took to get built. Signing and admission enforcement are a phase of their own, and this model is revisited when Phase 15 changes it substantially, so the acceptance is reconsidered there rather than expiring quietly.
+That question is answered, so the last row is accepted for now rather than carried as work in progress. The pipeline identity is the only writer to the registry, the image is pulled by digest, and finding 7 closed the path an unvalidated commit took to get built. Signing and admission enforcement are a phase of their own, and this model is revisited when Phase 16 changes it substantially, so the acceptance is reconsidered there rather than expiring quietly.
 
 ## Attack paths, ranked
 

@@ -736,6 +736,16 @@ Why: Reuses the deployed cluster, manifests, validation, and evidence while keep
 
 Alternatives: Implement networking, policy, delivery, observability, and AI as separate horizontal workstreams.
 
+### AI workload direction
+
+Decision: Replace the planned deterministic manifest reviewer with agents that operate this platform: Security Command Center triage, an audited gateway for cluster reads, and a first responder scored against the Phase 10 drills.
+
+Why: The reviewer would have been one more workload the platform hosts, and the platform already hosts two. Nothing in it needed this cluster to exist. The agents do. They read its findings, its events and its records, and the measurement worth having was already written down: [Phase 14](worklog/phase-14-close-the-baseline.md) named the overlap between Security Command Center and `.checkov.baseline` as the comparison worth making and left it open. Security Command Center has produced findings continuously since 2026-09-18 and nobody reads them.
+
+Cost: Accepting submitted YAML from the internet was a bounded threat surface with a well understood shape. An agent holding cluster credentials is neither, and it is the harder boundary to defend. Milestone 4 keeps every agent read-only and Phase 16 carries the threat model pass, so the cost is paid deliberately rather than discovered later.
+
+Alternatives: Keep the reviewer, which proves untrusted input handling that Cloud Armor and the rate limit already exercise. Or build a visitor-facing question surface over the project's own records, which stays available behind `/sky` because that workload already serves JavaScript, and is not ruled out by this.
+
 ### Evidence requirement
 
 Decision: A capability is complete only after its success path, relevant failure path, and recovery are recorded.
