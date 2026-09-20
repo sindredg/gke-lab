@@ -778,9 +778,15 @@ Decision: Key on the finding's canonical name, its event time and its state. Rec
 
 Why: Pub/Sub is at-least-once, so a restart redelivers. Keying on the finding alone would collapse real events: the four `loadgen` findings went `ACTIVE` at 17:02 on 2026-09-18 and `INACTIVE` at 17:27 when the load generator and its VPC were deleted, which is two events on one canonical name. Recording before acknowledging means a crash between inference and persistence re-infers, costing a fraction of a cent, while a crash between persistence and notification re-notifies without paying for inference again. Duplicate model calls are cheap and duplicate emails are not, so the ordering trades the first away to prevent the second.
 
-Cost: A bucket and its lifecycle to manage, and an object read on the path of every message.
+Measured on 2026-09-20, after the transport was applied. Muting an active finding publishes a message in about two seconds, and that message carries the same name, the same `state` and the same `eventTime` as before the mute: `eventTime` was the previous day and a mute does not advance it. So the key collapses attribute-only changes into redeliveries. Reading the same detectors a day apart shows unchanged findings holding their `eventTime` across re-evaluation, and a genuinely new finding, `BUCKET_LOGGING_DISABLED`, carrying a fresh one five seconds after the ledger bucket was created. `eventTime` tracks substance rather than scans, so the collapse is the intended behaviour and not a gap: a mute is a human silencing a finding, not a change in posture, and it should not cost a model call.
 
-Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker.
+The ledger additionally carries a digest of the finding body. A redelivery whose key matches and whose digest differs is recorded as drift without inference. This is a safety net rather than a fix: it is the evidence that would catch a detector mutating substance without advancing `eventTime`, which has been checked for and not found rather than assumed away.
+
+Two things about the name, both measured rather than documented by Google. One finding carries three: `name` is organization scoped, `canonicalName` is project number scoped, and `parent` is neither. And the scopes are not interchangeable. A finding is read at organization scope, but `:setMute` against that organization-scoped name returns "Security Command Center Legacy has been permanently disabled", while the identical call at project scope returns 200. The worker cannot round-trip the name it reads, so the key and the address for any write are separate values. `canonicalName` is the key because the project number is immutable.
+
+Cost: A bucket and its lifecycle to manage, and an object read on the path of every message. The digest adds a hash of the body per message and one more field per ledger object.
+
+Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker. Adding `muteUpdateTime` to the key, which would re-triage a silencing as though it were a posture change.
 
 ### Triage notification path
 

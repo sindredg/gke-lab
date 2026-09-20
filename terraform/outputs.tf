@@ -72,3 +72,28 @@ output "dashboard_id" {
   description = "Resource name of the workload health dashboard."
   value       = module.observability.dashboard_id
 }
+
+output "findings_topic_id" {
+  description = "Topic Security Command Center publishes findings to."
+  value       = module.findings.topic_id
+}
+
+output "triage_subscription_name" {
+  description = "Subscription the triage worker pulls from."
+  value       = module.findings.subscription_name
+}
+
+output "triage_dead_letter_subscription" {
+  description = "Where to pull from when a verdict never appeared for a finding."
+  value       = module.findings.dead_letter_subscription_name
+}
+
+output "verdict_ledger_bucket" {
+  description = "Bucket holding one object per verdict."
+  value       = module.findings.bucket_name
+}
+
+output "findings_notification_config" {
+  description = "Resource name of the Security Command Center notification config."
+  value       = module.findings.notification_config_name
+}

@@ -93,3 +93,19 @@ module "observability" {
 
   depends_on = [google_project_service.required, module.gke, module.gateway]
 }
+
+module "findings" {
+  source = "./modules/findings"
+
+  project_id     = var.project_id
+  project_number = var.project_number
+  region         = var.region
+
+  topic_name        = "scc-findings"
+  subscription_name = "scc-triage"
+
+  # Globally unique, so it carries the project id.
+  ledger_bucket_name = "k8-lab-verdicts-${var.project_id}"
+
+  depends_on = [google_project_service.required]
+}

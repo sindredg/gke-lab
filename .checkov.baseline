@@ -26,19 +26,19 @@
             "file": "/terraform/modules/findings/main.tf",
             "findings": [
                 {
-                    "resource": "google_pubsub_topic.dead_letter",
+                    "resource": "module.findings.google_pubsub_topic.dead_letter",
                     "check_ids": [
                         "CKV_GCP_83"
                     ]
                 },
                 {
-                    "resource": "google_pubsub_topic.findings",
+                    "resource": "module.findings.google_pubsub_topic.findings",
                     "check_ids": [
                         "CKV_GCP_83"
                     ]
                 },
                 {
-                    "resource": "google_storage_bucket.ledger",
+                    "resource": "module.findings.google_storage_bucket.ledger",
                     "check_ids": [
                         "CKV_GCP_62"
                     ]
