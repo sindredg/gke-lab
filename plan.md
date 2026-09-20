@@ -334,7 +334,7 @@ Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), for the reas
 
 ### Phase 15: Security Command Center triage
 
-Built in three parts. The transport and the identity are applied and measured. The agent that reads them does not exist. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
+Built in three parts, all three applied. Increment 1 of the agent is deployed and has triaged a real finding end to end, without calling a model. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
 
 **Dependency: Security Command Center Premium.** Event Threat Detection is a Premium detector. This phase triages the threat class alongside misconfiguration and external exposure, and it has already produced one threat finding: a drill Pod that Pod Security refused, which Event Threat Detection reported as a privileged container launch, and which the worker identity then pulled from the subscription. Standard drops that detector, and a class of this phase's input with it. Premium is a dependency of Phase 15, not a bonus on top of it.
 
@@ -391,7 +391,7 @@ Lives in [ai-k8s](https://github.com/sindredg/ai-k8s), built by this repository 
 - [ ] Guard the `ai-k8s` pin with the same upstream check-run query that guards the `sky` pin, from the first bump rather than as a follow-up.
 - [ ] Verify the pinned commit's signature and authorship before it is built. This is the one supply-chain control that moves earlier than the rest, for the reason recorded in [decisions.md](decisions.md#supply-chain-control-timing).
 
-Both are written. `watch-ai-k8s.yml` carries the check-run query and the signature and authorship refusal, and `.github/ai-k8s.ref` pins the first agent commit. Neither is ticked, because the workflow has not proposed a bump yet and a workflow that has never run is not a control. The first bump is the evidence.
+Both are written, and both were run by hand to move the pin to `fcee710`. The check-run query refused first, because CI on that commit was still `in_progress`, which the gate counts as unknown rather than as a pass. Neither is ticked: a workflow that has never run is not a control, and the first automated bump is the evidence.
 
 The pipeline publishes the image and does not roll it out. It holds no RBAC in `agents`, so an operator applies the manifests, for the reason recorded in [decisions.md](decisions.md#agent-rollout-authority).
 
@@ -426,22 +426,22 @@ Every write uses a create-only precondition, so the ledger is append-only and tw
 
 **Increment 1, deterministic only:**
 
-- [ ] Go module, one binary per deployable component.
-- [ ] Compile the corpus at image build time rather than reading it at runtime. `corpusc` reads the corpus sources and emits one index.
-- [ ] Give every corpus entry a typed, stable id: `checkov:<check>:<address>`, `threat:<n>`, `decision:<anchor>`, `control:<slug>`. A citation is one of these and nothing else. Resolution is an exact lookup.
-- [ ] Fail the build, not the worker, on a malformed entry, an id collision, a mapping citing an id that does not exist, or a mapping without its justification.
-- [ ] Write `mapping.yaml` by hand, one Security Command Center category to zero or more corpus entries. Each entry carries the concrete resource it was decided about and a line saying why the pairing holds. Name-based pairing produced two wrong matches while this phase was being drafted, so every entry is reviewed.
-- [ ] Write `controls.yaml`, the controls this platform enforces, as citable facts pointing at the worklog that proved each one. Nothing else in the corpus asserts that a control held, which is what a threat finding needs.
-- [ ] Resolve deterministically: category and resource both match, or it does not resolve. An accepted decision about one resource does not cover another resource of the same kind.
-- [ ] Classify each finding against the verdict contract above.
-- [ ] Emit verdicts against a versioned schema. Reject output that does not validate rather than reading meaning out of prose.
-- [ ] Carry a digest of the finding body, so an attribute-only change is recorded as drift without a verdict.
-- [ ] Implement the ledger state machine above, with a create-only precondition on every write.
-- [ ] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library reports `global`, the metric still counts it, and the alert never fires.
-- [ ] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
-- [ ] Run as one replica in `agents`, pulling continuously.
-- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently.
-- [ ] Count how many findings the rules settled without a model. That number says whether the rules are doing their job.
+- [x] Go module, one binary per deployable component.
+- [x] Compile the corpus at image build time rather than reading it at runtime. `corpusc` reads the corpus sources and emits one index.
+- [x] Give every corpus entry a typed, stable id: `checkov:<check>:<address>`, `threat:<n>`, `decision:<anchor>`, `control:<slug>`. A citation is one of these and nothing else. Resolution is an exact lookup.
+- [x] Fail the build, not the worker, on a malformed entry, an id collision, a mapping citing an id that does not exist, or a mapping without its justification.
+- [x] Write `mapping.yaml` by hand, one Security Command Center category to zero or more corpus entries. Each entry carries the concrete resource it was decided about and a line saying why the pairing holds. Name-based pairing produced two wrong matches while this phase was being drafted, so every entry is reviewed. Reading the live findings to write it turned up a third trap: the same cluster arrives as `zones` from one detector and `locations` from another.
+- [x] Write `controls.yaml`, the controls this platform enforces, as citable facts pointing at the worklog that proved each one. Nothing else in the corpus asserts that a control held, which is what a threat finding needs.
+- [x] Resolve deterministically: category and resource both match, or it does not resolve. An accepted decision about one resource does not cover another resource of the same kind.
+- [x] Classify each finding against the verdict contract above.
+- [x] Emit verdicts against a versioned schema. Reject output that does not validate rather than reading meaning out of prose.
+- [x] Carry a digest of the finding body, so an attribute-only change is recorded as drift without a verdict.
+- [x] Implement the ledger state machine above, with a create-only precondition on every write.
+- [x] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library reports `global`, the metric still counts it, and the alert never fires.
+- [x] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
+- [x] Run as one replica in `agents`, pulling continuously.
+- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently. Unticked: the worker has seen one threat finding. The 653 vulnerabilities and the other two classes were counted offline, not by it.
+- [x] Count how many findings the rules settled without a model. That number says whether the rules are doing their job.
 
 **Increment 2, the model:**
 
@@ -461,7 +461,7 @@ Measurements:
 - [ ] The count of findings the rules settled without a model is published alongside it.
 - [ ] Security Command Center cost and Vertex AI cost are reported as separate lines, not as one agent cost. Security Command Center reads zero while the trial runs, and recording that is the point: it stops a free trial being mistaken for a cheap subscription.
 - [ ] The tier is re-read when the trial ends, and the result is recorded. If it drops to Standard, Event Threat Detection goes with it and this phase triages one class fewer, which the plan states rather than the worker quietly seeing less.
-- [ ] The idle agent fits on the existing two-node floor. The deployment records whether a third node appeared, and whether the agent caused it.
+- [x] The idle agent fits on the existing two-node floor. The deployment records whether a third node appeared, and whether the agent caused it.
 
 Failure paths, each proven by making it happen:
 
@@ -657,7 +657,9 @@ The transport is applied and measured. A finding change reaches the subscription
 
 The identity and the namespace are applied and proven too. A Pod in `agents` federates to `k8-lab-triage`, pulls a real finding, and is refused a `get` on the same subscription. Pod Security and the quota each reject a probe built to trip only that one.
 
-What remains in Phase 15 is everything that reads. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged and no verdict has travelled the notification path the metric and alert policy already wait on. Every exit-criteria drill is open, and the overlap measurement still has no provenance. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the transport changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, and `eventTime` tracks substance rather than scans, which is why the idempotency key holds.
+Increment 1 of the worker is deployed and reads. It pulled the Event Threat Detection finding that Phase 15's own drill produced, settled it as `new` against a corpus of 131 entries compiled into its image, wrote four ledger states under one create-only prefix, and emitted the log entry the alert policy reads with `resource.type = k8s_container`. No model was called. Two independent clocks date the ordering the idempotency decision requires: `notification_attempted` was written 8.3ms before the entry that triggers the alert.
+
+What remains in Phase 15 is the measurement and the failure paths. The worker has seen one finding, so the overlap number still comes from an offline run rather than from its own counters, and every crash, redelivery and injection drill is open. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
 

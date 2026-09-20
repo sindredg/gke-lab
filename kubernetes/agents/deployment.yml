@@ -1,0 +1,139 @@
+# One replica, pulling continuously. Not two: the ledger makes a redelivery safe rather than
+# concurrent work correct, and a second replica would double the model spend in Increment 2 for no
+# throughput this workload needs.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triage-worker
+  namespace: agents
+  labels:
+    app.kubernetes.io/name: triage-worker
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: triage-worker
+
+  # The worker holds a lease on nothing, so the old Pod stops before the new one starts. Restarting
+  # is safe and cheap here, and two workers pulling at once is the case worth not arranging.
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        # allow-google-apis in networkpolicy-egress.yml selects on this label, so a Pod without it
+        # resolves DNS and reaches no Google API at all.
+        app.kubernetes.io/name: triage-worker
+        app.kubernetes.io/part-of: k8-lab
+
+    spec:
+      serviceAccountName: triage-worker
+      automountServiceAccountToken: false
+
+      # The idle worker fits inside the existing two-node floor, so it must not be the Pod that
+      # forces a third node. Phase 15 records whether one appeared.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+
+      # A message in flight is worth finishing: the worker acknowledges only after the verdict is
+      # durable, so an abrupt stop redelivers rather than loses it.
+      terminationGracePeriodSeconds: 60
+
+      containers:
+        - name: worker
+          # Published by the Deploy triage worker run on 2026-09-20, from ai-k8s fcee710. The digest
+          # is what deploys; a rollout replaces it in place and the registry has immutable tags.
+          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/triage-worker@sha256:74579fde97cfa8bbc715c19ec94213b48b76d2eb7be680d28b29758ff2ccc87a
+          imagePullPolicy: IfNotPresent
+
+          # Serves the two probe paths and nothing else. No Service points at it: the kubelet reaches
+          # the Pod directly, which is how sky and nginx are probed under demo's default deny too.
+          ports:
+            - name: probes
+              containerPort: 8080
+              protocol: TCP
+
+          args:
+            - -subscription=scc-triage
+            - -ledger-bucket=k8-lab-verdicts-example-security-lab
+            - -corpus=/corpus/corpus.json
+
+          env:
+            # The worker refuses to start without all six. A missing one produces a monitored
+            # resource the alert policy does not match, and that failure is silent.
+            - name: PROJECT_ID
+              value: example-security-lab
+            - name: CLUSTER_NAME
+              value: k8-lab
+            - name: CLUSTER_LOCATION
+              value: europe-north1-a
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CONTAINER_NAME
+              value: worker
+
+            # An image cannot learn its own digest during its own build, and the worker holds no
+            # cluster credential to read its Pod status with, so provenance takes it from here.
+            # Keep it in step with the image above; a rollout changes both.
+            - name: IMAGE_DIGEST
+              value: sha256:74579fde97cfa8bbc715c19ec94213b48b76d2eb7be680d28b29758ff2ccc87a
+
+          # The worker handles no traffic, so nothing outside it could otherwise tell a process that
+          # is triaging from one that is up and triaging nothing.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probes
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # Reports not live only after a day with no message, so an idle subscription is not
+          # mistaken for a wedged pull loop. Generous here because the deadline does the work.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probes
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        # The root filesystem is read-only and the Google clients want somewhere to write.
+        - name: tmp
+          emptyDir: {}

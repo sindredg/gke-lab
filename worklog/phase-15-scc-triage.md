@@ -1,13 +1,13 @@
 # Worklog: Phase 15 Security Command Center triage
 
-Date: 2026-09-20
-Status: In progress. Findings reach the subscription in about two seconds and park in the dead letter topic when nothing acknowledges them. No findings are triaged, and no worker exists.
+Date: 2026-09-20, extended 2026-09-21
+Status: In progress. The transport, the identity and the worker are applied. One real finding has been triaged end to end, from the subscription through the ledger to the log entry the alert policy reads. Every failure-path drill is open, and the model is not called yet.
 
 ## Goal
 
 Read the findings Security Command Center has produced since 2026-09-18, correlate them against this repository's own records, and notify through the existing email channel. See [Phase 15](../plan.md#phase-15-security-command-center-triage). The contract the work is held to was settled first, in [#113](https://github.com/sindredg/k8-lab/pull/113).
 
-This worklog covers the infrastructure and the transport. The overlap measurement the exit criteria name is open, both exit-criteria drills are open, and the agent source in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty.
+This worklog covers the infrastructure, the transport and Increment 1 of the worker. The overlap measurement the exit criteria name is open, every failure-path drill is open, and Increment 2 has not started.
 
 The transport changed no decision and added evidence to two. [Triage idempotency](../decisions.md#triage-idempotency) now carries what `eventTime` was measured to track, and the warning that a finding cannot be written back at the name it is read at.
 
@@ -521,6 +521,215 @@ That is the most useful thing in this slice. A finding whose description asserts
 
 The finding then travelled the path this phase built, and the worker identity pulled it in the `:pull` above. A guardrail refused an action, a detector noticed the refusal, the notification config streamed it, and an identity federated through Workload Identity consumed it. Nothing was arranged for that. It fell out of running the drills in order.
 
+## Slice 6: The worker reads
+
+Status: Applied and proven on one real finding, end to end. Every failure-path drill is still open.
+
+The worker is Go, in [ai-k8s](https://github.com/sindredg/ai-k8s), built here from a pinned commit. Increment 1 calls no model, so the path was proven before a token was spent.
+
+It landed in three pull requests rather than one, and the reason is worth keeping. The first draft of the Deployment raised four `checkov` findings: no readiness probe, no liveness probe, an image that was not a digest, and the pull policy that follows from that. Baselining any of them would have been the wrong answer. The digest needed the image to exist, so the manifest had to follow the first build. The probes needed the worker to grow them, which it had not, because it serves no traffic and nobody had asked what would notice a pull loop that stopped moving.
+
+| Pull request | Delivers |
+| --- | --- |
+| [ai-k8s#1](https://github.com/sindredg/ai-k8s/pull/1) | The corpus compiler, the verdict contract, the ledger, the worker |
+| [ai-k8s#2](https://github.com/sindredg/ai-k8s/pull/2) | `/healthz` and `/readyz`, so a wedged pull loop is visible |
+| [#121](https://github.com/sindredg/k8-lab/pull/121) | The pin, the two pin gates, and the build |
+| [#122](https://github.com/sindredg/k8-lab/pull/122) | The Deployment, and this worklog |
+
+### The pin was held back by its own gate
+
+The pin was moved by hand, running the two checks `watch-ai-k8s.yml` enforces. The first one refused:
+
+```bash
+gh api "repos/sindredg/ai-k8s/commits/${SHA}/check-runs" \
+  -q '.check_runs[] | "\(.status):\(.conclusion):\(.name)"'
+```
+
+```text
+in_progress:null:check
+```
+
+Unfinished counts as unknown rather than as a pass, so the pin waited rather than bypassing the control the same branch was adding. After CI completed:
+
+```text
+completed:success:check
+verified=true reason=valid author=sindredg
+```
+
+Both gates pass, and the pin moved to `fcee710`.
+
+### The corpus is compiled into the image
+
+The Dockerfile was built locally before CI ran it, so the first build in the pipeline was not the first time it executed. `corpusc` runs inside the build against both trees:
+
+```text
+corpus entries: 131
+  checkov   14
+  control   12
+  decision  93
+  threat    12
+mapping: 14 categories, 5 pairings
+decisions headings carrying no Decision line, skipped: Deferred decision records
+```
+
+A malformed entry, an id collision, a citation that does not resolve or a pairing with no justification fails the build rather than the worker. The one skipped heading is `Deferred decision records`, which carries no `Decision:` line because it is a list of gates rather than a decision. It is reported rather than dropped.
+
+The published image:
+
+```text
+europe-north1-docker.pkg.dev/example-security-lab/k8-lab/triage-worker
+  @sha256:74579fde97cfa8bbc715c19ec94213b48b76d2eb7be680d28b29758ff2ccc87a
+  tag fcee710630c1cc818e59fb99364dea2c9e6261ae-35539357637.1
+```
+
+### Applied by an operator, not by the pipeline
+
+The pipeline publishes and stops. It holds no RBAC in `agents`, because patching a Deployment in `demo` reaches a web server holding no credential and patching one here reaches `k8-lab-triage` and its four grants. Recorded in [decisions.md](../decisions.md#agent-rollout-authority).
+
+![The operator applies the manifests](../images/phase15-worker-apply.png)
+
+![The rollout completes](../images/phase15-worker-rollout.png)
+
+![One replica, ready, no restarts](../images/phase15-worker-running.png)
+
+```bash
+kubectl get nodes -o custom-columns='NAME:.metadata.name,ZONE:.metadata.labels.topology\.kubernetes\.io/zone' --no-headers
+```
+
+```text
+gke-k8-lab-general-7d6bb7c7-0rru   europe-north1-a
+gke-k8-lab-general-cf1cb723-jplw   europe-north1-b
+```
+
+Two nodes. The cost posture asks whether an idle agent forces a third, and it does not. The namespace budget after the rollout:
+
+```text
+used   pods 1/4   requests.cpu 50m/1   requests.memory 128Mi/1Gi
+```
+
+The image carries no shell, which is visible from outside:
+
+```bash
+kubectl exec -n agents deployment/triage-worker -- /bin/sh -c 'echo x'
+```
+
+```text
+OCI runtime exec failed: exec: "/bin/sh": stat /bin/sh: no such file or directory
+```
+
+### The first verdict
+
+Nothing was arranged. The worker started, pulled the Event Threat Detection finding that [slice 5](#the-drill-produced-the-finding-it-then-consumed) produced, and ruled on it.
+
+```json
+{
+  "schema_version": "triage.v1",
+  "verdict": "new",
+  "finding": {
+    "category": "Privilege Escalation: Launch of privileged Kubernetes container",
+    "resource_name": "//container.googleapis.com/projects/.../clusters/k8-lab",
+    "severity": "LOW",
+    "finding_class": "THREAT",
+    "digest": "sha256:1fa6af8b9e2d0ed090851f135c21aac6a13146200727a099cad97c5b028ad9a0"
+  },
+  "corpus_match": "none",
+  "citations": [],
+  "reasoning": "No corpus entry pairs category Privilege Escalation: Launch of privileged Kubernetes container with this resource, so nothing here prices it.",
+  "settled_by": "rules",
+  "provenance": {
+    "corpus_commit": "7c5629c00dbe2924707b86196cd59ded0e3c98fd",
+    "agent_commit": "fcee710630c1cc818e59fb99364dea2c9e6261ae"
+  }
+}
+```
+
+`new` is the designed answer, not a miss. `mapping.yaml` leaves that category unpriced deliberately: the corpus carries `control:pod-security-restricted-agents` as the fact that settles it, and deterministic resolution cannot tell the drill that produced this finding from a real privilege escalation in another namespace. Pairing them would auto-accept both. It waits for Increment 2 to reason from the control rather than match on it.
+
+So the verdict notifies, which is the correct direction. A finding nothing here prices reaches a human.
+
+### The ordering is measured, not asserted
+
+Four objects under one prefix, one generation each:
+
+```bash
+gcloud storage ls -a "${PREFIX}/*.json"
+```
+
+```text
+received.json#1789941103748788
+classified.json#1789941103817295
+notification_attempted.json#1789941103876246
+acknowledged.json#1789941104048402
+```
+
+One generation per object means nothing was overwritten, which is the append-only property the worker's missing delete permission depends on. A Cloud Storage generation is a microsecond timestamp, so the same listing also dates each write:
+
+| State | Written | After `received` |
+| --- | --- | --- |
+| `received` | 21:51:43.748788Z | |
+| `classified` | 21:51:43.817295Z | +68.5ms |
+| `notification_attempted` | 21:51:43.876246Z | +127.5ms |
+| log entry emitted | 21:51:43.884557Z | +135.8ms |
+| `acknowledged` | 21:51:44.048402Z | +299.6ms |
+
+The log entry sits between `notification_attempted` and `acknowledged`, 8.3ms after the record that says a notification may be about to go out. That is the ordering [triage idempotency](../decisions.md#triage-idempotency) requires, and two independent clocks agree on it: Cloud Storage assigned the generations and Cloud Logging timestamped the entry. Recording the attempt afterwards would drop a notification silently whenever the worker died in that window.
+
+### The monitored resource, side by side
+
+```bash
+gcloud logging read 'logName="projects/.../logs/triage-verdict"' \
+  --limit 3 --format='value(timestamp,resource.type,jsonPayload.verdict,jsonPayload.finding.category)'
+```
+
+```text
+2026-09-20T21:51:43.884557970Z  k8s_container  new  Privilege Escalation: Launch of privileged Kubernetes container
+2026-09-20T12:14:29.601508026Z  global         new  PROBE
+```
+
+![Two verdicts in the log](../images/phase15-worker-verdict-log.png)
+
+The second line is the hand-written probe from [slice 2](#slice-2-the-alert-filter-that-could-not-be-left-open), and it is kept because it is the failure this contract exists to prevent. Both entries are in the same log and both carry a verdict the metric counts. Only the first matches `resource.type = "k8s_container"`, which the alert policy's condition requires. The `global` one is counted and never alerts.
+
+### Counters
+
+```text
+received 1  unreadable 0  vulnerabilities_skipped 0  redelivered 0  drift 0
+settled_by_rules 1  settled_by_model 0
+accepted 0  contradicts_decision 0  new 1  insufficient_evidence 0
+notifications_sent 1  failed 0
+```
+
+One finding, settled by the rules, no model. The number this phase publishes is `settled_by_rules` against `settled_by_model`, and at one to zero it says nothing yet. It needs traffic.
+
+### What the image cannot know about itself
+
+`provenance.image_digest` came back empty on the first verdict. An image cannot learn its own digest during its own build, and the worker holds no cluster credential to read its own Pod status with, which is the permission boundary working as intended rather than a gap to close.
+
+The digest is therefore set in the Deployment, next to the image it names, and a rollout changes both. That is duplication, and the alternative is a provenance field that records two of the three things the plan asks for. The first verdict above was produced before this fix and carries the empty field, which is why it is quoted with only two provenance values.
+
+### The offline overlap measurement
+
+Not the exit criterion, and closer to it than the hand count. The same classifier and the same compiled corpus were run over an export of every finding in the project, outside the Pub/Sub path:
+
+```text
+triaged: accepted 5, new 10
+vulnerabilities skipped: 653
+records that failed validation: 0
+```
+
+Three of the seven active misconfigurations resolve to a `.checkov.baseline` entry, which is the same number [the hand read](#the-overlap-read-by-hand) reached, produced by the matcher rather than by eye. The corpus at the time held 130 entries; the mapping was identical.
+
+It stays open as an exit criterion because the deployed worker has seen one finding, not 668. The number the phase publishes has to come from the worker's own counters.
+
+Reading the export also produced one fact the mapping needed and no document records. The same cluster arrives under two resource names:
+
+```text
+//container.googleapis.com/projects/.../zones/europe-north1-a/clusters/k8-lab       Security Health Analytics
+//container.googleapis.com/projects/.../locations/europe-north1-a/clusters/k8-lab   Event Threat Detection
+```
+
+`zones` and `locations`. Exact matching makes that visible on the first run. Name similarity would have hidden it, and a matcher that shrugged at the difference would have been quietly wrong about which cluster a decision covered.
+
 ## What is applied
 
 ```bash
@@ -557,19 +766,28 @@ One notification channel, which is the requirement: verdicts reach the address t
 | Claim | State |
 | --- | --- |
 | Four APIs enabled, metric and alert policy applied | Proven, read back from the API |
-| Verdicts reach the existing email channel and no second channel exists | Partly. The channel and policy exist. No verdict has travelled the path |
+| Verdicts reach the existing email channel and no second channel exists | Proven as far as the log entry. A real verdict landed with `resource.type = k8s_container`, which the alert condition requires. The mail itself is not recorded here |
 | `k8s_container` is required, and the wrong resource type fails silently | Proven, by writing an entry that landed as `global` |
 | A replacement of the public certificate cannot happen as a side effect | Proven for the cause found, and guarded by `prevent_destroy` |
 | Findings reach the topic, subscription and dead letter | Proven. A real finding from a real detector arrived about two seconds after the change, on both a mute and an unmute |
-| Findings reach the cluster | Proven as far as identity. A Pod in `agents` federated to `k8-lab-triage` and pulled a real finding from the subscription. There is still no worker |
+| Findings reach the cluster | Proven. The worker pulls continuously, and triaged a real Event Threat Detection finding it was not given |
 | The agents namespace rejects what it should | Proven. Pod Security and the quota each refused a probe built to trip only that one |
 | The worker identity is scoped to the verb | Proven. `:pull` returns 200, `GET` on the same subscription returns 403, the ledger write returns 200 |
 | No agent identity holds a service account key | Proven. The user-managed key list is empty |
 | A message nobody acknowledges is parked rather than lost | Proven. Five attempts, then republished to `scc-findings-dead` with the body intact |
 | The idempotency key in the contract distinguishes a change from a redelivery | Yes, for substance. `eventTime` holds across re-evaluation and moves on a real change. Attribute-only changes such as a mute collapse into a redelivery, deliberately |
 | Security Command Center and `.checkov.baseline` overlap | Three of seven active misconfigurations, after this phase's own bucket raised `BUCKET_LOGGING_DISABLED` against the `CKV_GCP_62` already in the baseline. Still by hand, not the provenanced measurement |
-| The overlap is measured with provenance | Open. Two of six by hand, which is not the measurement the exit criteria ask for |
-| A finding arriving while the worker is stopped is triaged afterwards | Open, and there is no worker |
-| A finding carrying an instruction is triaged to the same verdict | Open |
+| The overlap is measured with provenance | Open. Three of seven, produced offline by the deployed classifier and corpus rather than by the deployed worker, which has seen one finding |
+| A finding arriving while the worker is stopped is triaged afterwards | Open |
+| A finding carrying an instruction is triaged to the same verdict | Open. Covered by a unit test, not by a real finding |
+| The worker settles a finding without a model | Proven. One finding, `settled_by_rules 1`, `settled_by_model 0` |
+| Record before notifying, notify before acknowledging | Proven, and dated by two independent clocks. `notification_attempted` was written 8.3ms before the log entry |
+| The ledger is append-only | Proven. Four states, one generation each, nothing overwritten |
+| The corpus is compiled at build time and cannot change under the worker | Proven. 131 entries baked into the image, and the build fails on a citation that does not resolve |
+| The idle agent fits inside the two-node floor | Proven. `kubectl get nodes` returns two, and the namespace budget reads `pods 1/4` |
+| Every verdict records the image it came from | Open until the next rollout. The first verdict carries the two commits and an empty `image_digest` |
+| The three crash-boundary drills | Open |
+| A ledger write failure stops the worker before it notifies | Open against the live worker. Covered by a unit test |
+| An input over the token budget is refused rather than truncated | Open, and belongs to Increment 2 |
 
 The percentages Security Command Center reports against compliance standards were read on this date and are deliberately not recorded here. They are computed from the same detectors as the findings above, over a project with one cluster, two stateless workloads and no data, so a high score measures how little applies rather than how much is controlled. Recording it without that framing would be the kind of claim this repository exists to avoid.
