@@ -319,18 +319,60 @@ Two rules hold across every phase here. The model classifies and explains, and o
 
 ### Phase 15: Security Command Center triage
 
-- Export findings through a notification config onto Pub/Sub.
-- Consume them in a worker on the cluster.
-- Resolve each finding deterministically first, against `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), and `decisions.md`. Call the model only for what deterministic matching cannot settle, and count how many that was.
-- Classify each as already accepted and priced, contradicting a recorded decision, new, or insufficient evidence.
-- Require every verdict to cite a corpus entry, and resolve the citation against the corpus before accepting the verdict. A citation that does not resolve forces insufficient evidence.
-- Emit verdicts against a versioned schema, and reject output that does not validate rather than reading meaning out of prose.
-- Make redelivery safe. Pub/Sub is at-least-once, so key on the finding, its event time and its state, record the verdict durably, and acknowledge last.
-- Triage misconfiguration and external exposure findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently.
-- Notify through the existing email channel rather than adding a second one.
-- Record the model, its generation parameters, the prompt digest, the corpus commit and the agent commit with every verdict, so a verdict can be reproduced.
+Built in three parts. The transport and the identity are applied and measured; the agent that reads them does not exist. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
 
-**Exit criteria:** The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. A finding that arrives while the worker is stopped is triaged after it returns, proven by stopping the worker during a delivery. A finding whose resource name carries an instruction is triaged to the same verdict as one without, proven on a real finding from a real detector rather than a fixture.
+#### Part 1: The transport
+
+- [x] Export findings through a notification config onto Pub/Sub.
+- [x] Give the subscription a dead letter topic, so a message nothing acknowledges is parked rather than cycling.
+- [x] Create the verdict ledger bucket, versioned, with public access prevention enforced.
+- [x] Prove a real finding crosses the path, and measure how long it takes. About two seconds.
+- [x] Prove an unacknowledged message reaches the dead letter topic. Five attempts, body intact.
+
+#### Part 2: The identity and the namespace
+
+- [x] Give the agent a Google identity holding no key, scoped to one subscription rather than to the project.
+- [x] Open the `agents` namespace with Pod Security `restricted`, a quota, a limit range and default-deny egress.
+- [x] Prove Pod Security and the quota each reject a probe built to trip only that one.
+- [x] Prove a Pod carrying the agent's ServiceAccount federates to the right Google identity, and that an otherwise identical Pod without the egress label cannot reach Google APIs.
+- [x] Prove the grant is scoped to the verb: `:pull` is allowed, `get` on the same subscription is not.
+
+#### Part 3: The agent
+
+Lives in [ai-k8s](https://github.com/sindredg/ai-k8s), built by this repository from a pinned commit. Increment 1 calls no model, so the whole path is proven before a single token is spent.
+
+**Increment 1, deterministic only:**
+
+- [ ] Go module, one binary per deployable component.
+- [ ] Compile the corpus at image build time rather than reading it at runtime. `corpusc` reads `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), `decisions.md`, and the agent's own mapping and controls files, and emits one index.
+- [ ] Give every corpus entry a typed, stable id: `checkov:<check>:<address>`, `threat:<n>`, `decision:<anchor>`, `control:<slug>`. A citation is one of these and nothing else, and resolution is an exact lookup.
+- [ ] Fail the build, not the worker, on a malformed entry, an id collision, a mapping citing an id that does not exist, or a mapping without its justification.
+- [ ] Write `mapping.yaml` by hand, one Security Command Center category to zero or more corpus entries, each carrying the concrete resource it was decided about and a line saying why the pairing holds. Name-based pairing produced two wrong matches while this phase was being drafted, so every entry is reviewed.
+- [ ] Write `controls.yaml`, the controls this platform enforces, as citable facts pointing at the worklog that proved each one. Nothing else in the corpus asserts that a control held, which is what a threat finding needs.
+- [ ] Resolve deterministically: category and resource both match, or it does not resolve. An accepted decision about one resource does not cover another resource of the same kind.
+- [ ] Classify each as already accepted and priced, contradicting a recorded decision, new, or insufficient evidence.
+- [ ] Emit verdicts against a versioned schema, and reject output that does not validate rather than reading meaning out of prose.
+- [ ] Make redelivery safe. Key on the finding's canonical name, its event time and its state. Carry a digest of the finding body so an attribute-only change is recorded as drift without a verdict.
+- [ ] Record the verdict durably, then the notification, then acknowledge the message last.
+- [ ] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library will report `global`, the metric will still count it, and the alert will never fire.
+- [ ] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
+- [ ] Run as one replica in `agents`, pulling continuously.
+- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently.
+- [ ] Count how many findings the rules settled without a model, which is the measurement that says whether the rules are doing their job.
+
+**Increment 2, the model:**
+
+- [ ] Call Vertex AI only for what deterministic matching could not settle.
+- [ ] Require every verdict to cite a corpus entry, and resolve the citation against the corpus before accepting the verdict. A citation that does not resolve forces insufficient evidence.
+- [ ] Bound tokens and tool calls, and refuse rather than silently truncate when the input exceeds the budget.
+- [ ] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced.
+- [ ] Notify through the existing email channel rather than adding a second one.
+
+**Exit criteria:**
+
+- [ ] The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded with provenance: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. Three of seven by hand today, which is not the measurement.
+- [ ] A finding that arrives while the agent is stopped is triaged after it returns, proven by stopping it during a delivery.
+- [ ] A finding whose resource name carries an instruction is triaged to the same verdict as one without, proven on a real finding from a real detector rather than a fixture.
 
 ### Phase 16: Cluster access through an audited gateway
 
