@@ -83,7 +83,7 @@ flowchart TB
 
 ## Status
 
-Milestones 1 and 2 are complete, and Milestone 3 is under way: the security baseline is measured and most of the hardening it ranked is live. Every platform claim has recorded commands, results and evidence, and the gaps that are not yet closed are recorded with them.
+Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operate the platform. Every platform claim has recorded commands, results and evidence, and the gaps that are not yet closed are recorded with them.
 
 | Area | State |
 | --- | --- |
@@ -98,8 +98,11 @@ Milestones 1 and 2 are complete, and Milestone 3 is under way: the security base
 | Hardened | One network, vulnerability scanning on, logs queryable, TLS 1.2 floor, rate limit, response security headers |
 | Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 | Modelled | Eight trust boundaries with [a threat model](reference/threat-model.md), measured rather than assumed, and scanned daily from outside |
+| Streaming | Security Command Center findings reach a subscription in about two seconds, and park in a dead letter topic when nothing acknowledges them |
 
-Next: Milestone 4. Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance. Agents that operate the platform follow, starting with triage of the Security Command Center findings nobody is reading.
+Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
+
+Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The transport is applied and measured, and nothing reads it. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged, no verdict has travelled the notification path, and both exit-criteria drills are open. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted by hand rather than with the provenance the exit criteria ask for.
 
 ## Measured
 
@@ -115,6 +118,8 @@ Next: Milestone 4. Milestone 3 closed with eleven of the twelve findings in [the
 | Closed-connection 503s in a ramp, after keep-alive | 0 of 7,150, from 6 |
 | sky saturation, autoscaled to eight replicas | 125 requests a second, p95 394ms, no failures |
 | HPA decision to a Pod running on a new node | 97s |
+| Security Command Center finding change to a message on the subscription | about 2 seconds |
+| Unacknowledged message to the dead letter topic | 5 delivery attempts |
 
 Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md) and [Phase 12d](worklog/phase-12d-autoscaling.md).
 
@@ -137,6 +142,8 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 | Failure drills | Deliberate outage with a measured three minute detection floor, and a failed rollout contained by `maxUnavailable: 0` | [Observability](decisions.md#observability) | [Phase 10](worklog/phase-10-failure-drills.md) |
 | Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
 | Load and autoscaling | k6 harness on a throwaway load generator, `preStop` and keep-alive for clean rollouts, HPA on sky with requests and quota sized from measured load, nodes across three zones | [Load and scaling](decisions.md#load-and-scaling) | [Phase 12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
+| Security baseline | Twelve ranked threat model findings, eleven closed with evidence, federation scoped to a ref, CSP on both paths, CAA on a signed zone, a measured rate limit | [Workload security](decisions.md#workload-security) | [Phase 13](worklog/phase-13-security-baseline.md), [Phase 14](worklog/phase-14-close-the-baseline.md) |
+| Finding transport | Security Command Center notification config onto Pub/Sub, subscription with a dead letter policy, verdict ledger bucket. No consumer yet | [Agents](decisions.md#agents) | [Phase 15](worklog/phase-15-scc-triage.md) |
 
 ## Documentation
 
@@ -157,6 +164,9 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Phase 12b rollout baseline worklog](worklog/phase-12b-rollout-baseline.md)
 - [Phase 12c rollouts and connections worklog](worklog/phase-12c-rollouts-connections.md)
 - [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
+- [Phase 13 security baseline worklog](worklog/phase-13-security-baseline.md)
+- [Phase 14 close the baseline worklog](worklog/phase-14-close-the-baseline.md)
+- [Phase 15 Security Command Center triage worklog](worklog/phase-15-scc-triage.md)
 - [Upstream pin automation worklog](worklog/notes/upstream-pin-automation.md)
 - [Manifest linting worklog](worklog/notes/manifest-linting.md)
 - [Repository review worklog](worklog/notes/repository-review.md)
