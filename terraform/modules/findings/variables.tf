@@ -58,3 +58,13 @@ variable "region" {
   type        = string
   default     = "europe-north1"
 }
+
+variable "project_number" {
+  description = "The project's numeric id, used to name the Pub/Sub service agent. Passed in rather than read from a data source, because a deferred read makes it unknown at plan time and member is ForceNew on an IAM member."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{6,20}$", var.project_number))
+    error_message = "The project_number must be the numeric project id"
+  }
+}

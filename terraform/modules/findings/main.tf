@@ -43,12 +43,13 @@ resource "google_pubsub_subscription" "triage" {
 # Pub/Sub's own agent moves a failed message to the dead letter topic and
 # acknowledges it on the subscription. Both grants are on that agent, not
 # on the worker.
-data "google_project" "current" {
-  project_id = var.project_id
-}
-
 locals {
-  pubsub_agent = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+  # Built from the passed-in number rather than a data source. This module
+  # carries a depends_on for the project services, so a data source read
+  # here is deferred to apply whenever that set changes, and member is
+  # ForceNew on an IAM member. The gateway module hit exactly that on
+  # 2026-09-20 and planned a replacement of the live TLS certificate.
+  pubsub_agent = "serviceAccount:service-${var.project_number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 resource "google_pubsub_topic_iam_member" "dead_letter_publisher" {

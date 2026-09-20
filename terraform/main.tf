@@ -74,9 +74,10 @@ module "delivery" {
 module "gateway" {
   source = "./modules/gateway"
 
-  project_id   = var.project_id
-  address_name = "k8-lab-gateway"
-  domain       = var.domain
+  project_id     = var.project_id
+  project_number = var.project_number
+  address_name   = "k8-lab-gateway"
+  domain         = var.domain
 
   depends_on = [google_project_service.required]
 }

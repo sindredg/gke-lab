@@ -45,3 +45,13 @@ variable "alert_email" {
     error_message = "The alert_email must be a valid email address"
   }
 }
+
+variable "project_number" {
+  description = "The project's numeric id, which some APIs store instead of the project id. Kept in tfvars with every other value."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{6,20}$", var.project_number))
+    error_message = "The project_number must be the numeric project id"
+  }
+}

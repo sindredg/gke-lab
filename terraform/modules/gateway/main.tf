@@ -60,9 +60,14 @@ resource "google_compute_security_policy" "default" {
 }
 
 # The API stores project numbers, so the certificate is written that way.
-data "google_project" "this" {
-  project_id = var.project_id
-}
+# Passed in rather than read from a data source. This module carries a
+# depends_on for the project services, so a data source here is deferred
+# to apply time whenever that set changes, which makes the number below
+# unknown at plan time. dns_authorizations is ForceNew, so an unknown
+# value there plans a replacement of the live certificate. Adding four
+# unrelated APIs to services.tf on 2026-09-20 did exactly that, and the
+# apply was only stopped by Certificate Manager refusing to delete a
+# certificate a map entry still references.
 
 # Proves domain control by DNS record, so renewal needs no live traffic.
 resource "google_certificate_manager_dns_authorization" "default" {
@@ -84,8 +89,16 @@ resource "google_certificate_manager_certificate" "default" {
 
     # By resource, not id: the id's project form plans a replacement.
     dns_authorizations = [
-      "projects/${data.google_project.this.number}/locations/global/dnsAuthorizations/${google_certificate_manager_dns_authorization.default.name}",
+      "projects/${var.project_number}/locations/global/dnsAuthorizations/${google_certificate_manager_dns_authorization.default.name}",
     ]
+  }
+
+  # This certificate serves the public domain. A plan that replaces it
+  # takes TLS away between the destroy and the reissue, so a replacement
+  # has to be a deliberate act rather than a side effect of an unrelated
+  # change. Remove this block to rotate it on purpose.
+  lifecycle {
+    prevent_destroy = true
   }
 }
 

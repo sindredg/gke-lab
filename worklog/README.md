@@ -24,6 +24,7 @@ What was run, what came back, and what it proves. `plan.md` holds the intent,
 | [12d Autoscaling](phase-12d-autoscaling.md) | Eight replicas across three zones hold 125 rps with no failures |
 | [13 Security baseline](phase-13-security-baseline.md) | The platform measured against its own threat model, not against a reading of it |
 | [14 Close the baseline](phase-14-close-the-baseline.md) | The hardening that baseline ranked, with its remaining gaps stated |
+| [15 SCC triage](phase-15-scc-triage.md) | Findings reach a notification path, and two plans that looked right and were not |
 
 ## Other records
 

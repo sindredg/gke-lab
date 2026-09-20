@@ -52,12 +52,18 @@ resource "google_monitoring_alert_policy" "triage_verdict" {
   conditions {
     display_name = "A finding was triaged to something other than accepted"
 
-    # No resource.type clause. The type a logs-based metric carries depends
-    # on how the entry was written, and no worker has written one yet, so
-    # naming it here would be a guess the alert fails silently on. Task 7
-    # of Plan C reads the real type off the first verdict and narrows this.
+    # Cloud Monitoring rejects a threshold filter with no resource.type,
+    # so this cannot be left open: creating the policy without it fails
+    # with "must specify a restriction on resource.type". k8s_container
+    # is therefore a contract rather than an observation. The worker runs
+    # as a Pod and must set that monitored resource explicitly rather than
+    # relying on client-library detection, because a different type here
+    # matches nothing and the alert then fails silently instead of loudly.
     condition_threshold {
-      filter = "metric.type = \"logging.googleapis.com/user/${google_logging_metric.triage_verdict.name}\""
+      filter = join(" AND ", [
+        "metric.type = \"logging.googleapis.com/user/${google_logging_metric.triage_verdict.name}\"",
+        "resource.type = \"k8s_container\"",
+      ])
 
       aggregations {
         alignment_period     = "300s"
