@@ -252,6 +252,22 @@ Why: Upstream published to Azure Container Registry, which this cluster has no c
 
 Alternatives: Copy the source into this repository, which forks it and makes upstream fixes a manual port. Or grant this cluster cross-cloud pull credentials, which trades a supply-chain property for convenience.
 
+### Supply-chain control timing
+
+Decision: The deferred acceptance of provenance, an SBOM, signing and admission enforcement stands. One adjacent control moves earlier instead: the pinned `ai-k8s` commit is checked for signature and authorship before it is built, and the upstream check-run query guards that pin from its first bump rather than as a follow-up.
+
+Why: The acceptance was written when one upstream repository crossed [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Milestone 4 adds a second, and Milestone 5 gives an agent the ability to open a pull request here, so the ranking was re-run on 2026-09-20 against both.
+
+Neither new edge is answered by attestation. Signing proves that this pipeline built the image. The new paths are a bad commit that the pipeline would build and sign correctly, or a compromise of the pipeline identity, whose signature would also be valid. The registry already has a single writer and images are pulled by digest, so the gap signing closes, an image that did not come from this pipeline, is not the gap either edge opens.
+
+Phase 19's write capability ranks lower than it first reads. The agent opens a pull request against `k8-lab`, which is the repository that reaches Google Cloud, but a proposal is not a deployment: federation is scoped to `refs/heads/main`, the merge is gated by the ruleset, and the agent cannot approve its own work. The controls on that path are [the human merge boundary](#the-human-merge-boundary) and the scope check, not attestation.
+
+What the `ai-k8s` edge does change is the value of one control that was accepted rather than closed. Threat S on boundary 5, a commit from an unexpected author, was accepted because `sky`'s commits are all the owner's. `ai-k8s` holds the logic that decides whether a security finding is reported as accepted, as contradicting a decision, or not reported at all, and it is new enough to have exactly one author from the first commit. A signature and authorship check is cheap there and answers the edge directly, so it moves into Phase 15 with the first build.
+
+Cost: Commits in `ai-k8s` have to be signed, and the pin workflow gains a verification step that fails closed when it cannot read the signature. The deferred work stays deferred, so an image that did not come from this pipeline is still caught by nothing at admission.
+
+Alternatives: Move all supply-chain work before Phase 16, which spends a phase on the lowest-ranked row in the threat model while the highest-ranked new risk is a pin a human reviews. Change nothing, which leaves a new repository holding the agent's decision logic under an author assumption written for a different repository.
+
 ## Infrastructure and configuration
 
 ### Terraform structure
@@ -724,7 +740,7 @@ Alternatives: Keep the defaults and retry on the client, which hides the error f
 
 Decision: Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), a separate public repository. This repository keeps the Terraform, the manifests, the identities, the Pub/Sub and Security Command Center configuration, the image pins, and all narrative evidence including worklogs about agent failures.
 
-Why: Phases 15 to 19 are a software project rather than a few deployment scripts, and they would otherwise dilute a repository about platform engineering. The split also separates the agent from its own source: the Phase 19 actuator opens pull requests against `k8-lab`, and the prompts and tests that decide its verdicts are not in the repository it can write to.
+Why: Phases 15 to 19 are a software project rather than a few deployment scripts, and they would otherwise dilute a repository about platform engineering. The split also separates the agent from its own source: the Phase 19 agent opens pull requests against `k8-lab`, and the prompts and tests that decide its verdicts are not in the repository it can write to.
 
 It costs nothing at the federation boundary, which is the reason it is safe to do. `k8-lab` will build the agent the way it already builds `sky`, by shallow-fetching a pinned commit and building it under this repository's identity, so `ai-k8s` holds no Google Cloud credential and the provider's `attribute_condition` stays pinned to `sindredg/k8-lab` on `refs/heads/main`. [Threat model](reference/threat-model.md#findings) finding 2, closed in Phase 14 by narrowing exactly that condition, is untouched.
 
@@ -732,7 +748,7 @@ Because the build runs inside a `k8-lab` checkout, both provenance fields fall o
 
 Cost: A second repository to protect, pin and watch, and a second edge on [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Evidence and code no longer sit together, which is why the evidence stays here rather than splitting.
 
-Alternatives: Keep everything in `k8-lab`, which mixes model and prompt releases into infrastructure changes and gives the Phase 19 actuator a path to its own prompts. Several repositories, one per component, which is more boundary than five phases need.
+Alternatives: Keep everything in `k8-lab`, which mixes model and prompt releases into infrastructure changes and gives the Phase 19 agent a path to its own prompts. Several repositories, one per component, which is more boundary than five phases need.
 
 ### Agent implementation language
 
@@ -758,11 +774,24 @@ Alternatives: Self-hosted inference on GPU nodes, which conflicts with the cost 
 
 Decision: Every verdict is a versioned record carrying the verdict, its severity and confidence, cited evidence, a reasoning summary, missing evidence, a recommended action, an empty tool-call trace, and provenance: model id, generation parameters, prompt digest, corpus commit, agent commit and image digest. Output that does not validate against the schema is rejected rather than parsed.
 
-Every verdict must cite a corpus entry, and the worker resolves each citation against the baked-in corpus deterministically before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`.
+Citation requirements differ by verdict, because not every finding has something to cite.
+
+| Verdict | Citation requirement |
+| --- | --- |
+| `accepted` | At least one corpus citation that resolves |
+| `contradicts_decision` | At least one corpus citation that resolves |
+| `new` | The source finding, and `corpus_match: none` recorded explicitly |
+| `insufficient_evidence` | Optional. The record lists what evidence is missing |
+
+Corrected 2026-09-20. The rule here was that every verdict must cite a corpus entry. That is wrong for `new`. A genuinely new finding has no applicable corpus entry, and the old rule pushed every real new risk into `insufficient_evidence`, where it reads as a worker fault rather than as something the platform has not decided about. The two verdicts that assert something about a recorded decision still require a citation that resolves, which is where the check was doing its work.
+
+The worker separates `new` from `insufficient_evidence`, not the model. `new` means the finding parsed, every required field is present, the input fit the budget, and deterministic resolution returned no entry for the category and resource. `insufficient_evidence` means one of those failed: a missing or unparseable field, an input over budget, a citation that does not resolve, or a verdict that depends on a fact the corpus does not carry.
+
+Schema validation enforces the split. It rejects `accepted` or `contradicts_decision` with no resolved citation, rejects `new` when resolution returned a match, and rejects `insufficient_evidence` with an empty missing-evidence list. The boundary between the two unmatched verdicts cannot drift, because the model does not decide where it is.
 
 Why: The citation check is what makes the output checkable rather than trusted. Drafting this phase, a reading of the live findings paired `CLUSTER_SECRETS_ENCRYPTION_DISABLED` with `CKV_GCP_65` and `INTRANODE_VISIBILITY_DISABLED` with `CKV_GCP_61` on the strength of the names. `CKV_GCP_65` is `GKEKubernetesRBACGoogleGroups` and `CKV_GCP_61` is `GKEEnableVPCFlowLogs`, so both pairings were wrong and the reported overlap was double the real one. A model will make that error more fluently than a human does. Resolving the citation catches it without asking the model to be right.
 
-It also bounds prompt injection. Finding bodies carry resource names chosen by whoever created the resource, so instructions can arrive inside the data. Injected text cannot manufacture a corpus entry that exists, so the worst it achieves is an abstention rather than a forged acceptance.
+It also bounds prompt injection. Finding bodies carry resource names chosen by whoever created the resource, so instructions can arrive inside the data. Injected text cannot manufacture a corpus entry that exists, so the worst it achieves is an abstention rather than a forged acceptance. Relaxing the citation rule for `new` does not reopen that, because deterministic resolution decides whether a finding is unmatched and the validator rejects a `new` verdict when resolution found a match.
 
 The tool-call trace is empty in Phase 15 and present anyway, so Phase 17 does not bump the schema version to add it.
 
@@ -774,9 +803,24 @@ Alternatives: Trust the model's citation, which is what produced the wrong overl
 
 ### Triage idempotency
 
-Decision: Key on the finding's canonical name, its event time and its state. Record the verdict durably before notifying, record the notification before acknowledging, and acknowledge the Pub/Sub message last. The ledger is one object per key in a Cloud Storage bucket, written twice: the verdict first, then the notification timestamp.
+Decision: Key on the finding's canonical name, its event time and its state. The ledger holds one prefix per key in a Cloud Storage bucket, and each state below is a separate object written once under that prefix. A finding's current state is the furthest state present.
 
-Why: Pub/Sub is at-least-once, so a restart redelivers. Keying on the finding alone would collapse real events: the four `loadgen` findings went `ACTIVE` at 17:02 on 2026-09-18 and `INACTIVE` at 17:27 when the load generator and its VPC were deleted, which is two events on one canonical name. Recording before acknowledging means a crash between inference and persistence re-infers, costing a fraction of a cent, while a crash between persistence and notification re-notifies without paying for inference again. Duplicate model calls are cheap and duplicate emails are not, so the ordering trades the first away to prevent the second.
+| State | Written | On redelivery |
+| --- | --- | --- |
+| `received` | First, before anything else | The create fails. Read the prefix and resume from the furthest state present |
+| `classified` | After the verdict validates, before any notification | Resume at `notification_attempted` |
+| `notification_attempted` | Before the log entry that triggers the alert is emitted | Notify again. The state means a notification may or may not have gone out |
+| `acknowledged` | After the Pub/Sub acknowledgement returns | Nothing to do. Drop the message |
+
+Every write uses the create-only precondition `ifGenerationMatch=0`. Nothing in the ledger is ever overwritten, and two workers racing on the same message produce one object and one loser that reads it. Duplicate email is accepted. A missed notification is not.
+
+Why: Pub/Sub is at-least-once, so a restart redelivers. Keying on the finding alone would collapse real events: the four `loadgen` findings went `ACTIVE` at 17:02 on 2026-09-18 and `INACTIVE` at 17:27 when the load generator and its VPC were deleted, which is two events on one canonical name. Recording before acknowledging means a crash between inference and persistence re-infers, costing a fraction of a cent, while a crash between persistence and notification re-notifies without paying for inference again. Duplicate model calls are cheap, so the ordering trades them away first.
+
+That ordering alone still leaves one window open. A worker that dies after the notification and before the acknowledgement re-notifies on redelivery, and a two-write ledger holds no state that says so. `notification_attempted` is written before the log entry is emitted, which turns the window from an unknown into a recorded one. After a crash the worker knows a notification may already have gone out, and sends again deliberately.
+
+Sending again is the right direction. Writing the notification record after emitting would instead drop a notification silently whenever the worker died in that window, and a security tool that quietly fails to tell its owner about a finding is worse than one that tells them twice. The duplication is bounded in practice rather than in principle: the alert policy groups on verdict, category and severity and auto-closes after 1800s, so a repeat carrying the same labels while that incident is open updates it instead of sending a second mail. Different labels open a new incident, so this bounds the common case and guarantees nothing.
+
+Each crash boundary is drilled rather than reasoned about. Phase 15 carries three: a kill after inference, a kill after persistence, and a kill after notification.
 
 Measured on 2026-09-20, after the transport was applied. Muting an active finding publishes a message in about two seconds, and that message carries the same name, the same `state` and the same `eventTime` as before the mute: `eventTime` was the previous day and a mute does not advance it. So the key collapses attribute-only changes into redeliveries. Reading the same detectors a day apart shows unchanged findings holding their `eventTime` across re-evaluation, and a genuinely new finding, `BUCKET_LOGGING_DISABLED`, carrying a fresh one five seconds after the ledger bucket was created. `eventTime` tracks substance rather than scans, so the collapse is the intended behaviour and not a gap: a mute is a human silencing a finding, not a change in posture, and it should not cost a model call.
 
@@ -784,9 +828,9 @@ The ledger additionally carries a digest of the finding body. A redelivery whose
 
 Two things about the name, both measured rather than documented by Google. One finding carries three: `name` is organization scoped, `canonicalName` is project number scoped, and `parent` is neither. And the scopes are not interchangeable. A finding is read at organization scope, but `:setMute` against that organization-scoped name returns "Security Command Center Legacy has been permanently disabled", while the identical call at project scope returns 200. The worker cannot round-trip the name it reads, so the key and the address for any write are separate values. `canonicalName` is the key because the project number is immutable.
 
-Cost: A bucket and its lifecycle to manage, and an object read on the path of every message. The digest adds a hash of the body per message and one more field per ledger object.
+Cost: A bucket and its lifecycle to manage, and an object read on the path of every message. The digest adds a hash of the body per message and one more field per ledger object. The state machine adds two writes per message over the two the earlier ordering used, and a create-only precondition that fails on every redelivery, which is the signal rather than an error. Accepting duplicate email means the owner can be told about the same finding twice after a crash, which is what buys the removal of the silent miss.
 
-Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker. Adding `muteUpdateTime` to the key, which would re-triage a silencing as though it were a posture change.
+Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker. Adding `muteUpdateTime` to the key, which would re-triage a silencing as though it were a posture change. Notifying first and recording afterwards, which drops a notification silently whenever the worker dies in that window. Exactly-once notification, which the email channel cannot provide: it takes no idempotency key, and Cloud Monitoring decides when a policy sends.
 
 ### Triage notification path
 
@@ -807,6 +851,78 @@ Why: Closes the deferred gate on the condition it was written for, since the tri
 Cost: A second set of platform manifests to keep in step, and a new egress channel out of the cluster that [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) did not have. Finding 11 records DNS as the only egress out of `demo`, and that remains true of `demo` while no longer describing the cluster.
 
 Alternatives: Run the worker in `demo`, which widens egress for the public workloads to suit an agent. A separate cluster, which doubles the platform to isolate one Deployment.
+
+### Agent permission boundary
+
+Decision: The triage worker holds four grants and nothing else. Consume on one Pub/Sub subscription, object create and read on the verdict ledger bucket, invoke on the Vertex AI model, and write on its own log. It holds no Security Command Center permission, no object delete or overwrite, no cluster credential, and no broad project role. [Phase 15](plan.md#part-2-the-identity-and-the-namespace) carries the matrix and the state of each grant.
+
+Why: This is the one identity in the project that parses attacker-influenced strings, so what it can reach when that goes wrong is the question worth answering up front.
+
+Three denials are load-bearing. No Security Command Center access, because the worker reads findings from Pub/Sub and a read or a mute at the source would let a triage verdict silence its own input. No object delete or overwrite, because the ledger is what Phase 18 rebuilds from and a worker that can erase a record can erase the evidence that it ran. No cluster credential, because Phase 16 owns cluster reads and this worker predates that boundary by a phase.
+
+The append-only ledger is what makes the second denial implementable. Every state object is written once with a create-only precondition, so the worker never needs a permission it should not hold.
+
+Cost: Two grants are currently wider than this boundary describes. `roles/aiplatform.user` is bound at the project and allows creating training jobs, pipelines, endpoints and notebooks; a publisher model needs `aiplatform.endpoints.predict` alone. `roles/storage.objectUser` covers delete and overwrite as well as create. Both are recorded as open in the plan rather than described as done, and a custom role in each case is a definition to maintain and verify against.
+
+Alternatives: Project-level roles throughout, which is one line of Terraform and an identity that can read every subscription in the project. A single broad role such as `roles/editor`, which the project already carries `PRIMITIVE_ROLES_USED` for.
+
+### Gateway client authentication
+
+Decision: Clients authenticate to the Phase 16 gateway with audience-bound projected Kubernetes ServiceAccount tokens, validated by `TokenReview`. The gateway reaches the Kubernetes API with its own projected token, bound to a Role holding read verbs only. Workload Identity Federation stays what it is: how a workload authenticates to Google APIs.
+
+Why: This corrects an error. Workload Identity Federation federates a Kubernetes ServiceAccount to a Google service account for calls to Google APIs. The gateway is a Pod, not a Google API, so nothing about federation authenticates a Phase 15 or Phase 17 client to it. Phase 16's exit criterion said every identity on the path uses Workload Identity Federation, which was not achievable as written.
+
+A projected token is issued by the cluster, bound to an audience, short-lived, rotated by the kubelet, and revoked by deleting the ServiceAccount. The gateway validates it with a `TokenReview` against the cluster's own API server, so there is no external issuer to depend on and no key to distribute. The audience is what stops a token minted for one service being replayed at another.
+
+Cost: The gateway needs `create` on `tokenreviews`, a cluster-scoped grant on a service that otherwise only reads. One `TokenReview` per call unless the result is cached to the token's expiry. And the caller's identity is a Kubernetes identity rather than a Google one, so the record of who called which tool lives in the gateway's own audit log rather than in Cloud Audit Logs.
+
+Alternatives: Google-signed identity tokens with an audience claim, which work and tie an in-cluster hop to an external issuer and its key fetching. Mutual TLS through a service mesh, which is a mesh to operate for one hop. A shared secret, which is a key, and the project has none.
+
+### Observability read boundary
+
+Decision: The Phase 17 responder reads Cloud Monitoring and Cloud Logging directly, with its own Google identity scoped to read. It does not read them through the Phase 16 gateway, and that gateway exposes no Google Cloud tool.
+
+Why: The gateway exists because the Kubernetes API has no per-tool authorization and a kubeconfig is coarse inside whatever RBAC it carries. Google APIs are not like that. They authorize per permission and record each call in Cloud Audit Logs, so putting a gateway in front of them adds a hop without adding a boundary.
+
+The cost of doing it anyway is the real argument. A service holding cluster credentials plus Cloud Monitoring plus Cloud Logging is a general Google Cloud gateway, and a bigger prize than either boundary on its own. Keeping the gateway to one API keeps its blast radius describable in a sentence.
+
+This moves two tools. An earlier draft listed `query_workload_logs` and `get_alert_metric` as gateway tools. Pod logs read from the Kubernetes API stay on the gateway as `get_pod_logs`. Cloud Monitoring and Cloud Logging reads belong to the responder's own identity.
+
+Cost: A second Google identity to scope and watch, and the responder reaches two more Google APIs, which widens `agents` egress further while the egress policy is already wider than intended.
+
+Data Access audit logs for Logging and Monitoring are off by default, so without them "every call is logged with the identity that made it" is not true of these reads. They are turned on, decided 2026-09-20. The cost is log volume in `_Default`, which retains for 30 days. The stock `_Default` view excludes data access logs, so a responder scoped to a view built on that exclusion cannot read the log recording its own reads, which is the property worth having and is measured rather than assumed.
+
+The grant is `roles/monitoring.viewer` for metrics and `roles/logging.viewAccessor` on one log view, not `roles/logging.viewer` on the project. The project has no custom log view today, so Phase 17 creates one. Which logs it admits waits for the responder's actual queries.
+
+Alternatives: Extend the gateway with Google Cloud tools, rejected above. A second gateway for Google APIs, which is another service to operate for something IAM already authorizes per permission.
+
+### Finding state authority
+
+Decision: The Cloud Storage ledger is authoritative. The Phase 18 custom resource is a projection of it, and the controller holds nothing durable of its own. The custom resource carries no field that cannot be re-derived from the ledger.
+
+Why: Two stores and one truth. Phase 15 writes an append-only ledger and Phase 18 adds Kubernetes objects, and without this rule each would become the place some fact only exists.
+
+The ledger wins because of what each store is good at. The ledger is immutable, addressed by idempotency key, and outlives the cluster. etcd holds current state, is rebuilt by any cluster operation that replaces it, and is not an evidence store. Phase 18's exit criterion is a controller killed mid-reconcile, and the honest recovery is a replay from the ledger rather than a rebuild from whatever survived in etcd.
+
+That gives three rules. State is rebuilt by replaying ledger records. A custom resource with no matching ledger record is an error, and the controller deletes it rather than reconciling it. The cluster alone cannot reconstruct a finding that exists only in the ledger, so a cluster rebuild is a replay and is timed as one.
+
+Cost: A human action taken against the custom resource, an acknowledgement for example, has to be written back to the ledger before it counts as state, which is more machinery than annotating an object. Rebuild time grows with the ledger, bounded by the bucket's 365-day lifecycle rule. And the cluster now depends on a bucket for its own reconstruction, which is a dependency `demo` does not have.
+
+Alternatives: etcd as the source of truth, which puts the evidence in the store that gets rebuilt. Both authoritative, which is two truths and a reconciliation problem nobody asked for.
+
+### The human merge boundary
+
+Decision: A required approval, enforced by the ruleset. `Protect main` moves `required_approving_review_count` from `0` to `1`. The Phase 19 GitHub App is not a bypass actor and cannot approve a pull request it authored, so it cannot merge one. The repository owner stays a bypass actor, so their own work is not blocked.
+
+Closes the deferred record that gated this on the agent being built, and it is decided before the agent opens anything rather than after.
+
+Why: The alternative was a second identity holding the merge. That is two credentials to hold, and automation approving automation. A required approval is enforced by GitHub rather than by convention, and it is the mechanism the repository already has.
+
+What actually stops the agent is the combination, so it is worth being precise about each part. The App needs `contents: write` to push its branch, and that same permission can merge a pull request, so permissions alone do not hold the line. The ruleset does: required checks plus one required approval block the merge, GitHub does not accept an approving review from the author of a pull request, and the App is the author. Take away any one of those and the boundary is a claim again.
+
+Cost: This one is worth stating plainly. With one collaborator, a required approval that the owner cannot bypass would block the owner's own pull requests, because they cannot approve their own work either. So the owner keeps ruleset bypass, and the enforced property is narrower than "every change is reviewed". What is enforced is that no automation identity can merge. The bypass also covers required checks, so the owner can merge a red pull request, which was already true of an admin and is now written down.
+
+Alternatives: A second identity that approves, which is automation approving automation. Requiring two approvals, which one operator cannot satisfy. Leaving the count at `0` and relying on the agent not calling the merge API, which is the claim this decision replaces.
 
 ## Project and process
 
@@ -859,6 +975,5 @@ Create short entries when these decision gates are reached:
 - Native controls versus Kyverno or Gatekeeper
 - GitHub Actions versus Argo CD or Flux for continued delivery
 - Standard GKE features versus fleet and multi-cluster components
-- A required approval versus a second identity, to stop the Phase 19 agent merging its own pull request
 
-Two closed into Milestone 4, both on the condition they were written for. Vertex AI against self-hosted inference is [decided](#inference-provider). A namespace per workload was gated on a third workload arriving, and the triage worker is it, [decided](#agent-namespace).
+Three closed into Milestone 4, each on the condition it was written for. Vertex AI against self-hosted inference is [decided](#inference-provider). A namespace per workload was gated on a third workload arriving, and the triage worker is it, [decided](#agent-namespace). A required approval against a second identity, to stop the Phase 19 agent merging its own pull request, is [decided](#the-human-merge-boundary) in favour of a required approval, ahead of the agent rather than alongside it.

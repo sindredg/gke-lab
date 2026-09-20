@@ -144,6 +144,12 @@ Three things narrow it, and none of them is new machinery. The corpus the agent 
 
 The residual is the same one: this repository's CI does not run on a pin bump, so the human reading the diff is the control. Carried forward to the Phase 16 revision rather than closed here.
 
+Re-ranked on 2026-09-20, against this second edge and against Phase 19's ability to open a pull request in `k8-lab`. The deferred acceptance on [boundary 8](#boundary-8-public-registries-to-the-running-image) holds. Signing proves which pipeline built an image, and neither new edge produces an image from a different pipeline: both produce a commit this pipeline would build and sign correctly.
+
+Phase 19 does not widen this edge either. Its scope check rejects any proposal touching the evidence corpus, so the narrowing above, that nothing the agent commits can add the `.checkov.baseline` entry a forged acceptance would have to resolve against, still holds once the agent can open pull requests here.
+
+One control on this boundary moves earlier instead. Threat S above, a commit from an unexpected author, was accepted because `sky`'s commits are all the owner's. `ai-k8s` holds the logic that decides what the owner is told about the platform's security, and has one author from its first commit, so its pinned commit is checked for signature and authorship before it is built. Recorded in [decisions.md](../decisions.md#supply-chain-control-timing) and carried as a Phase 15 item rather than waiting for the Phase 16 pass.
+
 ## Boundary 6: DNS and certificate issuance
 
 The boundary nothing in either repository currently touches.
@@ -184,6 +190,8 @@ Evidence: [Phase 13 worklog](../worklog/phase-13-security-baseline.md#slice-4-ac
 The last row matters less than it first appears, and the ordering below reflects that. Attestation proves *this pipeline built it*. It says nothing about whether the commit should have been built, which is boundary 5's question and the cheaper one to answer first.
 
 That question is answered, so the last row is accepted for now rather than carried as work in progress. The pipeline identity is the only writer to the registry, the image is pulled by digest, and finding 7 closed the path an unvalidated commit took to get built. Signing and admission enforcement are a phase of their own, and this model is revisited when Phase 16 changes it substantially, so the acceptance is reconsidered there rather than expiring quietly.
+
+Reconsidered once already, on 2026-09-20, against the agent repository and the Phase 19 pull request capability. The acceptance holds, and the reasoning is on [the agent edge](#the-agent-edge-carries-more-than-the-sky-edge).
 
 ## Attack paths, ranked
 

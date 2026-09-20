@@ -102,7 +102,7 @@ Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operat
 
 Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
 
-Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The transport is applied and measured, and nothing reads it. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged, no verdict has travelled the notification path, and both exit-criteria drills are open. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted by hand rather than with the provenance the exit criteria ask for.
+Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The transport is applied and measured, and nothing reads it. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged, no verdict has travelled the notification path, and every exit-criteria drill is open. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted by hand rather than with the provenance the exit criteria ask for.
 
 ## Measured
 

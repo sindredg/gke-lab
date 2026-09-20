@@ -297,11 +297,13 @@ A second was overstated and is corrected here. Scoping federation to a ref does 
 | Content Security Policy | Served on both paths |
 | CAA records | Added and verified. Universal SSL disabled, because it was widening the set |
 | DNSSEC | Signed 2026-09-18. DS published in `.com`, verified on two resolvers |
-| Security Command Center | Premium trial active to 2026-10-18, then Standard. One finding, which is its own onboarding. The first Security Health Analytics scan has not completed |
+| Security Command Center | Premium activated at the organization level on 2026-09-18, on a free trial. One finding, which is its own onboarding. The first Security Health Analytics scan has not completed. What the tier becomes at trial end is not settled; [Phase 15](#phase-15-security-command-center-triage) carries the billing mode and treats Premium as a dependency |
 | Provenance, SBOM, signing, admission policy | Deferred past Milestone 4, and accepted for now in the threat model |
 | Single-client flood | Run twice on 2026-09-18. 593 of 1200 refused at 15 rps, and at 125 rps the throttle held sky to 3 of 8 replicas against 8 of 8 unthrottled. The exit criterion is met |
 
 The last bullet is not done. Provenance, an SBOM, signing and admission enforcement are a phase of their own, and the threat model ranks the row they answer last, so it is [accepted for now](reference/threat-model.md#boundary-8-public-registries-to-the-running-image) rather than half started. It comes back after Milestone 5, with the next pass over the threat model, which Phase 16 requires anyway because giving an agent cluster credentials changes the model.
+
+That acceptance was re-examined on 2026-09-20 against the two things Milestone 4 and Milestone 5 add: a second upstream repository, and an agent that can open a pull request here. It holds, and one adjacent control moves earlier instead. Both outcomes are recorded in [decisions.md](decisions.md#supply-chain-control-timing).
 
 **Exit criteria:** The public endpoint survives a single-client flood without reaching the namespace quota. The TLS scan grades `A` or better. Every finding in the threat model is closed or carries a recorded acceptance. All three are met.
 
@@ -309,17 +311,34 @@ Documentation: [Cloud Armor rate limiting](https://cloud.google.com/armor/docs/r
 
 ## Milestone 4: Agent-operated security
 
-Follows Milestone 3. The platform is proven, so the work moves to operating it. Security Command Center has produced findings continuously since 2026-09-18 and nobody reads them, which is the gap this milestone answers. Every agent here reads and none can change the cluster. The actuator waits for Milestone 5, once the read path has been measured.
+Follows Milestone 3. The platform is proven, so the work moves to operating it. Security Command Center has produced findings continuously since 2026-09-18 and nobody reads them. That is the gap this milestone answers.
 
-This milestone replaces a deterministic manifest reviewer that used to sit here. The reason is recorded in [decisions.md](decisions.md#ai-workload-direction).
+Every agent here reads. None can change the cluster. Write capability waits for Milestone 5, once the read path has been measured.
 
-The agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s) and this repository holds its infrastructure, its identity and its evidence. The reason is recorded in [decisions.md](decisions.md#agent-source-location). Nothing below gives the agent repository a Google Cloud credential: `k8-lab` builds it from a pinned commit, exactly as it builds `sky`.
+This milestone replaces a deterministic manifest reviewer. The reason is recorded in [decisions.md](decisions.md#ai-workload-direction).
 
-Two rules hold across every phase here. The model classifies and explains, and owns no delivery semantics, no authorization, no persistence and no notification policy. And every operational string the agent reads is treated as hostile, because Security Command Center finding bodies carry resource names that whoever created the resource chose.
+Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), for the reason recorded in [decisions.md](decisions.md#agent-source-location). This repository holds the infrastructure, the identities and the evidence. Nothing below gives `ai-k8s` a Google Cloud credential: `k8-lab` builds it from a pinned commit, exactly as it builds `sky`.
+
+**Terms.** Defined once here, then used plainly.
+
+| Term | Meaning |
+| --- | --- |
+| Evidence corpus | The records an agent may cite: `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), `decisions.md`, and the agent's own `mapping.yaml` and `controls.yaml`. Compiled into the image at build time |
+| Accepted and priced | A finding names something this repository already decided about and recorded the cost of. The verdict value is `accepted` |
+| Write capability | Any path by which an agent changes state outside its own ledger. Phase 19 holds the only one, a pull request |
+
+**Rules.** Two rules hold across every phase in this milestone.
+
+1. The model classifies and explains. It owns no delivery semantics, no authorization, no persistence and no notification policy. Code outside the prompt enforces each of those.
+2. Every operational string an agent reads is hostile input. Security Command Center finding bodies carry resource names chosen by whoever created the resource.
 
 ### Phase 15: Security Command Center triage
 
-Built in three parts. The transport and the identity are applied and measured; the agent that reads them does not exist. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
+Built in three parts. The transport and the identity are applied and measured. The agent that reads them does not exist. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
+
+**Dependency: Security Command Center Premium.** Event Threat Detection is a Premium detector. This phase triages the threat class alongside misconfiguration and external exposure, and it has already produced one threat finding: a drill Pod that Pod Security refused, which Event Threat Detection reported as a privileged container launch, and which the worker identity then pulled from the subscription. Standard drops that detector, and a class of this phase's input with it. Premium is a dependency of Phase 15, not a bonus on top of it.
+
+The billing mode is a free trial, confirmed by the owner on 2026-09-20. There is no paid subscription and no consumption billing behind it, so Security Command Center costs nothing today and contributes nothing to the agent cost line while the trial runs. Phase 14 recorded that the tier falls back to Standard when the trial ends. That is an expectation rather than a measurement, and this phase depends on a Premium detector, so the tier is re-read at trial end rather than assumed either way.
 
 #### Part 1: The transport
 
@@ -337,97 +356,254 @@ Built in three parts. The transport and the identity are applied and measured; t
 - [x] Prove a Pod carrying the agent's ServiceAccount federates to the right Google identity, and that an otherwise identical Pod without the egress label cannot reach Google APIs.
 - [x] Prove the grant is scoped to the verb: `:pull` is allowed, `get` on the same subscription is not.
 
+**The permission boundary.** The worker consumes one subscription, creates records in one bucket, invokes one model, and writes its own log. Nothing else. Recorded in [decisions.md](decisions.md#agent-permission-boundary).
+
+| Capability | Grant | Scoped to | State |
+| --- | --- | --- | --- |
+| Pull findings | `roles/pubsub.subscriber` | The `scc-triage` subscription, not the project | Applied and proven. `:pull` returns 200, `get` on the same subscription returns 403 |
+| Write verdict records | `roles/storage.objectUser` | The verdict ledger bucket | Applied, and wider than the worker needs. The role also allows delete and overwrite |
+| Invoke the model | `roles/aiplatform.user` | The project | Applied, and wider than the worker needs. A publisher model needs `aiplatform.endpoints.predict` alone |
+| Notify | `roles/logging.logWriter` | The project | Applied. The role writes and cannot read any log |
+| Federate | `roles/iam.workloadIdentityUser` | `agents/triage-worker` alone | Applied and proven. A Pod in that namespace receives `k8-lab-triage`, and the user-managed key list is empty |
+
+Denied, and the denial is part of the design:
+
+| Denied | Why it matters |
+| --- | --- |
+| Security Command Center API access | The worker reads findings from Pub/Sub. A read or a mute at the source would let a triage verdict silence its own input |
+| Object deletion and overwrite in the ledger | The ledger is the replay source Phase 18 rebuilds from. A worker that can erase a record can erase the evidence that it ran |
+| Any cluster credential | Phase 16 owns cluster reads. The worker holds no kubeconfig and no Kubernetes RBAC beyond its own ServiceAccount |
+| Broad project roles | No `roles/editor`, no `roles/viewer`, no `*.admin`. `PRIMITIVE_ROLES_USED` is already a live finding against this project |
+
+Two grants above are wider than the boundary the table describes, so they are open work:
+
+- [ ] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs.
+- [ ] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object.
+
+Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) and rated at the Phase 16 threat model pass.
+
 #### Part 3: The agent
 
 Lives in [ai-k8s](https://github.com/sindredg/ai-k8s), built by this repository from a pinned commit. Increment 1 calls no model, so the whole path is proven before a single token is spent.
 
+**Before the first build:**
+
+- [ ] Guard the `ai-k8s` pin with the same upstream check-run query that guards the `sky` pin, from the first bump rather than as a follow-up.
+- [ ] Verify the pinned commit's signature and authorship before it is built. This is the one supply-chain control that moves earlier than the rest, for the reason recorded in [decisions.md](decisions.md#supply-chain-control-timing).
+
+**The verdict contract.** Four values. Deterministic resolution runs before the model is called, and its outcome is a recorded field rather than a judgement the model makes.
+
+| Verdict | Condition | Citations |
+| --- | --- | --- |
+| `accepted` | Resolution matched a corpus entry, and that entry prices this finding | One or more resolved corpus citations |
+| `contradicts_decision` | Resolution matched, and the recorded decision does not hold for the resource the finding names | One or more resolved corpus citations |
+| `new` | Resolution found no applicable entry, and the finding is complete enough to describe what it asserts | The source finding, plus `corpus_match: none` recorded explicitly |
+| `insufficient_evidence` | The worker refused to rule | Optional. The record must list what evidence is missing |
+
+An earlier rule said every verdict must cite a corpus entry. That rule is wrong and is corrected here. A genuinely new finding has nothing to cite, and the old rule pushed every real new risk into `insufficient_evidence`, where it reads as a worker fault rather than a platform one. The change is recorded in [decisions.md](decisions.md#triage-verdict-record).
+
+The worker, not the model, separates the two unmatched verdicts:
+
+- `new`: the finding parsed, every required field is present, the input fit the budget, and resolution returned no entry for the category and resource.
+- `insufficient_evidence`: a required field is missing or unparseable, the input exceeded the token or tool budget, the model cited an entry that does not resolve, or the verdict needs a fact the corpus does not carry. The last case is real. The Event Threat Detection finding above asserts that a Pod was created, and nothing in the finding body says admission refused it.
+
+Schema validation enforces that table. It rejects `accepted` or `contradicts_decision` with no resolved citation, rejects `new` when resolution returned a match, and rejects `insufficient_evidence` with an empty missing-evidence list. The model cannot drift the boundary over time, because it does not decide where the boundary is.
+
+**The ledger state machine.** The key is the finding's canonical name, its event time and its state. The ledger holds one prefix per key, and each state below is a separate object written once under it. A finding's current state is the furthest state present.
+
+| State | Written | On redelivery |
+| --- | --- | --- |
+| `received` | First, before anything else | The create fails. Read the prefix and resume from the furthest state present |
+| `classified` | After the verdict validates, before any notification | Resume at `notification_attempted` |
+| `notification_attempted` | Before the log entry that triggers the alert is emitted | Notify again. The state means a notification may or may not have gone out |
+| `acknowledged` | After the Pub/Sub acknowledgement returns | Nothing to do. Drop the message |
+
+Every write uses a create-only precondition, so the ledger is append-only and two workers on the same message produce one object rather than two. Duplicate email is accepted and a missed notification is not, which is what fixes the ordering. Both are recorded in [decisions.md](decisions.md#triage-idempotency).
+
 **Increment 1, deterministic only:**
 
 - [ ] Go module, one binary per deployable component.
-- [ ] Compile the corpus at image build time rather than reading it at runtime. `corpusc` reads `.checkov.baseline`, the [threat model findings table](reference/threat-model.md#findings), `decisions.md`, and the agent's own mapping and controls files, and emits one index.
-- [ ] Give every corpus entry a typed, stable id: `checkov:<check>:<address>`, `threat:<n>`, `decision:<anchor>`, `control:<slug>`. A citation is one of these and nothing else, and resolution is an exact lookup.
+- [ ] Compile the corpus at image build time rather than reading it at runtime. `corpusc` reads the corpus sources and emits one index.
+- [ ] Give every corpus entry a typed, stable id: `checkov:<check>:<address>`, `threat:<n>`, `decision:<anchor>`, `control:<slug>`. A citation is one of these and nothing else. Resolution is an exact lookup.
 - [ ] Fail the build, not the worker, on a malformed entry, an id collision, a mapping citing an id that does not exist, or a mapping without its justification.
-- [ ] Write `mapping.yaml` by hand, one Security Command Center category to zero or more corpus entries, each carrying the concrete resource it was decided about and a line saying why the pairing holds. Name-based pairing produced two wrong matches while this phase was being drafted, so every entry is reviewed.
+- [ ] Write `mapping.yaml` by hand, one Security Command Center category to zero or more corpus entries. Each entry carries the concrete resource it was decided about and a line saying why the pairing holds. Name-based pairing produced two wrong matches while this phase was being drafted, so every entry is reviewed.
 - [ ] Write `controls.yaml`, the controls this platform enforces, as citable facts pointing at the worklog that proved each one. Nothing else in the corpus asserts that a control held, which is what a threat finding needs.
 - [ ] Resolve deterministically: category and resource both match, or it does not resolve. An accepted decision about one resource does not cover another resource of the same kind.
-- [ ] Classify each as already accepted and priced, contradicting a recorded decision, new, or insufficient evidence.
-- [ ] Emit verdicts against a versioned schema, and reject output that does not validate rather than reading meaning out of prose.
-- [ ] Make redelivery safe. Key on the finding's canonical name, its event time and its state. Carry a digest of the finding body so an attribute-only change is recorded as drift without a verdict.
-- [ ] Record the verdict durably, then the notification, then acknowledge the message last.
-- [ ] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library will report `global`, the metric will still count it, and the alert will never fire.
+- [ ] Classify each finding against the verdict contract above.
+- [ ] Emit verdicts against a versioned schema. Reject output that does not validate rather than reading meaning out of prose.
+- [ ] Carry a digest of the finding body, so an attribute-only change is recorded as drift without a verdict.
+- [ ] Implement the ledger state machine above, with a create-only precondition on every write.
+- [ ] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library reports `global`, the metric still counts it, and the alert never fires.
 - [ ] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
 - [ ] Run as one replica in `agents`, pulling continuously.
 - [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently.
-- [ ] Count how many findings the rules settled without a model, which is the measurement that says whether the rules are doing their job.
+- [ ] Count how many findings the rules settled without a model. That number says whether the rules are doing their job.
 
 **Increment 2, the model:**
 
 - [ ] Call Vertex AI only for what deterministic matching could not settle.
-- [ ] Require every verdict to cite a corpus entry, and resolve the citation against the corpus before accepting the verdict. A citation that does not resolve forces insufficient evidence.
-- [ ] Bound tokens and tool calls, and refuse rather than silently truncate when the input exceeds the budget.
+- [ ] Resolve every citation the model returns against the baked-in corpus before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`.
+- [ ] Bound tokens and tool calls. Refuse rather than silently truncate when the input exceeds the budget.
 - [ ] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced.
+- [ ] Emit the token count and the estimated cost of each run, on the verdict record and as a label on the log entry.
+- [ ] Stop calling the model when a daily spend ceiling is reached, and record the refusal. A budget alert is not a limit, and credits make its thresholds misleading.
 - [ ] Notify through the existing email channel rather than adding a second one.
 
 **Exit criteria:**
 
-- [ ] The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured and recorded with provenance: how many Security Health Analytics findings name something `.checkov.baseline` already prices as an accepted decision. Three of seven by hand today, which is not the measurement.
-- [ ] A finding that arrives while the agent is stopped is triaged after it returns, proven by stopping it during a delivery.
-- [ ] A finding whose resource name carries an instruction is triaged to the same verdict as one without, proven on a real finding from a real detector rather than a fixture.
+Measurements:
+
+- [ ] The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured with provenance: how many Security Health Analytics findings name something `.checkov.baseline` already prices. Three of seven by hand today, which is not the measurement.
+- [ ] The count of findings the rules settled without a model is published alongside it.
+- [ ] Security Command Center cost and Vertex AI cost are reported as separate lines, not as one agent cost. Security Command Center reads zero while the trial runs, and recording that is the point: it stops a free trial being mistaken for a cheap subscription.
+- [ ] The tier is re-read when the trial ends, and the result is recorded. If it drops to Standard, Event Threat Detection goes with it and this phase triages one class fewer, which the plan states rather than the worker quietly seeing less.
+- [ ] The idle agent fits on the existing two-node floor. The deployment records whether a third node appeared, and whether the agent caused it.
+
+Failure paths, each proven by making it happen:
+
+- [ ] Model output that does not validate against the schema is rejected, and the finding lands as `insufficient_evidence` rather than as a parsed guess.
+- [ ] A Vertex AI timeout, and separately a permission failure, leave the message unacknowledged and the ledger record readable.
+- [ ] A ledger write failure stops the worker before it notifies, and nothing is acknowledged.
+- [ ] A redelivered Pub/Sub message produces one verdict, not two, proven by replaying a real delivery.
+- [ ] Kill the worker after inference and before persistence. The finding is re-inferred and triaged once.
+- [ ] Kill the worker after persistence and before notification. The finding is notified after the restart.
+- [ ] Kill the worker after notification and before acknowledgement. The finding is notified again, and the ledger shows one `notification_attempted` record rather than two verdicts.
+- [ ] An input larger than the token budget is refused with `insufficient_evidence` naming the budget, not truncated.
+- [ ] Stop the agent while a finding is waiting. After the agent restarts, verify that it processes the finding successfully.
+- [ ] A finding carrying an instruction is triaged to the same verdict as one without. Test every untrusted field the worker reads, not the resource name alone: category, resource name, description, external URI, source properties, and the finding's own severity. Use a real finding from a real detector.
 
 ### Phase 16: Cluster access through an audited gateway
 
-- Hold the cluster credentials in one service and expose reads as MCP tools.
-- Expose tasks rather than verbs: `get_workload_health`, `get_recent_events`, `get_rollout_history`, `query_workload_logs`, `get_alert_metric`. A generic verb and resource allowlist still lets a caller compose a request nobody designed.
+- Hold the cluster credentials in one service, and expose reads as MCP tools.
+- Expose tasks rather than verbs: `get_workload_health`, `get_recent_events`, `get_rollout_history`, `get_pod_logs`. A generic verb and resource allowlist still lets a caller compose a request nobody designed.
+- Read the Kubernetes API and nothing else. Cloud Monitoring and Cloud Logging are a separate boundary, described in Phase 17.
 - Expose no generic `kubectl`, no arbitrary API path, no caller-supplied label selector and no unbounded log read. Deny Secrets, `exec`, `attach`, `port-forward`, the proxy endpoints, and cluster-wide listing outright.
-- Authorize and log every call with the identity that made it. Give Phase 15 and Phase 17 separate identities, and enforce authorization at the HTTP boundary and again inside every tool handler.
+- Authenticate callers with audience-bound projected Kubernetes ServiceAccount tokens, validated by `TokenReview`. Workload Identity Federation authenticates a workload to Google APIs. It does not authenticate one Pod to another, and an earlier draft of this phase implied that it did. Recorded in [decisions.md](decisions.md#gateway-client-authentication).
+- Let the gateway reach the Kubernetes API with its own projected ServiceAccount token, bound to a Role holding read verbs only.
+- Authorize and log every call with the identity that made it. Phase 15 and Phase 17 get separate identities. Enforce authorization at the HTTP boundary and again inside every tool handler.
 - Give no client its own kubeconfig, including the agents from Phase 15 and Phase 17.
-- Bound request rate and response size, because an agent reading the whole cluster is the cheap mistake here.
+- Bound request rate and response size. An agent reading the whole cluster is the cheap mistake here.
 - Revisit the threat model. An agent holding cluster credentials is a trust boundary the current model does not have.
 
-**Exit criteria:** A call outside the allowlist is refused and appears in the audit log, proven by making one. A denied resource is refused by the tool handler with the HTTP boundary bypassed, proven separately, because two checks that are never tested independently are one check. Every identity on the path uses Workload Identity Federation and no service account key exists. The threat model carries the new boundary with its findings ranked alongside the existing twelve.
+**Exit criteria:**
+
+- [ ] A call outside the allowlist is refused and appears in the audit log, proven by making one.
+- [ ] Test authorization at both layers independently. First, confirm that the HTTP boundary rejects a denied resource. Then bypass that boundary in a test and confirm that the tool handler also rejects it.
+- [ ] A token minted for a different audience is rejected, and so is an expired one.
+- [ ] The Phase 17 identity cannot call a tool scoped to Phase 15, and the reverse.
+- [ ] A log read with no line or time bound is refused rather than served, and a response over the size bound is refused rather than truncated.
+- [ ] No client holds a kubeconfig and no service account key exists, proven the way Phase 14 proved federation scoping.
+- [ ] The threat model carries the new boundary, with its findings ranked alongside the existing twelve.
 
 ### Phase 17: First responder on alert
 
+**The event path.** One path, stated rather than implied:
+
+`Cloud Monitoring alert → Pub/Sub notification channel → deterministic context collector → MCP reads through the Phase 16 gateway → model diagnosis → the existing email channel`
+
+The collector is code. It decides which alerts start a run, assembles the context, and enforces the budget. The model receives a prepared context and returns a diagnosis. Nothing reaches the model that the collector did not gather.
+
+**Where observability data is read.** The responder reads Cloud Monitoring and Cloud Logging directly, with its own Google identity and read-only grants. It does not read them through the Phase 16 gateway, and that gateway does not grow Google Cloud tools. Recorded in [decisions.md](decisions.md#observability-read-boundary).
+
 - Assemble context when an alert fires: recent events, the last rollout, Pod state, the metric that tripped, and the logs around it.
 - Produce a first diagnosis before a human opens a terminal.
-- Read only through the Phase 16 gateway.
-- Replay the Phase 10 failure drills as a scored evaluation set, and widen it past them. Two drills cannot establish reliability. Add a healthy cluster where the answer is no action, missing and stale telemetry, an unrelated rollout running concurrently, an ambiguous root cause, a log line carrying an instruction, a context that exceeds the budget, and a tool that times out.
+- Read cluster state only through the Phase 16 gateway.
+- Scope the observability identity to reads: `roles/monitoring.viewer` for metrics, and `roles/logging.viewAccessor` on one log view rather than `roles/logging.viewer` on the project.
+- Create that log view rather than reusing a built-in one. The project has two buckets today, `_Required` at 400 days and `_Default` at 30, and `_Default` carries only the stock `_AllLogs` and `_Default` views. Which logs the view admits is decided in Phase 17, once the responder's queries exist. That it is a dedicated view with its own grant is decided now.
+- Turn on Data Access audit logs for Cloud Logging and Cloud Monitoring. They are off by default, so without them "every call is logged with the identity that made it" is not true of the responder's reads. They land in `_Default` at 30-day retention, which is the log volume this costs.
+- Keep the responder out of its own audit trail. The stock `_Default` view excludes data access logs, so a view built on the same exclusion means the responder cannot read the log that records its reads.
+- Replay the Phase 10 failure drills as a scored evaluation set, and widen it. Two drills cannot establish reliability. Add a healthy cluster where the answer is no action, missing telemetry, stale telemetry, an unrelated rollout running at the same time, an ambiguous root cause, a log line carrying an instruction, a context over budget, and a tool that times out.
 - Score diagnosis accuracy, evidence grounding, false escalation, unsafe severity downgrade, abstention quality, latency, cost, and tool-policy violations. Abstention is a correct answer and is scored as one.
-- Keep a holdout set, and rerun the whole set whenever the model, the prompt, the tools or the corpus changes.
-- Bound cost per alert, and refuse rather than silently truncate when the context exceeds the budget.
+- Keep a holdout set. Rerun the whole set whenever the model, the prompt, the tools or the corpus changes.
+- Bound cost per alert, and emit the token count and estimated cost of each run.
 
-**Exit criteria:** The drill set is scored for time to a correct diagnosis, and the score is published including the drills the agent got wrong. A failed drill is recorded with its reason, in the same form as any other failure in this repository.
+**Exit criteria:**
 
-Documentation: [Security Command Center notifications](https://cloud.google.com/security-command-center/docs/how-to-notifications), [Pub/Sub](https://cloud.google.com/pubsub/docs/overview), [authenticate GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity), [Model Context Protocol](https://modelcontextprotocol.io/), [Vertex AI overview](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview), [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing)
+- [ ] The drill set is scored for time to a correct diagnosis, and the score is published including the drills the agent got wrong.
+- [ ] A failed drill is recorded with its reason, in the same form as any other failure in this repository.
+- [ ] A context over budget is refused with a stated reason rather than truncated.
+- [ ] A tool timeout produces an abstention, not a diagnosis built on whatever arrived first.
+- [ ] A log line carrying an instruction does not change the diagnosis.
+- [ ] A log query outside the responder's log view is refused, proven by making one, and the refusal appears in the Data Access audit log.
+
+Documentation: [Security Command Center notifications](https://cloud.google.com/security-command-center/docs/how-to-notifications), [Pub/Sub](https://cloud.google.com/pubsub/docs/overview), [authenticate GKE workloads](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity), [projected ServiceAccount tokens](https://kubernetes.io/docs/concepts/storage/projected-volumes/#serviceaccounttoken), [Model Context Protocol](https://modelcontextprotocol.io/), [log views](https://cloud.google.com/logging/docs/logs-views), [Data Access audit logs](https://cloud.google.com/logging/docs/audit/configure-data-access), [Vertex AI overview](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/overview), [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing)
 
 ## Milestone 5: The agent as a platform citizen
 
-Follows Milestone 4. The agents stop being services standing beside the platform and become part of it. Their state becomes Kubernetes state, and their output goes through the same delivery chain as every other change.
+Follows Milestone 4. The agents stop standing beside the platform and become part of it. Their state becomes Kubernetes state, and their output goes through the same delivery chain as every other change.
 
 ### Phase 18: Findings as Kubernetes objects
 
-- Define a custom resource for a finding and its triage verdict.
-- Write a controller that reconciles them, with conditions on `status`.
-- Make `kubectl get findings` the interface, with no database beside etcd.
-- Move Phase 15's output onto the resource rather than into a notification that scrolls past.
-- Version the resource from its first release, because it is an interface others will read.
-- Keep the object small. Normalized finding metadata, the verdict, conditions, and digests or links to evidence. No prompt, no log body and no model transcript in etcd.
-- Generate the manifest in [ai-k8s](https://github.com/sindredg/ai-k8s) from the controller's own types and carry it here on the same pinned commit as the image, because a hand-edited copy drifts from the types the controller compiles against.
+**What is authoritative.** Phase 15 writes a Cloud Storage ledger and this phase adds a custom resource. Only one of them can be the source of truth, and it is the ledger.
 
-**Exit criteria:** Findings from Phase 15 land as objects. The controller is killed mid-reconcile and rebuilds state from the cluster with no finding lost and none duplicated, recorded as a drill.
+| Component | Holds | Rebuilt from |
+| --- | --- | --- |
+| Cloud Storage ledger | Immutable evidence, one prefix per idempotency key, and the replay source | Nothing. It is the original |
+| Finding custom resource | Current operational state, and the human-facing interface | The ledger, by replay |
+| Controller | Nothing durable. It is a deterministic projection of ledger records onto custom resources | Not applicable |
+
+One rule keeps this honest: the custom resource carries no field that cannot be re-derived from the ledger. If a human action is added later, such as an acknowledgement, it is written back to the ledger before it counts as state. Recorded in [decisions.md](decisions.md#finding-state-authority).
+
+After a controller crash, state is rebuilt by replaying the ledger rather than by trusting what survived in etcd. A custom resource with no matching ledger record is an error, and the controller deletes it rather than reconciling it. The cluster alone cannot reconstruct a finding that exists only in the ledger, so a cluster rebuild is a replay and is timed as one.
+
+- Define a custom resource for a finding and its triage verdict.
+- Write a controller that projects ledger records onto those objects, with conditions on `status`.
+- Make `kubectl get findings` the interface. etcd holds no finding state the ledger cannot rebuild.
+- Move Phase 15's output onto the resource rather than into a notification that scrolls past.
+- Version the resource from its first release. It is an interface others will read.
+- Keep the object small: normalized finding metadata, the verdict, conditions, and digests or links to evidence. No prompt, no log body and no model transcript in etcd.
+- Generate the manifest in [ai-k8s](https://github.com/sindredg/ai-k8s) from the controller's own types, and carry it here on the same pinned commit as the image. A hand-edited copy drifts from the types the controller compiles against.
+
+**Exit criteria:**
+
+- [ ] Findings from Phase 15 land as objects.
+- [ ] Kill the controller mid-reconcile. It rebuilds from the ledger with no finding lost and none duplicated, recorded as a drill.
+- [ ] Delete every custom resource and let the controller rebuild them. The result matches the ledger exactly.
+- [ ] A custom resource with no ledger record is removed rather than reconciled.
 
 ### Phase 19: Remediation by pull request
 
-- Give the agent one actuator: a pull request against this repository.
-- Grant it no cluster write access, not through the Phase 16 gateway and not otherwise.
-- Authenticate it as a GitHub App on short-lived installation tokens, never a personal access token. Grant contents and pull requests, and nothing for Actions, secrets, rulesets or repository administration.
-- Let the existing controls gate it: required checks, checkov and kube-linter. Review is not among them today, and the correction is below.
-- Make a human merge the boundary rather than a claim. `required_approving_review_count` is `0` on `Protect main`, so the merge is currently unguarded, and merging needs the same `contents` permission the agent needs to push its branch. Decide between a required approval and a second identity, and record which, before the agent opens anything.
-- Record every proposal and its outcome, including the rejected ones, because the rejections are the evidence that the boundary holds.
+The agent's only write capability is a pull request against this repository. It holds no cluster write access, through the Phase 16 gateway or otherwise.
 
-**Exit criteria:** An agent-opened pull request is stopped by an existing status check, proven by watching it happen rather than by reasoning that it would. An agent-opened pull request cannot be merged by the agent, proven by attempting it. No agent identity holds a write verb on the cluster, proven the way Phase 14 proved federation scoping.
+**The human boundary is enforced, not claimed.** A human must merge every agent-created pull request, and the repository rules must be what stops the agent merging its own. Today `required_approving_review_count` is `0` on `Protect main`, so the merge is unguarded. The deferred gate between a required approval and a second identity is decided in favour of a required approval, recorded in [decisions.md](decisions.md#the-human-merge-boundary). The owner keeps ruleset bypass, because a single collaborator cannot approve their own pull requests. So the enforced property is that no automation identity can merge, which is narrower than every change being reviewed and is the property this phase needs.
 
-Documentation: [custom resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/), [the controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/), [Kubebuilder](https://book.kubebuilder.io/), [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning)
+What the GitHub App must and must not hold:
+
+| Property | Required state |
+| --- | --- |
+| Permissions | `contents` and `pull requests`. Nothing for Actions, secrets, rulesets or repository administration |
+| Credentials | Short-lived installation tokens. Never a personal access token |
+| Ruleset bypass | Not a bypass actor. The bypass list is read back and holds the repository owner alone |
+| Approval | Must not be able to approve. GitHub does not accept an approving review from a pull request's author, and the App is the author. Proven by attempting it |
+| Merge | Cannot merge. Required checks plus one required approval block it, and the App cannot supply the approval |
+| Cluster access | None. No Kubernetes RBAC, no gateway write tool, no kubeconfig |
+
+**The initial scope of a proposed change.** Enforced by a required status check that reads the diff, because a limit the agent applies to itself is not a limit.
+
+| Limit | Value |
+| --- | --- |
+| Allowed paths | `terraform/` and `kubernetes/` |
+| Rejected outright | Workflow and repository configuration files, anything under `.github/`, binaries, symlinks, submodule entries, file mode changes, and any file outside the allowed paths |
+| Rejected specifically | The evidence corpus: `.checkov.baseline`, `decisions.md` and `reference/threat-model.md`. The agent must not propose changes to the records its own verdicts cite |
+| Size | One finding per pull request, at most 10 files and 200 changed lines |
+
+Widening any row is a change to this table, and a human decision rather than a model decision.
+
+- Authenticate the agent as a GitHub App on short-lived installation tokens.
+- Let the existing controls gate it: required checks, checkov and kube-linter.
+- Add the scope check above as a required check, and validate it outside the model prompt.
+- Record every proposal and its outcome, including the rejected ones. The rejections are the evidence that the boundary holds.
+
+**Exit criteria:**
+
+- [ ] An agent-opened pull request is stopped by an existing status check, proven by watching it happen rather than by reasoning that it would.
+- [ ] The agent attempts to merge its own pull request and fails, proven by attempting it and recording the refusal.
+- [ ] The agent attempts to approve its own pull request and fails.
+- [ ] A proposal touching a workflow file, and separately one over the size limit, is rejected by the scope check.
+- [ ] The ruleset bypass list is read back and holds no automation identity.
+- [ ] No agent identity holds a write verb on the cluster, proven the way Phase 14 proved federation scoping.
+
+Documentation: [custom resources](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/), [the controller pattern](https://kubernetes.io/docs/concepts/architecture/controller/), [Kubebuilder](https://book.kubebuilder.io/), [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning), [GitHub App installation tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-as-a-github-app-installation), [repository rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 
 ## Later decision gates
 
@@ -445,7 +621,7 @@ Two gates closed into Milestone 3. Cloud Armor rate limiting was conditional on 
 
 A third closes into Milestone 4, on a condition it was not written for. Pub/Sub and workers were gated on synchronous processing becoming a limitation, and no such limitation arrived. Security Command Center pushes findings continuously instead, with no synchronous request to attach them to, so Phase 15 commits to the gate for a different reason than the one recorded here.
 
-Two of the [deferred decision records](decisions.md#deferred-decision-records) close with it, both on the condition they were written for. Vertex AI against self-hosted inference is decided in [decisions.md](decisions.md#inference-provider). A namespace per workload was gated on a third workload or a second owner arriving, and the triage worker is the third workload, decided in [decisions.md](decisions.md#agent-namespace).
+Three of the [deferred decision records](decisions.md#deferred-decision-records) close with it, each on the condition it was written for. Vertex AI against self-hosted inference is decided in [decisions.md](decisions.md#inference-provider). A namespace per workload was gated on a third workload or a second owner arriving, and the triage worker is the third workload, decided in [decisions.md](decisions.md#agent-namespace). The choice between a required approval and a second identity, to stop the Phase 19 agent merging its own pull request, is decided in favour of a required approval in [decisions.md](decisions.md#the-human-merge-boundary).
 
 Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters)
 
@@ -458,6 +634,13 @@ Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-ob
 - Create the load generator VM and its VPC only for a test session, and delete both afterwards.
 - Do not add GPU nodes unless self-hosted inference becomes a separate project goal.
 
+Four more apply to the agents, because their cost behaves differently from the platform's.
+
+- Keep idle agent workloads inside the existing two-node floor. The node pool scales to three, so an agent that forces a third node is a cost the deployment has to justify. Record whether a third node appeared and whether the agent caused it.
+- Report Security Command Center cost and Vertex AI inference cost as separate lines. They are one Google Cloud bill and two very different decisions.
+- Emit the token count and the estimated cost of every model run, so cost is attributable to a finding rather than to a month.
+- Enforce a spend ceiling in the agent itself. Credits cover the bill, so a billing budget threshold measures something other than what is being spent, and an alert that arrives after the spend is not a limit.
+
 ## Immediate next step
 
 Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
@@ -468,6 +651,10 @@ Phase 15 is under way, and Milestone 4 is not the milestone that used to be here
 
 The transport is applied and measured. A finding change reaches the subscription in about two seconds, and a message nobody acknowledges is republished to a dead letter topic after five attempts with its body intact. The apply also produced its own first finding: `BUCKET_LOGGING_DISABLED` against the verdict ledger bucket, five seconds after Terraform created it, against a `CKV_GCP_62` already in `.checkov.baseline`. That is the overlap thesis on a resource created during the measurement, and it moves the hand count to three of seven.
 
-What remains in Phase 15 is everything that reads. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged and no verdict has travelled the notification path the metric and alert policy already wait on. The `agents` namespace and the worker identity are written and not yet applied. Both exit-criteria drills are open, and the overlap measurement still has no provenance. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the transport changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, and `eventTime` tracks substance rather than scans, which is why the idempotency key holds.
+The identity and the namespace are applied and proven too. A Pod in `agents` federates to `k8-lab-triage`, pulls a real finding, and is refused a `get` on the same subscription. Pod Security and the quota each reject a probe built to trip only that one.
+
+What remains in Phase 15 is everything that reads. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged and no verdict has travelled the notification path the metric and alert policy already wait on. Every exit-criteria drill is open, and the overlap measurement still has no provenance. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the transport changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, and `eventTime` tracks substance rather than scans, which is why the idempotency key holds.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
+
+Phases 16 to 19 were revised on 2026-09-20, before any of them started. Four things that were implied are now decided: how one Pod authenticates to another, where observability data is read, what is authoritative between the ledger and the custom resource, and what enforces the human merge boundary. The decisions are under [Agents](decisions.md#agents).
