@@ -99,7 +99,9 @@ DNS tunnelling is the honest residual here and is accepted. It is slow, noisy in
 
 The table above describes `demo`, and stays true of `demo`. Phase 15 adds a second namespace, `agents`, where two of these rows read differently. The triage worker reaches Pub/Sub, Vertex AI, Cloud Storage and Cloud Logging, so egress is a real channel there rather than DNS alone, and it holds a Google Cloud identity through Workload Identity rather than no token at all. Both are why it is a separate namespace instead of a third Deployment in `demo`, recorded in [decisions.md](../decisions.md#agent-namespace): the alternative was widening egress for the two workloads that serve the public site.
 
-Neither is assessed here. The controls that would bound them, an egress policy naming only the Google APIs the worker calls and a service account scoped to four roles, are Phase 15's to build and Phase 16's revision is where this model rates them. Recorded now so the gap is visible while it is open, and because finding 11 otherwise reads as covering a cluster it no longer describes.
+Neither is assessed here, and they no longer stand at the same state. The service account scoped to four roles was built. The egress policy naming only the Google APIs the worker calls was not: NetworkPolicy cannot match hostnames, so the rule admitting them is everything outside the cluster's own address space on TCP 443, not named ranges, and the `agents` namespace currently admits all non-private destinations on that port. The VPC has Cloud NAT, so this is a working route to the internet rather than a theoretical one, and boundary 3's "no callback, no upload, and no mining pool" no longer holds for this namespace.
+
+The narrow option needs a Private Google Access DNS zone plus the `199.36.153.4/30` `restricted.googleapis.com` range. The subnet is already half-configured for it, since `private_ip_google_access = true`. Accepted for now and rated at the Phase 16 pass. Recorded now so the gap is visible while it is open, and because finding 11 otherwise reads as covering a cluster it no longer describes.
 
 ## Boundary 4: GitHub Actions to Google Cloud
 

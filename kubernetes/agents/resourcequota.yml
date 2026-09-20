@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agents-budget
+  namespace: agents
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  hard:
+    # One worker, sized so a runaway replica count cannot take the node
+    # pool away from the workloads that serve the public site.
+    requests.cpu: "1"
+    requests.memory: 1Gi
+
+    limits.cpu: "2"
+    limits.memory: 2Gi
+
+    pods: "4"

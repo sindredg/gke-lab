@@ -750,7 +750,7 @@ Decision: Managed inference on [Vertex AI](https://cloud.google.com/vertex-ai/ge
 
 Why: Closes the deferred gate on the condition it was written for. Nothing here trains or serves a model. The work is the machinery around the call, and a hosted endpoint keeps the cost posture's ban on GPU nodes intact while leaving the interesting engineering in the ingestion, correlation and evidence path.
 
-Cost: A per-call charge and a dependency on a model whose behaviour changes under a version that Google controls. The eval set exists to detect that, and the recorded model id is what makes a changed score attributable.
+Cost: A per-call charge and a dependency on a model whose behaviour changes under a version that Google controls. The eval set exists to detect that, and the recorded model id is what makes a changed score attributable. `roles/aiplatform.user`, bound at the project, is broader than what the worker calls: a publisher model needs only `aiplatform.endpoints.predict`, and this role also allows creating training jobs, pipelines, endpoints and notebooks. The threat model names resource abuse against the credit balance as an asset risk, and this is that exposure, held by the one identity that parses attacker-influenced strings. Known open item: a custom role scoped to the single permission is narrower and is deferred until the first apply proves the call path.
 
 Alternatives: Self-hosted inference on GPU nodes, which conflicts with the cost posture and moves the project's effort into serving rather than operating. A non-Google provider, which would need a second credential path when Workload Identity already covers this one.
 
@@ -766,7 +766,9 @@ It also bounds prompt injection. Finding bodies carry resource names chosen by w
 
 The tool-call trace is empty in Phase 15 and present anyway, so Phase 17 does not bump the schema version to add it.
 
-Cost: A verdict is only as good as the corpus it can cite, so a real risk that nothing in the corpus describes is reported as new rather than assessed. That is the intended failure direction.
+The `verdict` field is a closed set of four values: `accepted`, `contradicts_decision`, `new` and `insufficient_evidence`. The worker that emits them is built in `ai-k8s`, a separate repository, so this closed set is a cross-repository contract carried by a single string and recorded nowhere else. `terraform/modules/observability/triage.tf` alerts on `jsonPayload.verdict != "accepted"`, matching the exact lowercase string, so the worker must emit exactly that spelling for the quiet path to stay quiet.
+
+Cost: A verdict is only as good as the corpus it can cite, so a real risk that nothing in the corpus describes is reported as new rather than assessed. That is the intended failure direction. The alert match fails open in the other direction: any spelling of `accepted` other than the exact lowercase string matches `!=` and pages the platform owner, and the first real run is mostly accepted verdicts, so a mismatch is a mailbox flood rather than a missed page.
 
 Alternatives: Trust the model's citation, which is what produced the wrong overlap above. Free-text verdicts, which cannot be scored or diffed.
 

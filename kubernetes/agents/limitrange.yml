@@ -1,0 +1,20 @@
+# A container with no requests would otherwise be admitted against the
+# quota with nothing reserved, which is how a namespace overcommits.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agents-defaults
+  namespace: agents
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  limits:
+    - type: Container
+
+      default:
+        cpu: 500m
+        memory: 512Mi
+
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi

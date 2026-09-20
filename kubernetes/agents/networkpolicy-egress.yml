@@ -1,0 +1,81 @@
+# Restores cluster DNS, which the default deny removed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: agents
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  podSelector: {}
+
+  policyTypes:
+    - Egress
+
+  egress:
+    # NodeLocal DNSCache answers first, kube-dns when it is bypassed.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchExpressions:
+              - key: k8s-app
+                operator: In
+                values:
+                  - kube-dns
+                  - node-local-dns
+
+      # Answers too large for UDP are retried over TCP.
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Scoped to the worker's own label so this rule matches nothing until the
+# Deployment that carries it exists.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-google-apis
+  namespace: agents
+  labels:
+    app.kubernetes.io/part-of: k8-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: triage-worker
+
+  policyTypes:
+    - Egress
+
+  egress:
+    # Workload Identity resolves credentials through the GKE metadata
+    # server, which the gke-metadata-server DaemonSet proxies on 988 as
+    # well as the standard 80. Without this the identity cannot be
+    # assumed at all, so it stands apart from the API traffic below.
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 988
+
+    # NetworkPolicy cannot match hostnames and Google publishes no stable
+    # address list for these APIs, so this is everything outside the
+    # cluster's own address space rather than named ranges. Accepted for
+    # now and rated at the Phase 16 pass:
+    # reference/threat-model.md#boundary-3-pod-to-cluster.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

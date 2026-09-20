@@ -17,3 +17,13 @@ output "dashboard_id" {
   description = "Full resource name of the workload health dashboard"
   value       = google_monitoring_dashboard.workload_health.id
 }
+
+output "triage_alert_policy_name" {
+  description = "Full resource name of the triage verdict alert policy"
+  value       = google_monitoring_alert_policy.triage_verdict.name
+}
+
+output "triage_metric_name" {
+  description = "Logs-based metric the triage alert policy reads"
+  value       = google_logging_metric.triage_verdict.name
+}
