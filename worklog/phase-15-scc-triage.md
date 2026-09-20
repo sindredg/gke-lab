@@ -388,6 +388,139 @@ One detail that matters for the worker: the dead letter copies carry new `publis
 
 `deliveryAttempt` was not reliable to read. An earlier pass observed it at 2, then back at 1 after several more pulls, before incrementing cleanly from 3 to 5 here. Google documents it as approximate. The worker should treat it as a hint and rely on the dead letter topic as the actual boundary.
 
+## Slice 5: An identity with nowhere to stand, and then somewhere
+
+Status: Closed. The worker has an identity, a namespace and proven guardrails. It still does not exist.
+
+`modules/agent-identity` and `kubernetes/agents/` were both written in [#114](https://github.com/sindredg/k8-lab/pull/114) and neither was applied. They are one change rather than two, because the identity cannot be proven without the namespace.
+
+The Workload Identity binding is a string naming a Kubernetes namespace and service account:
+
+```hcl
+member = "serviceAccount:${var.project_id}.svc.id.goog[${var.namespace}/${var.kubernetes_service_account}]"
+```
+
+Terraform creates that binding whether or not `agents/triage-worker` exists, and reports success either way. So applying the module alone proves that six resources exist, not that any of them work.
+
+```text
+Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
+```
+
+![Six resources, nothing changed and nothing destroyed](../images/phase15-identity-applied.png)
+
+Read back from the API:
+
+```bash
+SA=$(terraform -chdir=terraform output -raw triage_service_account_email)
+gcloud pubsub subscriptions get-iam-policy scc-triage --format='value(bindings.role,bindings.members)'
+gcloud projects get-iam-policy example-security-lab \
+  --flatten='bindings[].members' --filter="bindings.members:${SA}" --format='value(bindings.role)'
+gcloud iam service-accounts get-iam-policy "$SA" --format='value(bindings.role,bindings.members)'
+gcloud iam service-accounts keys list --iam-account="$SA" --managed-by=user --format='value(name)'
+```
+
+```text
+roles/pubsub.subscriber   k8-lab-triage@..., service-222222222222@gcp-sa-pubsub...
+roles/aiplatform.user
+roles/logging.logWriter
+roles/iam.workloadIdentityUser   example-security-lab.svc.id.goog[agents/triage-worker]
+```
+
+The subscriber role is on the subscription rather than the project, the project holds exactly two roles for this identity, and the key list is empty. An empty key list is the pass, the same claim [Phase 14](phase-14-close-the-baseline.md) made about federation, made again for an agent.
+
+Then the namespace:
+
+![The namespace and its six objects](../images/phase15-agents-namespace.png)
+
+The annotation on the ServiceAccount matches `terraform output -raw triage_service_account_email` exactly. A mismatch here is not an error anywhere; it surfaces much later as a Pod quietly receiving the node identity instead.
+
+### Both guardrails reject, separately
+
+Two probes rather than one, because a Pod violating both would only ever show whichever admission plugin answered first.
+
+Privileged, and otherwise unremarkable:
+
+```text
+Error from server (Forbidden): pods "psa-probe" is forbidden: violates PodSecurity
+"restricted:v1.35": privileged (container "probe" must not set
+securityContext.privileged=true), allowPrivilegeEscalation != false, unrestricted
+capabilities, runAsNonRoot != true, seccompProfile
+```
+
+Fully `restricted` compliant and asking for twice the namespace budget, so Pod Security has nothing to say:
+
+```text
+Error from server (Forbidden): pods "quota-probe" is forbidden: exceeded quota:
+agents-budget, requested: requests.cpu=2, used: requests.cpu=0, limited: requests.cpu=1
+```
+
+### The identity, and the label that gates it
+
+Two Pods, identical in every respect except one label, both carrying `serviceAccountName: triage-worker`. `allow-google-apis` selects on `app.kubernetes.io/name: triage-worker`.
+
+Which identity does the selected Pod get:
+
+```bash
+kubectl exec -n agents wi-probe -- curl -s -H 'Metadata-Flavor: Google' \
+  http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/email
+```
+
+```text
+k8-lab-triage@example-security-lab.iam.gserviceaccount.com
+```
+
+Not `k8-lab-nodes@`. The binding created against a namespace that did not exist now resolves from inside a Pod.
+
+The same request from the Pod the policy does not select:
+
+```text
+HTTP 000
+curl exit: 28
+```
+
+A timeout, not a refusal. And that Pod still resolves DNS, because `allow-dns` selects every Pod:
+
+```text
+Name:    pubsub.googleapis.com
+Address: 209.85.233.95
+```
+
+So the block is `default-deny` refusing the TCP connection, rather than the Pod being broken. One label is the only difference between the two results.
+
+### The grant is scoped to the verb, not the resource
+
+A first pass asked whether the worker could read the subscription, with a `GET`, and got `403`. The test was wrong and the answer was right. `roles/pubsub.subscriber` grants `pubsub.subscriptions.consume`, not `pubsub.subscriptions.get`.
+
+Same Pod, same token, same subscription, three calls:
+
+| Call | Result |
+| --- | --- |
+| `POST .../subscriptions/scc-triage:pull` | `200`, with a message and an `ackId` |
+| `GET .../subscriptions/scc-triage` | `403` |
+| `POST .../upload/storage/v1/b/k8-lab-verdicts-.../o` | `200` |
+
+The worker can consume from the subscription and write to the ledger, and cannot read the subscription's own configuration. That is a narrower grant than "access to the subscription", and it is worth having proven rather than assumed, because the difference is invisible until something calls the wrong verb.
+
+### The drill produced the finding it then consumed
+
+The privileged Pod in the first drill was rejected at admission. Event Threat Detection raised a finding about it anyway:
+
+```text
+ACTIVE  Privilege escalation: launch of privileged Kubernetes container  2026-09-20T16:41:33.434Z
+```
+
+![The finding the drill produced](../images/phase15-threat-finding.png)
+
+![Detection fires on the request, naming the Pod that was never admitted](../images/phase15-threat-finding-pod.png)
+
+The detector fires on the API request rather than on a running container, so the guardrail working does not prevent the finding. Its description says "A potentially malicious actor created a Pod that contains privileged containers". No Pod was created. Pod Security refused it, and `kubectl get pods -n agents` was empty throughout.
+
+That is the most useful thing in this slice. A finding whose description asserts something that did not happen is exactly what the triage worker exists to resolve, and it cannot resolve it from the finding body alone: nothing in the payload says the request was denied. The corpus has to carry that Pod Security `restricted` is enforced on this namespace, and the verdict has to reason from it.
+
+![Event Threat Detection, class Threat, severity Low](../images/phase15-threat-finding-row.png)
+
+The finding then travelled the path this phase built, and the worker identity pulled it in the `:pull` above. A guardrail refused an action, a detector noticed the refusal, the notification config streamed it, and an identity federated through Workload Identity consumed it. Nothing was arranged for that. It fell out of running the drills in order.
+
 ## What is applied
 
 ```bash
@@ -428,7 +561,10 @@ One notification channel, which is the requirement: verdicts reach the address t
 | `k8s_container` is required, and the wrong resource type fails silently | Proven, by writing an entry that landed as `global` |
 | A replacement of the public certificate cannot happen as a side effect | Proven for the cause found, and guarded by `prevent_destroy` |
 | Findings reach the topic, subscription and dead letter | Proven. A real finding from a real detector arrived about two seconds after the change, on both a mute and an unmute |
-| Findings reach the cluster | Not started. There is no worker and nothing consumes the subscription |
+| Findings reach the cluster | Proven as far as identity. A Pod in `agents` federated to `k8-lab-triage` and pulled a real finding from the subscription. There is still no worker |
+| The agents namespace rejects what it should | Proven. Pod Security and the quota each refused a probe built to trip only that one |
+| The worker identity is scoped to the verb | Proven. `:pull` returns 200, `GET` on the same subscription returns 403, the ledger write returns 200 |
+| No agent identity holds a service account key | Proven. The user-managed key list is empty |
 | A message nobody acknowledges is parked rather than lost | Proven. Five attempts, then republished to `scc-findings-dead` with the body intact |
 | The idempotency key in the contract distinguishes a change from a redelivery | Yes, for substance. `eventTime` holds across re-evaluation and moves on a real change. Attribute-only changes such as a mute collapse into a redelivery, deliberately |
 | Security Command Center and `.checkov.baseline` overlap | Three of seven active misconfigurations, after this phase's own bucket raised `BUCKET_LOGGING_DISABLED` against the `CKV_GCP_62` already in the baseline. Still by hand, not the provenanced measurement |

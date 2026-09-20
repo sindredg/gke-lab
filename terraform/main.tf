@@ -109,3 +109,23 @@ module "findings" {
 
   depends_on = [google_project_service.required]
 }
+
+module "agent_identity" {
+  source = "./modules/agent-identity"
+
+  project_id = var.project_id
+  account_id = "k8-lab-triage"
+
+  # Matches the annotation committed on the agents ServiceAccount. If either
+  # changes, kubernetes/agents/serviceaccount.yml changes with it.
+  namespace                  = "agents"
+  kubernetes_service_account = "triage-worker"
+
+  # Module outputs rather than literals. Both grants are scoped to resources
+  # module.findings creates, and the references are what order them after it.
+  # The same strings passed literally would validate and then fail on apply.
+  subscription_name  = module.findings.subscription_name
+  ledger_bucket_name = module.findings.bucket_name
+
+  depends_on = [google_project_service.required]
+}

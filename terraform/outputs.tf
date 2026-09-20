@@ -97,3 +97,8 @@ output "findings_notification_config" {
   description = "Resource name of the Security Command Center notification config."
   value       = module.findings.notification_config_name
 }
+
+output "triage_service_account_email" {
+  description = "Identity the triage worker federates to. Matches the annotation on the agents ServiceAccount."
+  value       = module.agent_identity.service_account_email
+}
