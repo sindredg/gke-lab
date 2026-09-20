@@ -391,6 +391,10 @@ Lives in [ai-k8s](https://github.com/sindredg/ai-k8s), built by this repository 
 - [ ] Guard the `ai-k8s` pin with the same upstream check-run query that guards the `sky` pin, from the first bump rather than as a follow-up.
 - [ ] Verify the pinned commit's signature and authorship before it is built. This is the one supply-chain control that moves earlier than the rest, for the reason recorded in [decisions.md](decisions.md#supply-chain-control-timing).
 
+Both are written. `watch-ai-k8s.yml` carries the check-run query and the signature and authorship refusal, and `.github/ai-k8s.ref` pins the first agent commit. Neither is ticked, because the workflow has not proposed a bump yet and a workflow that has never run is not a control. The first bump is the evidence.
+
+The pipeline publishes the image and does not roll it out. It holds no RBAC in `agents`, so an operator applies the manifests, for the reason recorded in [decisions.md](decisions.md#agent-rollout-authority).
+
 **The verdict contract.** Four values. Deterministic resolution runs before the model is called, and its outcome is a recorded field rather than a judgement the model makes.
 
 | Verdict | Condition | Citations |

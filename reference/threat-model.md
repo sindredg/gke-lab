@@ -131,7 +131,7 @@ Two repositories cross this boundary by the same mechanism. `sky` has since 2026
 | | Threat | State |
 | --- | --- | --- |
 | T | An unreviewed upstream commit reaching production | **Mitigated, with a residual.** `watch-sky.yml` now queries the upstream SHA's check runs and refuses to propose a pin whose CI is not green, counting anything unfinished as unknown rather than as a pass. The residual stands: no workflow event fires from a workflow token, so this repository's own CI still does not run on the pin bump. The upstream commit is validated; the bump itself is reviewed by a human reading a diff |
-| S | A commit from an unexpected author | Accepted for now. The workflow fetches by SHA and verifies it resolves, but checks neither signature nor authorship |
+| S | A commit from an unexpected author | **Mitigated on the `ai-k8s` edge, unproven.** `watch-ai-k8s.yml` refuses to propose a pin whose commit is not verified or whose author is not expected, checked through the GitHub API before the fetch. It has not run yet, so this is written rather than measured. The `sky` edge is unchanged and still accepted: the workflow there fetches by SHA and verifies it resolves, but checks neither |
 | R | What was deployed and when | Mitigated. The pin is a file with history, and the image tag carries the upstream SHA |
 
 The pin itself is a strong control and is worth keeping in view: production does not follow upstream's `main`, it follows a commit a human merged. The weakness was what informed that human, and querying `sky`'s check runs for the SHA turned out to be a small change to an existing workflow. It has shipped.
@@ -149,6 +149,10 @@ Re-ranked on 2026-09-20, against this second edge and against Phase 19's ability
 Phase 19 does not widen this edge either. Its scope check rejects any proposal touching the evidence corpus, so the narrowing above, that nothing the agent commits can add the `.checkov.baseline` entry a forged acceptance would have to resolve against, still holds once the agent can open pull requests here.
 
 One control on this boundary moves earlier instead. Threat S above, a commit from an unexpected author, was accepted because `sky`'s commits are all the owner's. `ai-k8s` holds the logic that decides what the owner is told about the platform's security, and has one author from its first commit, so its pinned commit is checked for signature and authorship before it is built. Recorded in [decisions.md](../decisions.md#supply-chain-control-timing) and carried as a Phase 15 item rather than waiting for the Phase 16 pass.
+
+That control is now written. `watch-ai-k8s.yml` carries both gates from its first commit: the check-run query, and a refusal to propose a pin that is unverified or authored by anyone but `sindredg`. Neither has proposed a bump yet, so the row above says mitigated and unproven rather than closed. The first bump is what turns it into evidence.
+
+One thing this boundary gains that the `sky` edge does not have. The agent image is built from two trees, and the corpus half is this repository at the merge commit, so a verdict records both the agent commit and the corpus commit it was produced from. A forged acceptance would have to resolve against a corpus entry, and the provenance says which tree that entry came from.
 
 ## Boundary 6: DNS and certificate issuance
 

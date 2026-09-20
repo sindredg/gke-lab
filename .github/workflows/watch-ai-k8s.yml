@@ -1,0 +1,225 @@
+# Opens the pull request that moves the ai-k8s pin to upstream's head.
+#
+# Two gates, not one. The upstream check-run query is the control watch-sky added after the fact,
+# and it is here from the first bump. The signature and authorship check is new: boundary 5 records
+# that sky's edge verifies neither, and the agent edge carries more than the sky edge does, so this
+# is the one supply-chain control that moves earlier than the rest.
+name: Watch ai-k8s
+
+on:
+  schedule:
+    # An hour after Watch sky, so two bump pull requests do not arrive together.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: watch-ai-k8s
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Propose the pinned commit
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The agent repository is public, so this needs no credential.
+      - name: Read the agent's head and the pin
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          workflow=.github/workflows/deploy-triage-worker.yml
+          repository=$(grep -oP 'AGENT_REPOSITORY: https://github.com/\K[^.]+' "$workflow")
+          current=$(tr -d '[:space:]' < .github/ai-k8s.ref)
+          head=$(gh api "repos/${repository}/commits/main" -q .sha)
+
+          if [ -z "$head" ] || [ ${#head} -ne 40 ]; then
+            echo "::error::could not read the head of ${repository}"
+            exit 1
+          fi
+
+          {
+            echo "repository=${repository}"
+            echo "current=${current}"
+            echo "head=${head}"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$current" = "$head" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already pinned to ${head}."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The pin is what production builds and this pull request is its review.
+      - name: Check the upstream commit passed its own CI
+        id: upstream
+        if: steps.read.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          runs=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}/check-runs" \
+            -q '.check_runs[] | "\(.status):\(.conclusion):\(.name)"')
+
+          if [ -z "$runs" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${HEAD_SHA:0:7} has no checks yet. Leaving the pin for tomorrow."
+            exit 0
+          fi
+
+          # Anything unfinished means the answer is not known yet, not that it passed.
+          pending=$(printf '%s\n' "$runs" | grep -cv '^completed:' || true)
+          if [ "$pending" -gt 0 ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${HEAD_SHA:0:7} still has ${pending} check(s) running. Leaving the pin for tomorrow."
+            exit 0
+          fi
+
+          # neutral and skipped are not failures; everything else is.
+          bad=$(printf '%s\n' "$runs" | grep -vE '^completed:(success|neutral|skipped):' || true)
+          if [ -n "$bad" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Agent commit not proposed"
+              echo ""
+              echo "\`${HEAD_SHA:0:7}\` did not pass its own CI:"
+              echo ""
+              printf '%s\n' "$bad" | sed 's/^/- /'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${HEAD_SHA:0:7} did not pass its own CI. The pin stays where it is."
+            exit 0
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "${HEAD_SHA:0:7} passed $(printf '%s\n' "$runs" | wc -l) check(s)."
+
+      # A commit with a valid signature from an expected author, or no bump. This closes the
+      # residual on boundary 5 for this edge: the worker runs with a Google Cloud identity, so an
+      # unexpected author reaching the pin reaches that identity.
+      - name: Check the commit is signed by an expected author
+        id: signature
+        if: steps.read.outputs.changed == 'true' && steps.upstream.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+          EXPECTED_AUTHORS: sindredg
+        run: |
+          commit=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}")
+          verified=$(printf '%s' "$commit" | jq -r '.commit.verification.verified')
+          reason=$(printf '%s' "$commit" | jq -r '.commit.verification.reason')
+          author=$(printf '%s' "$commit" | jq -r '.author.login // ""')
+
+          if [ "$verified" != "true" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${HEAD_SHA:0:7} is not verified (${reason}). The pin stays where it is."
+            {
+              echo "### Agent commit not proposed"
+              echo ""
+              echo "\`${HEAD_SHA:0:7}\` carries no valid signature: \`${reason}\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # An empty login means the commit is not attributed to a GitHub account at all.
+          if [ -z "$author" ] || ! printf '%s\n' $EXPECTED_AUTHORS | grep -qxF "$author"; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${HEAD_SHA:0:7} is authored by '${author:-unattributed}', which is not expected. The pin stays where it is."
+            {
+              echo "### Agent commit not proposed"
+              echo ""
+              echo "\`${HEAD_SHA:0:7}\` is authored by \`${author:-unattributed}\`, and this edge expects one of: \`${EXPECTED_AUTHORS}\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "${HEAD_SHA:0:7} is signed (${reason}) and authored by ${author}."
+
+      # A commit unreachable from a ref can stop resolving; check it now.
+      - name: Check the commit can still be fetched
+        if: steps.read.outputs.changed == 'true' && steps.signature.outputs.eligible == 'true'
+        env:
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          git init agent
+          git -C agent remote add origin "https://github.com/${REPOSITORY}.git"
+          git -C agent fetch --depth 1 origin "$HEAD_SHA"
+          git -C agent checkout FETCH_HEAD
+          test -f agent/Dockerfile
+          test -f agent/corpus/mapping.yaml
+
+      - name: Open or update the bump
+        if: steps.read.outputs.changed == 'true' && steps.signature.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ steps.read.outputs.repository }}
+          CURRENT: ${{ steps.read.outputs.current }}
+          HEAD_SHA: ${{ steps.read.outputs.head }}
+        run: |
+          branch=bump-ai-k8s
+          pin=.github/ai-k8s.ref
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Without a local branch copy, --force-with-lease rejects a push.
+          git fetch --depth 1 origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" || true
+          carried=$(git show "origin/${branch}:${pin}" 2>/dev/null | tr -d '[:space:]' || true)
+
+          if [ "$carried" = "$HEAD_SHA" ]; then
+            echo "${branch} already carries ${HEAD_SHA:0:7}."
+          else
+            git checkout -B "$branch"
+            printf '%s\n' "$HEAD_SHA" > "$pin"
+            git add "$pin"
+
+            subject=$(gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" -q '.commit.message' | head -1)
+            git commit -m "ci: pin ${HEAD_SHA:0:7} from the ai-k8s repository" \
+                       -m "${subject}" \
+                       -m "Opened by the Watch ai-k8s workflow. Merging builds and publishes the image."
+            git push --force-with-lease origin "$branch"
+          fi
+
+          # gh pr view also finds closed ones, so only an open one counts.
+          if [ "$(gh pr view "$branch" --json state -q .state 2>/dev/null)" = "OPEN" ]; then
+            echo "The open pull request carries ${HEAD_SHA:0:7}."
+            exit 0
+          fi
+
+          # GitHub can refuse this; the branch is pushed either way.
+          if ! gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "ci: pin ${HEAD_SHA:0:7} from the ai-k8s repository" \
+            --body "$(printf '%s\n' \
+              "\`${REPOSITORY}\` moved past the commit this cluster builds." \
+              "" \
+              "| | |" \
+              "|---|---|" \
+              "| pinned | [\`${CURRENT:0:7}\`](https://github.com/${REPOSITORY}/commit/${CURRENT}) |" \
+              "| head | [\`${HEAD_SHA:0:7}\`](https://github.com/${REPOSITORY}/commit/${HEAD_SHA}) |" \
+              "" \
+              "[What changed](https://github.com/${REPOSITORY}/compare/${CURRENT}...${HEAD_SHA})" \
+              "" \
+              "The commit passed its own CI, carries a valid signature from an expected" \
+              "author, and was fetched on this run, so it resolves." \
+              "" \
+              "Merging builds and publishes the image. It does not roll out: the pipeline" \
+              "holds no RBAC in the agents namespace, so an operator applies the manifests." \
+              "" \
+              "CI does not run on this pull request: it was opened with the workflow" \
+              "token, and GitHub does not raise workflow events from those. The push" \
+              "to main after merging does run it.")"; then
+            echo "::warning::Could not open the pull request. Open it from https://github.com/${GITHUB_REPOSITORY}/compare/main...${branch}, or allow GitHub Actions to create pull requests in the repository settings."
+          fi

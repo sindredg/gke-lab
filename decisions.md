@@ -924,6 +924,18 @@ Cost: This one is worth stating plainly. With one collaborator, a required appro
 
 Alternatives: A second identity that approves, which is automation approving automation. Requiring two approvals, which one operator cannot satisfy. Leaving the count at `0` and relying on the agent not calling the merge API, which is the claim this decision replaces.
 
+### Agent rollout authority
+
+Decision: The pipeline builds and publishes the agent image and stops there. It holds no Kubernetes RBAC in `agents`, so an operator applies the manifests. `demo` keeps the rollout it already has.
+
+Why: The two namespaces are not the same risk. Patching a Deployment in `demo` reaches a web server that holds no credential, which is why `container.clusterViewer` plus a namespaced `patch` was a proportionate grant there. Patching a Deployment in `agents` reaches `k8-lab-triage`, and an image swap inherits every grant that identity holds: consume on the subscription, object writes on the verdict ledger, and invoke on Vertex AI. That turns a compromised pipeline from a defacement into a path to the one identity in this project that parses attacker-influenced strings.
+
+[Threat model](reference/threat-model.md#boundary-4-github-actions-to-google-cloud) boundary 4 records that a compromised pipeline is bounded by a namespaced Role with no reach outside `demo`. Granting a second Role would widen that measured claim, and this phase is the wrong place to widen it: Phase 15 exists to read findings, not to expand the pipeline.
+
+Cost: Every pin bump needs a human `kubectl apply` after the image publishes, which is friction the `sky` path does not have and a step that can be forgotten. The run summary prints the exact command with the digest in it, so the friction is a copy and paste rather than a lookup. Agent releases are also deliberate rather than continuous, and Milestone 5 already puts a human in the loop for anything the agent changes, so this is consistent with where the project is going rather than an exception to it.
+
+Alternatives: A `deploy` Role in `agents` mirroring the one in `demo`, which is one file and hands the pipeline a route to the agent identity. A separate deploy identity scoped to `agents`, which is a second credential to hold and does not change what an image swap reaches.
+
 ## Project and process
 
 ### Project focus

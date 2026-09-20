@@ -1,0 +1,133 @@
+# Builds the triage worker from a pinned ai-k8s commit and publishes it.
+#
+# It publishes and stops. The pipeline holds no RBAC in the agents namespace, so an operator applies
+# the manifests: patching a Deployment in demo reaches a web server holding no credential, and
+# patching one in agents reaches k8-lab-triage and its four grants. Recorded in
+# decisions.md#agent-rollout-authority.
+name: Deploy triage worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kubernetes/agents/**'
+      - '.github/ai-k8s.ref'
+      - '.github/workflows/deploy-triage-worker.yml'
+      - '.checkov.baseline'
+      - 'decisions.md'
+      - 'reference/threat-model.md'
+  workflow_dispatch:
+
+# id-token: write lets the runner request the OIDC token. Required.
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-agents
+  cancel-in-progress: false
+
+env:
+  REGION: europe-north1
+  PROJECT_ID: example-security-lab
+  IMAGE: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/triage-worker
+
+  # The agent publishes no image of its own, so it is built here, exactly as sky is.
+  AGENT_REPOSITORY: https://github.com/sindredg/ai-k8s.git
+
+  # The pin is data, because a workflow token cannot push to .github/workflows.
+  PIN_FILE: .github/ai-k8s.ref
+
+jobs:
+  publish:
+    name: Build and publish
+    runs-on: ubuntu-24.04
+
+    steps:
+      # The corpus sources live here, so this checkout is half the build context.
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: k8-lab
+
+      - name: Read the pinned commit
+        working-directory: k8-lab
+        run: |
+          ref=$(tr -d '[:space:]' < "$PIN_FILE")
+          if ! printf '%s' "$ref" | grep -qE '^[0-9a-f]{40}$'; then
+            echo "::error::$PIN_FILE does not hold a full commit SHA: '$ref'"
+            exit 1
+          fi
+          echo "AGENT_REF=$ref" >> "$GITHUB_ENV"
+          echo "CORPUS_COMMIT=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "Building ${ref}."
+
+      - name: Fetch the agent source at the pinned commit
+        run: |
+          git init ai-k8s
+          git -C ai-k8s remote add origin "$AGENT_REPOSITORY"
+          git -C ai-k8s fetch --depth 1 origin "$AGENT_REF"
+          git -C ai-k8s checkout FETCH_HEAD
+          git -C ai-k8s rev-parse HEAD
+
+      # Trades the OIDC token for short-lived credentials. No key involved.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Authenticate Docker against Artifact Registry
+        run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # The context is the directory holding both checkouts, because corpusc reads both trees.
+      # A malformed corpus entry, an id collision, a citation that does not resolve or a pairing
+      # with no reason fails this step, which is the point of compiling at build time.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: ai-k8s/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            AGENT_DIR=ai-k8s
+            KLAB_DIR=k8-lab
+            AGENT_COMMIT=${{ env.AGENT_REF }}
+            CORPUS_COMMIT=${{ env.CORPUS_COMMIT }}
+          tags: ${{ env.IMAGE }}:${{ env.AGENT_REF }}-${{ github.run_id }}.${{ github.run_attempt }}
+
+      # The digest is what deploys. The tag above is only for a reader.
+      - name: Report the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Image published"
+            echo ""
+            echo '```'
+            echo "${IMAGE}@${DIGEST}"
+            echo '```'
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| agent commit | \`${AGENT_REF}\` |"
+            echo "| corpus commit | \`${CORPUS_COMMIT}\` |"
+            echo ""
+            echo "This pipeline publishes and stops. It holds no RBAC in \`agents\`, so an operator rolls it out:"
+            echo ""
+            echo '```bash'
+            echo "kubectl set image -f kubernetes/agents/deployment.yml --local -o yaml \\"
+            echo "  worker=${IMAGE}@${DIGEST} | kubectl apply -f -"
+            echo "kubectl rollout status deployment/triage-worker -n agents --timeout=180s"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
