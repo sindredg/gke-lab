@@ -377,7 +377,7 @@ Denied, and the denial is part of the design:
 
 One grant above is wider than the boundary the table describes, and one was narrowed:
 
-- [ ] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs. Written as `k8_lab_model_invoker`; proven by the first model call through it.
+- [x] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs. `k8_lab_model_invoker` carried five calls, and removing its binding produced `403 Permission 'aiplatform.endpoints.predict' denied`.
 - [x] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object. [Slice 8](worklog/phase-15-scc-triage.md#the-grant-read-back-and-probed).
 
 Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) and rated at the Phase 16 threat model pass.
@@ -442,20 +442,20 @@ Every write uses a create-only precondition, so the ledger is append-only and tw
 - [x] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library reports `global`, the metric still counts it, and the alert never fires.
 - [x] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
 - [x] Run as one replica in `agents`, pulling continuously.
-- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently. All three classes have been through the worker, external exposure last in [slice 8](worklog/phase-15-scc-triage.md#a-verdict-through-the-narrowed-role). The worker counted 598 vulnerabilities skipped, and [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) reconciles them with the 653 counted offline. Unticked: why vulnerabilities are out of scope is not recorded anywhere.
+- [x] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently. All three classes have been through the worker, external exposure last in [slice 8](worklog/phase-15-scc-triage.md#a-verdict-through-the-narrowed-role). The worker counted 598 vulnerabilities skipped, and [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) reconciles them with the 653 counted offline. Why they are out of scope is recorded in [decisions.md](decisions.md#vulnerability-scope).
 - [x] Count how many findings the rules settled without a model. That number says whether the rules are doing their job.
 
 **Increment 2, the model:**
 
-Built in [ai-k8s#4](https://github.com/sindredg/ai-k8s/pull/4), with the scope recorded in [decisions.md](decisions.md#model-scope). Every item stays unticked until the end-of-phase run proves it against Vertex AI.
+Built in [ai-k8s#4](https://github.com/sindredg/ai-k8s/pull/4), with the scope recorded in [decisions.md](decisions.md#model-scope). Proven against Vertex AI in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled).
 
-- [ ] Call Vertex AI only for what deterministic matching could not settle.
-- [ ] Resolve every citation the model returns against the baked-in corpus before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`.
-- [ ] Bound tokens and tool calls. Refuse rather than silently truncate when the input exceeds the budget.
-- [ ] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced.
-- [ ] Emit the token count and the estimated cost of each run, on the verdict record and as a label on the log entry.
-- [ ] Stop calling the model when a daily spend ceiling is reached, and record the refusal. A budget alert is not a limit, and credits make its thresholds misleading.
-- [ ] Alert when a finding is dead-lettered. A ledger outage of about a minute parks findings on the dead letter subscription, and nothing re-drives or alerts on it. Written as `Security finding was dead-lettered`, on `dead_letter_message_count` for `scc-triage`.
+- [x] Call Vertex AI only for what deterministic matching could not settle. Five live calls, all on unmatched findings. That matched findings are not sent is proven by unit test.
+- [x] Resolve every citation the model returns against the baked-in corpus before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`. Six real citations in [slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything), all resolved; an unresolvable one is proven by unit test.
+- [x] Bound tokens and tool calls. Refuse rather than silently truncate when the input exceeds the budget. An estimated 11909 tokens was refused against a budget of 1000 with no call, and output cut at 16 tokens was refused. The zero tool budget is proven by unit test.
+- [x] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced. `modelVersion` returns the undated name, so the model is named and not pinned. Recorded is not reproducible: on identical input one verdict flipped between runs, in [slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything).
+- [x] Emit the token count and the estimated cost of each run, on the verdict record and as a label on the log entry.
+- [x] Stop calling the model when a daily spend ceiling is reached, and record the refusal. Refused at a ceiling of 0.001 USD with 0.0299 reserved. The message prints the ceiling to two places, as `0.00`, which is open in ai-k8s.
+- [x] Alert when a finding is dead-lettered. `Security finding was dead-lettered` opened an incident 8 minutes after the timeout drill parked a finding. Two parkings 6 minutes apart shared one incident.
 - [x] Notify through the existing email channel rather than adding a second one. Proven on a deterministic verdict: the alert fired and the mail arrived at the Platform owner channel. Increment 2 adds nothing to that path.
 
 **Exit criteria:**
@@ -464,22 +464,37 @@ Measurements:
 
 - [x] The overlap [Phase 14](worklog/phase-14-close-the-baseline.md) left open is measured with provenance: how many Security Health Analytics findings name something `.checkov.baseline` already prices. Three of seven, read from the worker's own verdicts after the [backfill](worklog/phase-15-scc-triage.md#slice-10-the-backfill-and-the-overlap-measured-by-the-worker).
 - [x] The count of findings the rules settled without a model is published alongside it. Fifteen of fifteen, with no model wired in yet. [Slice 10](worklog/phase-15-scc-triage.md#slice-10-the-backfill-and-the-overlap-measured-by-the-worker).
-- [ ] Security Command Center cost and Vertex AI cost are reported as separate lines, not as one agent cost. Security Command Center reads zero while the trial runs, and recording that is the point: it stops a free trial being mistaken for a cheap subscription.
-- [ ] The tier is re-read when the trial ends, and the result is recorded. If it drops to Standard, Event Threat Detection goes with it and this phase triages one class fewer, which the plan states rather than the worker quietly seeing less.
+- [x] Security Command Center cost and Vertex AI cost are reported as separate lines, not as one agent cost. 0 on the trial, and 0.040709 USD estimated for fourteen calls, drills and cleanup, in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled). Estimated from token counts; the billing export was not read.
+- [ ] The tier is re-read when the trial ends, and the result is recorded. If it drops to Standard, Event Threat Detection goes with it and this phase triages one class fewer, which the plan states rather than the worker quietly seeing less. A dated follow-up: it does not hold Phase 15 open.
 - [x] The idle agent fits on the existing two-node floor. The deployment records whether a third node appeared, and whether the agent caused it.
 
 Failure paths, each proven by making it happen:
 
-- [ ] Model output that does not validate against the schema is rejected, and the finding lands as `insufficient_evidence` rather than as a parsed guess.
-- [ ] A Vertex AI timeout, and separately a permission failure, leave the message unacknowledged and the ledger record readable.
+- [x] Model output that does not validate against the schema is rejected, and the finding lands as `insufficient_evidence` rather than as a parsed guess. Output cut at 16 tokens landed as `insufficient_evidence` naming `MAX_TOKENS`.
+- [x] A Vertex AI timeout, and separately a permission failure, leave the message unacknowledged and the ledger record readable. Five deliveries each, then dead-lettered, and 0 ledger objects for either finding.
 - [x] A ledger write failure stops the worker before it notifies, and nothing is acknowledged. Create removed from the role, five deliveries refused with a 403, nothing classified, notified or acknowledged. Proven at the `received` write, not at `notification_attempted`. [Slice 8](worklog/phase-15-scc-triage.md#a-ledger-write-failure-made-to-happen).
 - [x] A redelivered Pub/Sub message produces one verdict, not two, proven by replaying a real delivery. The unmute arrived under the key already acknowledged, the ledger did not move, and the drift net logged the changed body digest.
 - [x] Kill the worker after inference and before persistence. The finding is re-inferred and triaged once. Nothing was on record at the crash, and the recovery wrote four states inside 285ms.
 - [x] Kill the worker after persistence and before notification. The finding is notified after the restart. `notification_attempted` was absent at the crash, and the record preceded the log entry by 7.18ms on recovery.
 - [x] Kill the worker after notification and before acknowledgement. The finding is notified again, and the ledger shows one `notification_attempted` record rather than two verdicts. Three notifications, one record.
-- [ ] An input larger than the token budget is refused with `insufficient_evidence` naming the budget, not truncated.
+- [x] An input larger than the token budget is refused with `insufficient_evidence` naming the budget, not truncated.
 - [x] Stop the agent while a finding is waiting. After the agent restarts, verify that it processes the finding successfully. Scaled to 0, muted a finding, scaled to 1, and the waiting message was triaged.
-- [ ] A finding carrying an instruction is triaged to the same verdict as one without. Test every untrusted field the worker reads, not the resource name alone: category, resource name, description, external URI, source properties, and the finding's own severity. Use a real finding from a real detector.
+- [x] A finding carrying an instruction is triaged to the same verdict as one without. Test every untrusted field the worker reads, not the resource name alone: category, resource name, description, external URI, source properties, and the finding's own severity. Use a real finding from a real detector. Live: a real finding carried the instruction in `resourceName`, `externalUri` and `sourceProperties`, and got the same verdict as one without. Category, description and severity come from the detector and cannot carry one, so they are covered by unit test, as decided in [injection test scope](decisions.md#injection-test-scope).
+
+### Phase 15b: Patch the images this repository builds
+
+Split out of Phase 15 on 2026-09-21. Triage counts vulnerabilities and does not answer them, as recorded in [decisions.md](decisions.md#vulnerability-scope). Something else has to.
+
+Security Command Center reported 38 active `OS_VULNERABILITY` findings in the two workloads on 2026-09-21: 21 in `sky` and 17 in `nginx`, 8 of them CRITICAL, in curl, perl and openssl, none with known exploitation. They are Debian 12 packages in the images this repository builds and pins, not in GKE's node image, which [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) showed GKE patches by itself.
+
+- [ ] Rebuild `sky` on a patched base image and re-pin `nginx` to a patched digest.
+- [ ] Record which of the 38 closed, measured by Security Command Center rather than by the rebuild.
+- [ ] Decide what triggers the next rebuild, so the count does not grow back unnoticed.
+
+**Follow-ups from Phase 15, not blocking:**
+
+- [ ] Fix the spend ceiling refusal, which prints a 0.001 USD ceiling as `0.00 USD`.
+- [ ] Make a borderline contradiction reproducible: a fixed `seed`, or two calls that must agree before `contradicts_decision` is raised. [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) measured the flip.
 
 ### Phase 16: Cluster access through an audited gateway
 
@@ -668,7 +683,7 @@ The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each o
 
 That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
 
-Increment 2 is built and not yet running: the model code is in [ai-k8s#4](https://github.com/sindredg/ai-k8s/pull/4), and the narrower model grant and a dead-letter alert are written here. Testing is batched at the end of the phase: one apply, one rollout with the model enabled, then every open failure path and the injection drill in one pass. The overlap is measured by the worker: three of seven, after a backfill that muted and unmuted the eight findings it had not seen. The ledger grant is narrowed to create, get and list, and a ledger write failure has been made to happen against the live worker. It showed that a ledger outage longer than about a minute parks findings on the dead letter subscription, where nothing re-drives or alerts on them. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
+Phase 15 is closed. The worker triages every in-scope finding, the rules settle what the reviewed mapping pairs, and the model settles the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled). [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) scored the model on twelve real findings: it changes one outcome the rules cannot reach, and on a borderline one its verdict is not stable at temperature 0. One item waits on the calendar: the tier when the trial ends. Phase 15b patches the images whose vulnerabilities triage counts and does not answer, and Phase 16 follows.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
 

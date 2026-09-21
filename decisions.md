@@ -782,6 +782,36 @@ Cost: `contradicts_decision` no longer requires `corpus_match: matched`. `corpus
 
 Alternatives: The model on every in-scope finding, re-checking each accepted pairing for a contradiction, which costs a call per finding to second-guess pairings already reviewed for their exact resource. The model writing explanations only, with the worker's verdict unchanged, which is cheapest and never classifies anything.
 
+### Vulnerability scope
+
+Decision: The triage worker counts vulnerability findings and does not triage them. They are acknowledged as `vulnerabilities_skipped`, and no verdict or notification is produced.
+
+Why: Triage asks whether this repository has decided about something. A vulnerability is never a decision. It is fixed by rebuilding or re-pinning an image, and the record of that is the image pin, not the corpus. So the corpus has nothing to cite, and every vulnerability would settle as `new`: one mail each, burying the findings that need a decision under ones that need a rebuild.
+
+The volume says the same. On 2026-09-21 the project held 653 vulnerability findings against 15 of every other class. 598 closed in one burst after a GKE node upgrade, which as verdicts would have been 598 mails about a change nobody made.
+
+They have two owners, and neither is triage, as [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) measured:
+
+| Where | Count | Owner | Fixed by |
+| --- | --- | --- | --- |
+| GKE node VMs | 598, closed | GKE | Node auto-upgrade on the `REGULAR` channel, which retired them without action here |
+| `sky` Deployment | 21 active | This repository | Rebuilding `sky` on a patched base image |
+| `nginx` Deployment | 17 active | This repository | Re-pinning `nginx` to a patched digest |
+
+Cost: The 38 active vulnerabilities in `sky` and `nginx`, 8 of them CRITICAL in curl, perl and openssl, have no process acting on them. None has known exploitation. Out of scope for triage is not handled, so the gap is recorded as open work in the plan. Counting keeps the volume visible, and it is not a response.
+
+Alternatives: Triage them with the rules alone, which is one `new` mail per vulnerability. Send them to the model, which pays per finding to say `new`. Drop them at the notification config filter, which hides the volume where nothing reports it.
+
+### Injection test scope
+
+Decision: The injection drill runs on a real finding for the fields whoever creates a resource can set: the resource name, and the external URI and source properties derived from it. Category, description and severity are covered by unit tests.
+
+Why: A detector writes category, description and severity from its own catalogue. Planting an instruction there needs control of Security Command Center, and anyone holding that already controls every message the worker reads. The worker puts every finding field into one JSON block, escaped the same way, so a field is not trusted more for being written by a detector. The unit tests prove that for all of them. The live drill proved the three fields an attacker can reach, in [slice 11](worklog/phase-15-scc-triage.md#the-injection).
+
+Cost: The exit criterion as first written asked for every field on a real finding, which no real detector can produce. This narrows it to what is reachable, and says so.
+
+Alternatives: A synthetic finding published into the topic with an instruction in every field, which tests the same code path as the unit tests while making the ledger claim a delivery Security Command Center never sent. Leaving the criterion open, which leaves it open forever.
+
 ### Triage verdict record
 
 Decision: Every verdict is a versioned record carrying the verdict, its severity and confidence, cited evidence, a reasoning summary, missing evidence, a recommended action, an empty tool-call trace, and provenance: model id, generation parameters, prompt digest, corpus commit, agent commit and image digest. Output that does not validate against the schema is rejected rather than parsed.

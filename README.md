@@ -185,3 +185,4 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)
 - [IAM and Workload Identity Federation reference](reference/iam-and-federation.md)
+- [Triage worker reference](reference/triage-worker.md)

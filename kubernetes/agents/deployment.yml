@@ -48,9 +48,9 @@ spec:
 
       containers:
         - name: worker
-          # Published by the Deploy triage worker run on 2026-09-21, from ai-k8s f3f931d. The digest
+          # Published by the Deploy triage worker run on 2026-09-21, from ai-k8s 7135820. The digest
           # is what deploys; a rollout replaces it in place and the registry has immutable tags.
-          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/triage-worker@sha256:b3770360802ba4567b171016dc11f10bb04167a30a2d67fc687503e2adf3803d
+          image: europe-north1-docker.pkg.dev/example-security-lab/k8-lab/triage-worker@sha256:dff5c0bbdc96b854f9cea93922a82ecf21bd0f2141e2ec337d5624e7515fb6d2
           imagePullPolicy: IfNotPresent
 
           # Serves the two probe paths and nothing else. No Service points at it: the kubelet reaches
@@ -64,6 +64,10 @@ spec:
             - -subscription=scc-triage
             - -ledger-bucket=k8-lab-verdicts-example-security-lab
             - -corpus=/corpus/corpus.json
+
+            # Increment 2. Unmatched findings go to the model; the rest of the model flags keep
+            # their defaults: 16384 input tokens, 1024 output, 30s timeout, 1.00 USD a day.
+            - -model=gemini-2.5-flash
 
           env:
             # The worker refuses to start without all six. A missing one produces a monitored
@@ -89,7 +93,7 @@ spec:
             # cluster credential to read its Pod status with, so provenance takes it from here.
             # Keep it in step with the image above; a rollout changes both.
             - name: IMAGE_DIGEST
-              value: sha256:b3770360802ba4567b171016dc11f10bb04167a30a2d67fc687503e2adf3803d
+              value: sha256:dff5c0bbdc96b854f9cea93922a82ecf21bd0f2141e2ec337d5624e7515fb6d2
 
           # The worker handles no traffic, so nothing outside it could otherwise tell a process that
           # is triaging from one that is up and triaging nothing.
