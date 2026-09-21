@@ -39,3 +39,13 @@ variable "uptime_check_regions" {
     error_message = "At least three checker regions are required"
   }
 }
+
+variable "triage_subscription" {
+  description = "Short name of the subscription the triage worker pulls from, whose dead-lettered messages are alerted on"
+  type        = string
+}
+
+variable "dead_letter_subscription" {
+  description = "Short name of the subscription holding dead-lettered findings, named in the alert's instructions"
+  type        = string
+}

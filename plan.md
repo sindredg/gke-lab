@@ -377,7 +377,7 @@ Denied, and the denial is part of the design:
 
 One grant above is wider than the boundary the table describes, and one was narrowed:
 
-- [ ] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs.
+- [ ] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs. Written as `k8_lab_model_invoker`; proven by the first model call through it.
 - [x] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object. [Slice 8](worklog/phase-15-scc-triage.md#the-grant-read-back-and-probed).
 
 Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) and rated at the Phase 16 threat model pass.
@@ -447,12 +447,15 @@ Every write uses a create-only precondition, so the ledger is append-only and tw
 
 **Increment 2, the model:**
 
+Built in [ai-k8s#4](https://github.com/sindredg/ai-k8s/pull/4), with the scope recorded in [decisions.md](decisions.md#model-scope). Every item stays unticked until the end-of-phase run proves it against Vertex AI.
+
 - [ ] Call Vertex AI only for what deterministic matching could not settle.
 - [ ] Resolve every citation the model returns against the baked-in corpus before accepting the verdict. A citation that does not resolve forces `insufficient_evidence`.
 - [ ] Bound tokens and tool calls. Refuse rather than silently truncate when the input exceeds the budget.
 - [ ] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced.
 - [ ] Emit the token count and the estimated cost of each run, on the verdict record and as a label on the log entry.
 - [ ] Stop calling the model when a daily spend ceiling is reached, and record the refusal. A budget alert is not a limit, and credits make its thresholds misleading.
+- [ ] Alert when a finding is dead-lettered. A ledger outage of about a minute parks findings on the dead letter subscription, and nothing re-drives or alerts on it. Written as `Security finding was dead-lettered`, on `dead_letter_message_count` for `scc-triage`.
 - [x] Notify through the existing email channel rather than adding a second one. Proven on a deterministic verdict: the alert fired and the mail arrived at the Platform owner channel. Increment 2 adds nothing to that path.
 
 **Exit criteria:**
@@ -665,7 +668,7 @@ The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each o
 
 That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
 
-What remains in Phase 15 before the model is the injection drill. The overlap is measured by the worker: three of seven, after a backfill that muted and unmuted the eight findings it had not seen. The ledger grant is narrowed to create, get and list, and a ledger write failure has been made to happen against the live worker. It showed that a ledger outage longer than about a minute parks findings on the dead letter subscription, where nothing re-drives or alerts on them. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
+Increment 2 is built and not yet running: the model code is in [ai-k8s#4](https://github.com/sindredg/ai-k8s/pull/4), and the narrower model grant and a dead-letter alert are written here. Testing is batched at the end of the phase: one apply, one rollout with the model enabled, then every open failure path and the injection drill in one pass. The overlap is measured by the worker: three of seven, after a backfill that muted and unmuted the eight findings it had not seen. The ledger grant is narrowed to create, get and list, and a ledger write failure has been made to happen against the live worker. It showed that a ledger outage longer than about a minute parks findings on the dead letter subscription, where nothing re-drives or alerts on them. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
 

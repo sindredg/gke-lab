@@ -36,3 +36,9 @@ variable "ledger_role_id" {
   type        = string
   default     = "k8_lab_ledger_appender"
 }
+
+variable "model_role_id" {
+  description = "ID of the custom role holding the one permission a model call needs"
+  type        = string
+  default     = "k8_lab_model_invoker"
+}

@@ -118,3 +118,74 @@ resource "google_monitoring_alert_policy" "triage_verdict" {
     EOT
   }
 }
+
+# A finding that fails five deliveries is parked on the dead letter topic
+# with its body intact. Parked is not lost, but nothing re-drives that
+# subscription, so without this a ledger or model outage of about a
+# minute leaves findings nobody triages and nobody hears about. Five
+# attempts took 68 seconds when the ledger write failure was drilled.
+#
+# Counted on the source subscription as each message is forwarded, so the
+# messages already parked do not hold the alert open.
+resource "google_monitoring_alert_policy" "triage_dead_letter" {
+  project      = var.project_id
+  display_name = "Security finding was dead-lettered"
+  combiner     = "OR"
+  severity     = "ERROR"
+
+  conditions {
+    display_name = "A finding exhausted its deliveries on the triage subscription"
+
+    condition_threshold {
+      filter = join(" AND ", [
+        "metric.type = \"pubsub.googleapis.com/subscription/dead_letter_message_count\"",
+        "resource.type = \"pubsub_subscription\"",
+        "resource.label.subscription_id = \"${var.triage_subscription}\"",
+      ])
+
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email.id]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  documentation {
+    subject   = "Triage: a finding was dead-lettered"
+    mime_type = "text/markdown"
+
+    content = <<-EOT
+      A finding failed five deliveries to the triage worker and was moved to the dead letter topic. It has not been triaged, and nothing will retry it.
+
+      Read the worker's errors first. A ledger or model failure logs `triage failed, leaving the message unacknowledged` once per attempt:
+
+      ```
+      kubectl logs -n agents deploy/triage-worker --since=1h | grep "triage failed"
+      ```
+
+      Peek at what is parked, without acknowledging it:
+
+      ```
+      gcloud pubsub subscriptions pull ${var.dead_letter_subscription} --limit=10 --format=json
+      ```
+
+      Once the cause is fixed, a real state change re-drives the finding: mute it, then unmute it. The worker triages it under its own key.
+    EOT
+  }
+}
+

@@ -91,6 +91,10 @@ module "observability" {
   cluster_name = module.gke.cluster_name
   namespace    = "demo"
 
+  # Module outputs, so the alert follows the subscriptions if they are renamed.
+  triage_subscription      = module.findings.subscription_name
+  dead_letter_subscription = module.findings.dead_letter_subscription_name
+
   depends_on = [google_project_service.required, module.gke, module.gateway]
 }
 

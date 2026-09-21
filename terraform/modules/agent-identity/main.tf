@@ -47,15 +47,28 @@ resource "google_storage_bucket_iam_member" "ledger_writer" {
   member = "serviceAccount:${google_service_account.triage.email}"
 }
 
-# roles/aiplatform.user is broader than what this worker calls: a
-# publisher model needs only aiplatform.endpoints.predict, and a custom
-# role holding that one permission would be narrower than this, which
-# also allows creating training jobs, pipelines, endpoints and notebooks.
-# Deferred rather than fixed, because a custom role needs a definition
-# and an apply to verify against, and this branch is not applied yet.
+# One permission, for the one call the worker makes: generateContent on a
+# publisher model. roles/aiplatform.user, which this replaces, also allows
+# creating training jobs, pipelines, endpoints and notebooks, which is
+# credit-balance abuse held by the one identity that parses
+# attacker-influenced strings.
+resource "google_project_iam_custom_role" "model_invoker" {
+  project     = var.project_id
+  role_id     = var.model_role_id
+  title       = "Model invoker"
+  description = "Call a Vertex AI publisher model. Nothing else."
+
+  permissions = [
+    "aiplatform.endpoints.predict",
+  ]
+}
+
+# A new custom role can be invisible to IAM for a short while after it is
+# created, and this binding then fails with "does not exist in the
+# resource's hierarchy". Applying again binds it. See troubleshooting.md.
 resource "google_project_iam_member" "vertex_user" {
   project = var.project_id
-  role    = "roles/aiplatform.user"
+  role    = google_project_iam_custom_role.model_invoker.id
   member  = "serviceAccount:${google_service_account.triage.email}"
 }
 

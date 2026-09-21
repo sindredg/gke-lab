@@ -770,6 +770,18 @@ Cost: A per-call charge and a dependency on a model whose behaviour changes unde
 
 Alternatives: Self-hosted inference on GPU nodes, which conflicts with the cost posture and moves the project's effort into serving rather than operating. A non-Google provider, which would need a second credential path when Workload Identity already covers this one.
 
+### Model scope
+
+Decision: The model sees only findings the reviewed mapping did not match and that parsed completely. It may return `new`, `contradicts_decision` or `insufficient_evidence`. It never returns `accepted`: the value is absent from its output schema, refused by the worker, and rejected by the validator when `settled_by` is `model`.
+
+Why: The rules already settle every finding, as `accepted` when a reviewed pairing exists and as `new` when none does, so "what the rules could not settle" needed a meaning. Acceptance is the quiet path, and two records here say a model is the wrong thing to open it. [Triage verdict record](#triage-verdict-record) measured name-based pairing doubling the reported overlap, and [agent permission boundary](#agent-permission-boundary) names this worker as the one identity reading attacker-influenced strings. Keeping acceptance with the mapping means the worst an injected instruction achieves is a louder verdict. It cannot make a finding quiet.
+
+What the model adds is judgement on the unmatched ones: explaining a new finding, catching a recorded decision the finding contradicts, and refusing when the verdict depends on a fact the corpus does not carry. The privileged container finding from Phase 15's own drill is the last case exactly.
+
+Cost: `contradicts_decision` no longer requires `corpus_match: matched`. `corpus_match` records what deterministic resolution found, and a contradiction found on an unmatched finding carries `none` and stands on its resolved citations. A model call per unmatched finding: ten of fifteen at the backfill. A matched pairing whose decision has quietly stopped holding is not re-checked.
+
+Alternatives: The model on every in-scope finding, re-checking each accepted pairing for a contradiction, which costs a call per finding to second-guess pairings already reviewed for their exact resource. The model writing explanations only, with the worker's verdict unchanged, which is cheapest and never classifies anything.
+
 ### Triage verdict record
 
 Decision: Every verdict is a versioned record carrying the verdict, its severity and confidence, cited evidence, a reasoning summary, missing evidence, a recommended action, an empty tool-call trace, and provenance: model id, generation parameters, prompt digest, corpus commit, agent commit and image digest. Output that does not validate against the schema is rejected rather than parsed.
@@ -779,7 +791,7 @@ Citation requirements differ by verdict, because not every finding has something
 | Verdict | Citation requirement |
 | --- | --- |
 | `accepted` | At least one corpus citation that resolves |
-| `contradicts_decision` | At least one corpus citation that resolves |
+| `contradicts_decision` | At least one corpus citation that resolves. `corpus_match` may be `none`, see [model scope](#model-scope) |
 | `new` | The source finding, and `corpus_match: none` recorded explicitly |
 | `insufficient_evidence` | Optional. The record lists what evidence is missing |
 
@@ -892,7 +904,7 @@ Three denials are load-bearing. No Security Command Center access, because the w
 
 The append-only ledger is what makes the second denial implementable. Every state object is written once with a create-only precondition, so the worker never needs a permission it should not hold.
 
-Cost: One grant is still wider than this boundary describes. `roles/aiplatform.user` is bound at the project and allows creating training jobs, pipelines, endpoints and notebooks; a publisher model needs `aiplatform.endpoints.predict` alone. It stays open in the plan until an applied call path shows what the call needs.
+Cost: The model grant is written as `k8_lab_model_invoker`, a custom role holding `aiplatform.endpoints.predict` alone, replacing `roles/aiplatform.user`, which also allows creating training jobs, pipelines, endpoints and notebooks. It is proven when a model call succeeds through it at the end of Phase 15.
 
 The ledger grant was narrowed on 2026-09-21 from `roles/storage.objectUser` to `k8_lab_ledger_appender`, a custom role holding `storage.objects.create`, `get` and `list`, one permission per call the worker makes. Overwrite needs delete as well as create, so the role states append-only independently of the create-only precondition. `objectCreator` plus `objectViewer` was the predefined alternative, and it carries folder, managed folder and multipart upload permissions the worker never calls. The cost is a role definition to keep in step with the worker's calls: a new call is a 403 until the role grows. [Slice 8](worklog/phase-15-scc-triage.md#slice-8-the-ledger-grant-narrowed-and-then-broken-on-purpose) has the evidence.
 
