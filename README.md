@@ -1,6 +1,8 @@
-# Kubernetes on GKE
+# Secure Kubernetes Platform on GKE
 
-A Kubernetes cluster on Google Cloud, set up with Terraform and deployed to from GitHub Actions. It currently runs two workloads, `nginx` and `sky`, behind a Gateway with managed TLS. Each phase has a worklog, and each design choice is recorded in [decisions.md](decisions.md).
+A private GKE cluster, a couple of workloads, and an AI agent that handles the security findings nobody wants to read.
+
+Terraform builds it. GitHub Actions ships to it, keylessly. Each phase has a worklog, and [decisions.md](decisions.md) covers the why.
 
 ## Live
 
@@ -83,7 +85,7 @@ flowchart TB
 
 ## Status
 
-Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operate the platform. Every platform claim has recorded commands, results and evidence, and the gaps that are not yet closed are recorded with them.
+Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operate the platform. Open gaps are listed next to what works.
 
 | Area | State |
 | --- | --- |
@@ -99,10 +101,14 @@ Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operat
 | Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 | Modelled | Eight trust boundaries with [a threat model](reference/threat-model.md), measured rather than assumed, and scanned daily from outside |
 | Streaming | Security Command Center findings reach a subscription in about two seconds, and park in a dead letter topic when nothing acknowledges them |
+| Triaged | An agent in its own namespace settles findings against a corpus compiled into its image, holding four scoped grants and no cluster credential |
+| Drilled | The worker is stopped at each of the three crash boundaries and recovers at each, notifying again rather than silently skipping |
 
 Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
 
-Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The transport is applied and measured, and nothing reads it. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is empty, so no finding is triaged, no verdict has travelled the notification path, and every exit-criteria drill is open. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted by hand rather than with the provenance the exit criteria ask for.
+Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is deployed and has settled five findings without calling a model. The three crash boundaries are drilled, along with a redelivery and a finding that arrived while the worker was stopped.
+
+Still open: external exposure has not been through the deployed worker, a ledger write failure is covered by a unit test rather than against the live worker, and the prompt injection drill wants a real finding. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted offline rather than with the provenance the exit criteria ask for. Increment 2, the model, has not started.
 
 ## Measured
 
@@ -120,6 +126,8 @@ Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The transport is a
 | HPA decision to a Pod running on a new node | 97s |
 | Security Command Center finding change to a message on the subscription | about 2 seconds |
 | Unacknowledged message to the dead letter topic | 5 delivery attempts |
+| Outstanding message returned after the worker is killed | about 25 seconds, on stream close rather than on the 120s deadline |
+| Crash to a recorded verdict on redelivery | four ledger states in 285ms |
 
 Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md) and [Phase 12d](worklog/phase-12d-autoscaling.md).
 
