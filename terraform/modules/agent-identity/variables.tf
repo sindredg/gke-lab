@@ -30,3 +30,9 @@ variable "ledger_bucket_name" {
   description = "Bucket the worker may read and write verdicts in"
   type        = string
 }
+
+variable "ledger_role_id" {
+  description = "ID of the custom role holding the worker's three ledger permissions"
+  type        = string
+  default     = "k8_lab_ledger_appender"
+}

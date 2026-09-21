@@ -805,3 +805,23 @@ from an example. Writing `GCPBackendPolicy`, a published example showed
 What to check first next time: if the kind is not in the Kubernetes API,
 `kubeconform` did not check it.
 
+## Phase 15: Security Command Center triage
+
+### A custom role cannot be bound in the apply that creates it
+
+Issue: an apply replacing a bucket binding's role with a new custom role
+destroyed the old binding, created the role, and then failed on the new
+binding with `Error 400: Role (...) does not exist in the resource's
+hierarchy`. The worker was left with no ledger grant until a second apply.
+
+Cause: the binding was attempted the moment the role returned, and a new
+custom role is not yet visible to the bucket's IAM check. Changing the role
+on a `google_storage_bucket_iam_member` forces replacement, and the destroy
+runs first, so the failure lands after the old grant is gone.
+
+Fix: run `terraform apply` again. The role exists and the second attempt
+binds it.
+
+What to check first next time: create the custom role in one apply and bind
+it in the next, or check the gap is acceptable before applying. A `-/+` on an
+IAM binding is a window with no grant, whatever happens after it.

@@ -1,13 +1,13 @@
 # Worklog: Phase 15 Security Command Center triage
 
 Date: 2026-09-20, extended 2026-09-21
-Status: In progress. The transport, the identity and the worker are applied. One real finding has been triaged end to end, from the subscription through the ledger to the mail the platform owner received. Every failure-path drill is open, and the model is not called yet.
+Status: In progress. The transport, the identity and the worker are applied, and the worker has triaged findings from all three in-scope classes end to end. The crash boundaries and a ledger write failure are drilled against the live worker. The overlap measurement and the injection drill are open, and the model is not called yet.
 
 ## Goal
 
 Read the findings Security Command Center has produced since 2026-09-18, correlate them against this repository's own records, and notify through the existing email channel. See [Phase 15](../plan.md#phase-15-security-command-center-triage). The contract the work is held to was settled first, in [#113](https://github.com/sindredg/k8-lab/pull/113).
 
-This worklog covers the infrastructure, the transport and Increment 1 of the worker. The overlap measurement the exit criteria name is open, every failure-path drill is open, and Increment 2 has not started.
+This worklog covers the infrastructure, the transport and Increment 1 of the worker. The overlap measurement the exit criteria name is open, and Increment 2 has not started.
 
 The transport changed no decision and added evidence to two. [Triage idempotency](../decisions.md#triage-idempotency) now carries what `eventTime` was measured to track, and the warning that a finding cannot be written back at the name it is read at.
 
@@ -931,6 +931,203 @@ Two classes have now been through the deployed worker, misconfiguration and thre
 
 All four muted findings were unmuted afterwards, and the project reports none muted.
 
+External exposure went through the worker in [slice 8](#a-verdict-through-the-narrowed-role).
+
+## Slice 8: The ledger grant, narrowed and then broken on purpose
+
+Run on 2026-09-21. The worker's ledger grant was cut to the three calls it makes, and a verdict was written through it. Then create was taken away, and a finding was published into the gap.
+
+### Three calls, three permissions
+
+The worker touches the bucket in three places, all in `internal/gcp/storage.go` at `f3f931d`:
+
+| Call | Permission |
+| --- | --- |
+| `Create`, with `DoesNotExist`, which is `ifGenerationMatch=0` | `storage.objects.create` |
+| `Read` | `storage.objects.get` |
+| `List` under a key's prefix | `storage.objects.list` |
+
+The predefined pair that comes closest carries more than that:
+
+```bash
+gcloud iam roles describe roles/storage.objectViewer --format='value(includedPermissions)'
+gcloud iam roles describe roles/storage.objectCreator --format='value(includedPermissions)'
+```
+
+```text
+resourcemanager.projects.get;resourcemanager.projects.list;storage.folders.get;storage.folders.list;storage.managedFolders.get;storage.managedFolders.list;storage.objects.get;storage.objects.list
+orgpolicy.policy.get;resourcemanager.projects.get;resourcemanager.projects.list;storage.folders.create;storage.managedFolders.create;storage.multipartUploads.abort;storage.multipartUploads.create;storage.multipartUploads.listParts;storage.objects.create;storage.objects.createContext
+```
+
+So the role is written out: `k8_lab_ledger_appender`, holding the three permissions in the table and nothing else. Leaving out `storage.objects.delete` removes overwrite as well, because replacing an existing object needs delete alongside create.
+
+### The apply that removed the grant and could not add one back
+
+```text
+module.agent_identity.google_storage_bucket_iam_member.ledger_writer: Destruction complete after 4s
+module.agent_identity.google_project_iam_custom_role.ledger_appender: Creation complete after 3s
+module.agent_identity.google_storage_bucket_iam_member.ledger_writer: Creating...
+Error: Error applying IAM policy for storage bucket "b/k8-lab-verdicts-example-security-lab":
+googleapi: Error 400: Role (projects/example-security-lab/roles/k8_lab_ledger_appender)
+does not exist in the resource's hierarchy., invalid
+```
+
+The role did exist:
+
+```text
+projects/example-security-lab/roles/k8_lab_ledger_appender  GA  storage.objects.create;storage.objects.get;storage.objects.list
+```
+
+The binding was attempted the moment the role returned, and a new custom role is not yet visible to a bucket's IAM check at that point. A second `terraform apply` created the binding.
+
+Between the two applies the worker held no ledger grant at all. The binding is identified by its role, so changing the role is a destroy and a create, and the destroy goes first. Nothing arrived in the window. The counters did not move and `failed` stayed at 0:
+
+```text
+received 598  vulnerabilities_skipped 598  failed 0
+```
+
+Had a finding arrived, it would have taken the path the drill below proves. The near miss is recorded in [troubleshooting.md](../troubleshooting.md#a-custom-role-cannot-be-bound-in-the-apply-that-creates-it).
+
+### The grant, read back and probed
+
+```text
+projects/example-security-lab/roles/k8_lab_ledger_appender serviceAccount:k8-lab-triage@example-security-lab.iam.gserviceaccount.com
+```
+
+A probe Pod carrying the worker's ServiceAccount and the label `allow-google-apis` selects on, against one object of its own under `drill/`:
+
+```text
+identity: k8-lab-triage@example-security-lab.iam.gserviceaccount.com
+object:   drill/ledger-grant/20260921T121631Z.json
+create, ifGenerationMatch=0          200
+read                                 200
+list under the prefix                200
+create again, ifGenerationMatch=0    412
+overwrite, no precondition           403
+delete                               403
+body afterwards                      {"probe":1}
+```
+
+Two refusals on the same object, from two layers. The `412` is the precondition, and the `403` is the role. Either would keep the record on its own.
+
+### A verdict through the narrowed role
+
+An `EXTERNAL_EXPOSURE` finding the ledger had not seen was muted at 14:32:35.790Z:
+
+```text
+received.json      generation 1790001160816557
+classified.json    generation 1790001160878996
+acknowledged.json  generation 1790001160948391
+```
+
+```text
+verdict     accepted
+category    EXTERNALLY_EXPOSED_SERVICE_VIA_LOAD_BALANCER
+resource    //compute.googleapis.com/projects/example-security-lab/global/forwardingRules/gkegw1-example-demo-external-http
+citation    decision:ingress-mechanism
+settled_by  rules
+```
+
+Three states, written 132ms apart end to end. There is no `notification_attempted` because an `accepted` verdict does not notify. This is also the first external exposure finding through the deployed worker, so all three in-scope classes have now been seen by it.
+
+The unmute at 14:45:33Z arrived under the acknowledged key. The worker logged drift and wrote nothing.
+
+### A ledger write failure, made to happen
+
+`storage.objects.create` was removed from the role, leaving `get` and `list`:
+
+```bash
+gcloud iam roles update k8_lab_ledger_appender --project=example-security-lab \
+  --remove-permissions=storage.objects.create
+```
+
+The drill waited until the probe saw the refusal:
+
+```text
+14:47:08Z create 200  list 200
+14:47:23Z create 200  list 200
+14:47:39Z create 200  list 200
+14:47:54Z create 200  list 200
+14:48:10Z create 403  list 200
+```
+
+`MASTER_AUTHORIZED_NETWORKS_DISABLED`, not yet in the ledger, was muted at 14:49:00.885Z:
+
+```text
+14:49:02.452Z ERROR triage failed, leaving the message unacknowledged
+  error: record receipt: close .../cb34741b4887.../ACTIVE/received.json: googleapi: Error 403:
+  k8-lab-triage@... does not have storage.objects.create access to the Google Cloud Storage object.
+14:49:13.849Z ERROR triage failed, leaving the message unacknowledged
+14:49:29.896Z ERROR triage failed, leaving the message unacknowledged
+14:49:49.903Z ERROR triage failed, leaving the message unacknowledged
+14:50:10.965Z ERROR triage failed, leaving the message unacknowledged
+```
+
+```text
+worker restarts               0
+ledger objects for cb34741b   none
+verdict log entries           none
+```
+
+The list in `resume` succeeded and the create failed, so this is a write failure and not an unreachable bucket. The worker stopped before it classified, before it notified, and before it acknowledged. It kept serving throughout.
+
+The failure landed on the first write, `received`. The write the notification ordering rests on is `notification_attempted`, and that one was not aimed at. Doing so needs a drill flag in the worker, in the shape of `-crash-at`.
+
+### Five attempts is about a minute
+
+The five deliveries span 68 seconds. The retry policy allows up to 600 seconds between attempts, and five attempts never get near it. The message then moved to the dead letter topic:
+
+```text
+2026-09-21T14:50:41.897Z  cb34741b4887  MASTER_AUTHORIZED_NETWORKS_DISABLED  mute=MUTED  source attempts=5
+```
+
+So a ledger outage longer than about a minute parks every finding that arrives during it. Parked, not lost: the body is intact on `scc-findings-dead-sub`. Nothing re-drives that subscription, and nothing alerts on it, so recovery is a person noticing.
+
+### Recovery
+
+`storage.objects.create` was added back with `gcloud iam roles update --add-permissions`, and the probe saw it return:
+
+```text
+14:53:54Z create 200  list 200
+```
+
+The dead-lettered message stays where it is. The finding was re-driven by a real state change, the unmute at 14:54:27.039Z:
+
+```text
+received.json      generation 1790002469841607
+classified.json    generation 1790002469897291
+acknowledged.json  generation 1790002469968523
+```
+
+```text
+verdict     accepted
+category    MASTER_AUTHORIZED_NETWORKS_DISABLED
+citation    checkov:CKV_GCP_20:module.gke.google_container_cluster.main
+settled_by  rules
+```
+
+Triaged two seconds after the unmute, once. The restore went through `gcloud`, so Terraform was asked whether it agrees:
+
+```bash
+terraform -chdir=terraform plan -detailed-exitcode; echo "EXIT=$?"
+```
+
+```text
+EXIT=0
+No changes. Your infrastructure matches the configuration.
+```
+
+The counters account for every delivery in the slice. 598 vulnerabilities, two deliveries of the exposure finding, five failed attempts and one re-drive make 606:
+
+```text
+received 606  vulnerabilities_skipped 598  redelivered 1  drift 1
+settled_by_rules 2  settled_by_model 0  accepted 2  failed 5  notifications_sent 0
+```
+
+Both muted findings were unmuted afterwards.
+
+Six probe objects remain under `drill/ledger-grant/`, and the worker identity cannot remove them, which is the point of the slice. They sit outside every finding prefix, and the bucket's 365-day lifecycle rule removes them.
+
 ## What is applied
 
 ```bash
@@ -991,7 +1188,9 @@ One notification channel, which is the requirement: verdicts reach the address t
 | The idle agent fits inside the two-node floor | Proven. `kubectl get nodes` returns two, and the namespace budget reads `pods 1/4` |
 | Every verdict records the image it came from | Proven. Four verdicts carry `sha256:b3770360`. The fifth predates the field |
 | The three crash-boundary drills | Proven, each against the deployed worker. Nothing recorded at the inference boundary, `notification_attempted` absent at the notification boundary, `acknowledged` absent at the acknowledgement boundary |
-| A ledger write failure stops the worker before it notifies | Open against the live worker. Covered by a unit test |
+| A ledger write failure stops the worker before it notifies | Proven against the live worker, at the `received` write. Create was removed from the role, five deliveries each failed with a 403, and nothing was classified, notified or acknowledged. The `notification_attempted` write was not aimed at |
+| The worker cannot delete or overwrite a ledger record | Proven. `DELETE` and an unconditional overwrite both return 403 under `k8_lab_ledger_appender`, and a create-only retry returns 412 |
+| A ledger outage longer than about a minute parks findings | Measured. Five attempts took 68 seconds, then the message was dead-lettered with its body intact. Nothing re-drives or alerts on the dead letter subscription |
 | An input over the token budget is refused rather than truncated | Open, and belongs to Increment 2 |
 
 The percentages Security Command Center reports against compliance standards were read on this date and are deliberately not recorded here. They are computed from the same detectors as the findings above, over a project with one cluster, two stateless workloads and no data, so a high score measures how little applies rather than how much is controlled. Recording it without that framing would be the kind of claim this repository exists to avoid.

@@ -361,7 +361,7 @@ The billing mode is a free trial, confirmed by the owner on 2026-09-20. There is
 | Capability | Grant | Scoped to | State |
 | --- | --- | --- | --- |
 | Pull findings | `roles/pubsub.subscriber` | The `scc-triage` subscription, not the project | Applied and proven. `:pull` returns 200, `get` on the same subscription returns 403 |
-| Write verdict records | `roles/storage.objectUser` | The verdict ledger bucket | Applied, and wider than the worker needs. The role also allows delete and overwrite |
+| Write verdict records | `k8_lab_ledger_appender`, create, get and list | The verdict ledger bucket | Applied and proven. Delete and overwrite return 403, and a verdict has been written through it |
 | Invoke the model | `roles/aiplatform.user` | The project | Applied, and wider than the worker needs. A publisher model needs `aiplatform.endpoints.predict` alone |
 | Notify | `roles/logging.logWriter` | The project | Applied. The role writes and cannot read any log |
 | Federate | `roles/iam.workloadIdentityUser` | `agents/triage-worker` alone | Applied and proven. A Pod in that namespace receives `k8-lab-triage`, and the user-managed key list is empty |
@@ -375,10 +375,10 @@ Denied, and the denial is part of the design:
 | Any cluster credential | Phase 16 owns cluster reads. The worker holds no kubeconfig and no Kubernetes RBAC beyond its own ServiceAccount |
 | Broad project roles | No `roles/editor`, no `roles/viewer`, no `*.admin`. `PRIMITIVE_ROLES_USED` is already a live finding against this project |
 
-Two grants above are wider than the boundary the table describes, so they are open work:
+One grant above is wider than the boundary the table describes, and one was narrowed:
 
 - [ ] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs.
-- [ ] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object.
+- [x] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object. [Slice 8](worklog/phase-15-scc-triage.md#the-grant-read-back-and-probed).
 
 Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) and rated at the Phase 16 threat model pass.
 
@@ -442,7 +442,7 @@ Every write uses a create-only precondition, so the ledger is append-only and tw
 - [x] Set `resource.type` to `k8s_container` explicitly on every log entry. A client library reports `global`, the metric still counts it, and the alert never fires.
 - [x] Emit the verdict string in exactly the spelling `triage.tf` filters on. Any other spelling pages the platform owner.
 - [x] Run as one replica in `agents`, pulling continuously.
-- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently. Unticked: the worker has seen one threat finding. The 653 vulnerabilities and the other two classes were counted offline, not by it.
+- [ ] Triage misconfiguration, external exposure and threat findings. Record the vulnerability volume and why it is out of scope rather than dropping it silently. Unticked: all three classes have now been through the worker, the first external exposure finding in [slice 8](worklog/phase-15-scc-triage.md#a-verdict-through-the-narrowed-role). The vulnerability volume it records is 598 skipped, and the 653 offline count has not been reconciled with it.
 - [x] Count how many findings the rules settled without a model. That number says whether the rules are doing their job.
 
 **Increment 2, the model:**
@@ -469,7 +469,7 @@ Failure paths, each proven by making it happen:
 
 - [ ] Model output that does not validate against the schema is rejected, and the finding lands as `insufficient_evidence` rather than as a parsed guess.
 - [ ] A Vertex AI timeout, and separately a permission failure, leave the message unacknowledged and the ledger record readable.
-- [ ] A ledger write failure stops the worker before it notifies, and nothing is acknowledged.
+- [x] A ledger write failure stops the worker before it notifies, and nothing is acknowledged. Create removed from the role, five deliveries refused with a 403, nothing classified, notified or acknowledged. Proven at the `received` write, not at `notification_attempted`. [Slice 8](worklog/phase-15-scc-triage.md#a-ledger-write-failure-made-to-happen).
 - [x] A redelivered Pub/Sub message produces one verdict, not two, proven by replaying a real delivery. The unmute arrived under the key already acknowledged, the ledger did not move, and the drift net logged the changed body digest.
 - [x] Kill the worker after inference and before persistence. The finding is re-inferred and triaged once. Nothing was on record at the crash, and the recovery wrote four states inside 285ms.
 - [x] Kill the worker after persistence and before notification. The finding is notified after the restart. `notification_attempted` was absent at the crash, and the record preceded the log entry by 7.18ms on recovery.
@@ -665,7 +665,7 @@ The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each o
 
 That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
 
-What remains in Phase 15 is the measurement, one failure path and the injection drill. The overlap number still comes from an offline run rather than from the worker's own counters, external exposure has not been through the deployed worker, a ledger write failure has been proven by unit test and not against the live worker, and the prompt injection drill wants a real finding. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
+What remains in Phase 15 before the model is the measurement and the injection drill. The overlap number still comes from an offline run rather than from the worker's own counters, and the prompt injection drill wants a real finding. The ledger grant is narrowed to create, get and list, and a ledger write failure has been made to happen against the live worker. It showed that a ledger outage longer than about a minute parks findings on the dead letter subscription, where nothing re-drives or alerts on them. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
 

@@ -15,12 +15,35 @@ resource "google_pubsub_subscription_iam_member" "subscriber" {
   member       = "serviceAccount:${google_service_account.triage.email}"
 }
 
-# objectUser covers read, create and delete on objects. It also carries
-# storage.buckets.get and storage.buckets.list, so it is not scoped to
-# objects alone. The ledger is written twice per verdict.
+# Three permissions, one per call the worker makes: Create with an
+# ifGenerationMatch=0 precondition, Read, and List under a prefix.
+#
+# Overwrite needs storage.objects.delete as well as storage.objects.create,
+# so leaving delete out removes both ways of losing a record. The ledger is
+# append-only in IAM as well as in the client, and the two say it
+# independently.
+#
+# The predefined pair that comes closest, objectCreator plus objectViewer,
+# carries folder, managed folder and multipart upload permissions this
+# worker never calls, so the role is written out instead.
+resource "google_project_iam_custom_role" "ledger_appender" {
+  project     = var.project_id
+  role_id     = var.ledger_role_id
+  title       = "Ledger appender"
+  description = "Create, read and list ledger objects. No delete, so no overwrite either."
+
+  permissions = [
+    "storage.objects.create",
+    "storage.objects.get",
+    "storage.objects.list",
+  ]
+}
+
+# Replaces roles/storage.objectUser, which covered delete and overwrite on
+# the records the ledger exists to keep.
 resource "google_storage_bucket_iam_member" "ledger_writer" {
   bucket = var.ledger_bucket_name
-  role   = "roles/storage.objectUser"
+  role   = google_project_iam_custom_role.ledger_appender.id
   member = "serviceAccount:${google_service_account.triage.email}"
 }
 

@@ -876,7 +876,9 @@ Three denials are load-bearing. No Security Command Center access, because the w
 
 The append-only ledger is what makes the second denial implementable. Every state object is written once with a create-only precondition, so the worker never needs a permission it should not hold.
 
-Cost: Two grants are currently wider than this boundary describes. `roles/aiplatform.user` is bound at the project and allows creating training jobs, pipelines, endpoints and notebooks; a publisher model needs `aiplatform.endpoints.predict` alone. `roles/storage.objectUser` covers delete and overwrite as well as create. Both are recorded as open in the plan rather than described as done, and a custom role in each case is a definition to maintain and verify against.
+Cost: One grant is still wider than this boundary describes. `roles/aiplatform.user` is bound at the project and allows creating training jobs, pipelines, endpoints and notebooks; a publisher model needs `aiplatform.endpoints.predict` alone. It stays open in the plan until an applied call path shows what the call needs.
+
+The ledger grant was narrowed on 2026-09-21 from `roles/storage.objectUser` to `k8_lab_ledger_appender`, a custom role holding `storage.objects.create`, `get` and `list`, one permission per call the worker makes. Overwrite needs delete as well as create, so the role states append-only independently of the create-only precondition. `objectCreator` plus `objectViewer` was the predefined alternative, and it carries folder, managed folder and multipart upload permissions the worker never calls. The cost is a role definition to keep in step with the worker's calls: a new call is a 403 until the role grows. [Slice 8](worklog/phase-15-scc-triage.md#slice-8-the-ledger-grant-narrowed-and-then-broken-on-purpose) has the evidence.
 
 Alternatives: Project-level roles throughout, which is one line of Terraform and an identity that can read every subscription in the project. A single broad role such as `roles/editor`, which the project already carries `PRIMITIVE_ROLES_USED` for.
 
