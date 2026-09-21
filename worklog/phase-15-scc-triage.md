@@ -1128,6 +1128,88 @@ Both muted findings were unmuted afterwards.
 
 Six probe objects remain under `drill/ledger-grant/`, and the worker identity cannot remove them, which is the point of the slice. They sit outside every finding prefix, and the bucket's 365-day lifecycle rule removes them.
 
+## Slice 9: Where 598 vulnerabilities came from
+
+The worker's counters jumped from 0 to 598 on 2026-09-21, all vulnerabilities, with no drill running:
+
+```bash
+gcloud logging read 'resource.labels.namespace_name="agents" AND jsonPayload.msg="counters"'   --freshness=2d --order=asc --format='value(timestamp,jsonPayload.counts.received,jsonPayload.counts.vulnerabilities_skipped)'
+```
+
+```text
+2026-09-21T01:29:40Z  received 0    vulnerabilities_skipped 0
+2026-09-21T10:39:40Z  received 486  vulnerabilities_skipped 486
+2026-09-21T10:44:40Z  received 598  vulnerabilities_skipped 598
+```
+
+Security Command Center did not republish anything. The 598 are one state change, read back from the v2 API:
+
+```text
+category    SOFTWARE_VULNERABILITY, all 598
+state       INACTIVE, all 598
+eventTime   2026-09-21T10:36:28.701Z -> 10:37:32.669Z
+createTime  2026-09-18T20:47 -> 20:51
+resources   gke-k8-lab-general-cf1cb723-jplw  299
+            gke-k8-lab-general-7d6bb7c7-0rru  299
+```
+
+Both resources are node VMs that no longer exist. GKE upgraded the cluster on the `REGULAR` channel overnight, and the upgrade replaced them:
+
+```text
+UPGRADE_MASTER  DONE  2026-09-21T01:08:33Z  2026-09-21T01:17:37Z
+UPGRADE_NODES   DONE  2026-09-21T01:18:42Z  2026-09-21T01:32:04Z
+01:22:46Z  instances/gke-k8-lab-general-7d6bb7c7-0rru deleted  container-engine-robot
+01:27:58Z  instances/gke-k8-lab-general-cf1cb723-jplw deleted  container-engine-robot
+```
+
+The findings closed at 10:36Z, about nine hours after the VMs were deleted. The worker Pod was rescheduled by the same upgrade at 01:24:08Z and resumed with nothing lost. Nothing in this repository recorded the upgrade until the counters were read.
+
+The vulnerability volume now reconciles with the offline count:
+
+| Vulnerability findings | Count | Reached the worker |
+| --- | --- | --- |
+| Node VMs, INACTIVE at 10:36Z on 2026-09-21 | 598 | Yes, as `vulnerabilities_skipped 598` |
+| Cluster, INACTIVE at 02Z on 2026-09-20 | 17 | No. Before the worker existed |
+| Cluster, ACTIVE and unchanged | 38 | No. Nothing has published them |
+| Total | 653 | |
+
+The worker only sees changes. A stock count and a delivery count are different numbers, and the difference is findings that have not moved since the worker started. That is also why the overlap measurement needs a backfill: Security Command Center does not republish on its own.
+
+The two replacement nodes carried no vulnerability findings when this was read, about thirteen hours after they were created.
+
+## Slice 10: The backfill, and the overlap measured by the worker
+
+Eight findings had never reached the worker. Each was muted and unmuted, which is the [triage backfill](../decisions.md#triage-backfill) decision, on 2026-09-21. Afterwards:
+
+```text
+non-vulnerability findings: 15  in ledger: 15
+muted: 0
+```
+
+| Class | Findings | `accepted` | `new` |
+| --- | --- | --- | --- |
+| Misconfiguration, active | 7 | 3 | 4 |
+| Misconfiguration, inactive (`loadgen`) | 4 | 0 | 4 |
+| External exposure | 2 | 2 | 0 |
+| Threat | 2 | 0 | 2 |
+| Total | 15 | 5 | 10 |
+
+The three active misconfigurations the rules settled as `accepted`:
+
+```text
+BUCKET_LOGGING_DISABLED           the verdict ledger bucket
+BINARY_AUTHORIZATION_DISABLED     k8-lab
+MASTER_AUTHORIZED_NETWORKS_DISABLED  k8-lab   checkov:CKV_GCP_20:module.gke.google_container_cluster.main
+```
+
+**Three of seven** active Security Health Analytics findings name something `.checkov.baseline` already prices. That is the number the hand count and the offline run reached, now read from the ledger the deployed worker wrote.
+
+**Fifteen of fifteen** were settled by rules. `settled_by_model` is 0, because the model is not wired in yet. The number means something once Increment 2 exists.
+
+Fourteen verdicts carry image `sha256:b3770360` and corpus `4b03df8`. The fifteenth, the privileged container threat finding, was triaged on 2026-09-20 by an earlier image against corpus `7c5629c`, and a mute cannot re-triage it. It is not a Security Health Analytics finding, so it does not affect the overlap.
+
+The backfill sent five alert mails, one per `new` verdict it produced.
+
 ## What is applied
 
 ```bash
@@ -1175,7 +1257,7 @@ One notification channel, which is the requirement: verdicts reach the address t
 | A message nobody acknowledges is parked rather than lost | Proven. Five attempts, then republished to `scc-findings-dead` with the body intact |
 | The idempotency key in the contract distinguishes a change from a redelivery | Yes, for substance. `eventTime` holds across re-evaluation and moves on a real change. Attribute-only changes such as a mute collapse into a redelivery, deliberately |
 | Security Command Center and `.checkov.baseline` overlap | Three of seven active misconfigurations, after this phase's own bucket raised `BUCKET_LOGGING_DISABLED` against the `CKV_GCP_62` already in the baseline. Still by hand, not the provenanced measurement |
-| The overlap is measured with provenance | Open. Three of seven, produced offline by the deployed classifier and corpus rather than by the deployed worker, which has seen one finding |
+| The overlap is measured with provenance | Proven. Three of seven, read from verdicts the deployed worker wrote after the [backfill](#slice-10-the-backfill-and-the-overlap-measured-by-the-worker) |
 | A finding arriving while the worker is stopped is triaged afterwards | Proven. Scaled to 0, muted a finding, scaled to 1. The message waited and was triaged after the restart |
 | A finding carrying an instruction is triaged to the same verdict | Open. Covered by a unit test, not by a real finding |
 | A redelivered message produces one verdict, not two | Proven by replaying a real delivery. The unmute arrived under the key already acknowledged, and the ledger did not move |

@@ -846,6 +846,22 @@ Cost: A deliberate crash point exists inside the agent that holds four Google Cl
 
 Alternatives: A build tag and a separate drill image, which leaves the published image clean but spends a second CI run and puts a second image digest in the ledger. A pause at the boundary with an external SIGKILL, which makes the kill genuinely external but adds a timed window to every drill and ships the pause anyway. Revoking a grant to force a failure, which reaches the notification boundary alone and proves a permission error rather than a crash.
 
+### Triage backfill
+
+Decision: Findings the worker has not seen reach it through the transport it already uses. Each one is muted and then unmuted, and Security Command Center publishes both changes to the subscription. The worker triages the first message and treats the second as a redelivery. Nothing is replayed, marked or run outside the deployed worker.
+
+Why: Security Command Center publishes changes and does not republish. [Slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) measured it: the only bulk traffic the worker has received was a real state change, 598 vulnerability findings closing after a node upgrade. A finding that has not moved since the worker started never reaches it, so the overlap measurement cannot come from the worker's own record without something making the findings move.
+
+A mute is the smallest change available. It leaves `state` and `eventTime` alone, so the idempotency key is the finding's real key, and the verdict lands under the same prefix a genuine delivery would use. The unmute that restores the finding arrives under the key already acknowledged and writes nothing.
+
+The in-scope set is small. Fifteen findings are not vulnerabilities, and seven of them were in the ledger before the backfill. Vulnerabilities are counted and skipped by the worker, so their volume does not reach the backfill.
+
+Cost: Two writes per finding against Security Command Center state, made by a person, because the worker holds no Security Command Center permission and [must not](#agent-permission-boundary). A finding that is muted when it should not be is the failure, so each mute is reversed in the same session and the project is read back for muted findings afterwards. Every `new` verdict notifies, so the backfill sends mail.
+
+A finding whose verdict was produced by an earlier image stays as it is. A mute arrives as a redelivery, so re-triaging it would need a changed key, and nothing short of a real state change provides one.
+
+Alternatives: Publishing an export into the topic, which is cheap and makes the ledger claim a delivery Security Command Center never sent, unless every replayed message is marked, which is a contract change. Running the worker's image as a one-off Job over an export, which is the same code and identity but not the transport, and produces a better offline number rather than the measurement.
+
 ### Triage notification path
 
 Decision: The worker writes a structured log entry. A logs-based metric extracts the verdict, category and severity as labels, and one new alert policy interpolates them into its documentation and notifies the existing `Platform owner` channel. Contradictions, new findings and insufficient evidence notify. Accepted findings are recorded and stay quiet.
