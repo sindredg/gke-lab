@@ -832,6 +832,20 @@ Cost: A bucket and its lifecycle to manage, and an object read on the path of ev
 
 Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker. Adding `muteUpdateTime` to the key, which would re-triage a silencing as though it were a posture change. Notifying first and recording afterwards, which drops a notification silently whenever the worker dies in that window. Exactly-once notification, which the email channel cannot provide: it takes no idempotency key, and Cloud Monitoring decides when a policy sends.
 
+### Drill fault injection
+
+Decision: The worker ships a `-crash-at` flag naming one of three boundaries: `received`, `notification_attempted` or `acknowledged`. When it is set, the worker calls `os.Exit(70)` at that point. It is empty everywhere but a drill. `classified` is a ledger state but not a boundary, because nothing observable sits between writing it and writing the notification attempt, so the flag refuses it.
+
+Why: [Triage idempotency](#triage-idempotency) orders three writes around two side effects, and says each crash boundary is drilled rather than reasoned about. Those windows are sub-millisecond, so deleting a Pod cannot land in one. Without a deterministic crash point the three drills cannot be run at all, and an untested recovery path is a claim rather than a control.
+
+`os.Exit` runs no deferred call, so nothing is acknowledged and no client closes. From Pub/Sub's side and the ledger's side that is indistinguishable from a SIGKILL, which is what the recovery path has to survive. Exit code 70 separates a drill crash from the 1 a startup failure uses, so the Pod's last state says which one happened.
+
+Shipping the flag in the published image rather than in a separate build keeps one image digest in the ledger. A drill image would put verdicts from two digests under the same exit criterion, and that criterion is that every verdict records the image it came from.
+
+Cost: A deliberate crash point exists inside the agent that holds four Google Cloud grants. The surface is the command line, so reaching it needs RBAC in `agents`, and [agent rollout authority](#agent-rollout-authority) gives the delivery pipeline none. No part of a finding reaches the flag, so a finding body cannot trigger it. A worker left holding the flag stops on the next finding it settles, which is why it logs the boundary at WARN on every start.
+
+Alternatives: A build tag and a separate drill image, which leaves the published image clean but spends a second CI run and puts a second image digest in the ledger. A pause at the boundary with an external SIGKILL, which makes the kill genuinely external but adds a timed window to every drill and ships the pause anyway. Revoking a grant to force a failure, which reaches the notification boundary alone and proves a permission error rather than a crash.
+
 ### Triage notification path
 
 Decision: The worker writes a structured log entry. A logs-based metric extracts the verdict, category and severity as labels, and one new alert policy interpolates them into its documentation and notifies the existing `Platform owner` channel. Contradictions, new findings and insufficient evidence notify. Accepted findings are recorded and stay quiet.

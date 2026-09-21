@@ -388,10 +388,12 @@ Lives in [ai-k8s](https://github.com/sindredg/ai-k8s), built by this repository 
 
 **Before the first build:**
 
-- [ ] Guard the `ai-k8s` pin with the same upstream check-run query that guards the `sky` pin, from the first bump rather than as a follow-up.
-- [ ] Verify the pinned commit's signature and authorship before it is built. This is the one supply-chain control that moves earlier than the rest, for the reason recorded in [decisions.md](decisions.md#supply-chain-control-timing).
+- [x] Guard the `ai-k8s` pin with the same upstream check-run query that guards the `sky` pin, from the first bump rather than as a follow-up.
+- [x] Verify the pinned commit's signature and authorship before it is built. This is the one supply-chain control that moves earlier than the rest, for the reason recorded in [decisions.md](decisions.md#supply-chain-control-timing).
 
-Both are written, and both were run by hand to move the pin to `fcee710`. The check-run query refused first, because CI on that commit was still `in_progress`, which the gate counts as unknown rather than as a pass. Neither is ticked: a workflow that has never run is not a control, and the first automated bump is the evidence.
+Both now hold, proven by the first automated bump on 2026-09-21. The workflow moved the pin from `fcee710` to `f3f931d` and reported `f3f931d passed 1 check(s)` and `f3f931d is signed (valid) and authored by sindredg`. The signature half required commit signing to exist at all: `ai-k8s` commits were unsigned until that day, so the gate would have refused every bump. It is recorded in [the worklog](worklog/phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled).
+
+One gap remains in that path, and it is a repository setting rather than a gate. The workflow pushes the branch and cannot open the pull request: `GitHub Actions is not permitted to create or approve pull requests`. The bump was opened by hand from the branch the workflow pushed.
 
 The pipeline publishes the image and does not roll it out. It holds no RBAC in `agents`, so an operator applies the manifests, for the reason recorded in [decisions.md](decisions.md#agent-rollout-authority).
 
@@ -451,7 +453,7 @@ Every write uses a create-only precondition, so the ledger is append-only and tw
 - [ ] Record the model, its generation parameters, the prompt digest, the corpus commit, the agent commit and the image digest with every verdict, so a verdict can be reproduced.
 - [ ] Emit the token count and the estimated cost of each run, on the verdict record and as a label on the log entry.
 - [ ] Stop calling the model when a daily spend ceiling is reached, and record the refusal. A budget alert is not a limit, and credits make its thresholds misleading.
-- [ ] Notify through the existing email channel rather than adding a second one.
+- [x] Notify through the existing email channel rather than adding a second one. Proven on a deterministic verdict: the alert fired and the mail arrived at the Platform owner channel. Increment 2 adds nothing to that path.
 
 **Exit criteria:**
 
@@ -468,12 +470,12 @@ Failure paths, each proven by making it happen:
 - [ ] Model output that does not validate against the schema is rejected, and the finding lands as `insufficient_evidence` rather than as a parsed guess.
 - [ ] A Vertex AI timeout, and separately a permission failure, leave the message unacknowledged and the ledger record readable.
 - [ ] A ledger write failure stops the worker before it notifies, and nothing is acknowledged.
-- [ ] A redelivered Pub/Sub message produces one verdict, not two, proven by replaying a real delivery.
-- [ ] Kill the worker after inference and before persistence. The finding is re-inferred and triaged once.
-- [ ] Kill the worker after persistence and before notification. The finding is notified after the restart.
-- [ ] Kill the worker after notification and before acknowledgement. The finding is notified again, and the ledger shows one `notification_attempted` record rather than two verdicts.
+- [x] A redelivered Pub/Sub message produces one verdict, not two, proven by replaying a real delivery. The unmute arrived under the key already acknowledged, the ledger did not move, and the drift net logged the changed body digest.
+- [x] Kill the worker after inference and before persistence. The finding is re-inferred and triaged once. Nothing was on record at the crash, and the recovery wrote four states inside 285ms.
+- [x] Kill the worker after persistence and before notification. The finding is notified after the restart. `notification_attempted` was absent at the crash, and the record preceded the log entry by 7.18ms on recovery.
+- [x] Kill the worker after notification and before acknowledgement. The finding is notified again, and the ledger shows one `notification_attempted` record rather than two verdicts. Three notifications, one record.
 - [ ] An input larger than the token budget is refused with `insufficient_evidence` naming the budget, not truncated.
-- [ ] Stop the agent while a finding is waiting. After the agent restarts, verify that it processes the finding successfully.
+- [x] Stop the agent while a finding is waiting. After the agent restarts, verify that it processes the finding successfully. Scaled to 0, muted a finding, scaled to 1, and the waiting message was triaged.
 - [ ] A finding carrying an instruction is triaged to the same verdict as one without. Test every untrusted field the worker reads, not the resource name alone: category, resource name, description, external URI, source properties, and the finding's own severity. Use a real finding from a real detector.
 
 ### Phase 16: Cluster access through an audited gateway
@@ -659,7 +661,11 @@ The identity and the namespace are applied and proven too. A Pod in `agents` fed
 
 Increment 1 of the worker is deployed and reads. It pulled the Event Threat Detection finding that Phase 15's own drill produced, settled it as `new` against a corpus of 131 entries compiled into its image, wrote four ledger states under one create-only prefix, and emitted the log entry the alert policy reads with `resource.type = k8s_container`. No model was called. Two independent clocks date the ordering the idempotency decision requires: `notification_attempted` was written 8.3ms before the entry that triggers the alert.
 
-What remains in Phase 15 is the measurement and the failure paths. The worker has seen one finding, so the overlap number still comes from an offline run rather than from its own counters, and every crash, redelivery and injection drill is open. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
+The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each of the three points the idempotency decision orders, and recovered at each: nothing on record at the inference boundary, `notification_attempted` absent at the notification boundary, and `acknowledged` absent at the acknowledgement boundary. A redelivery produced one verdict and not two, a finding published while the worker was scaled to zero was triaged after it came back, and the ledger now holds five findings at four states each with one generation per state. Record before notifying held across a crash twice, measured at 7.18ms and 9.90ms by two clocks that are not the worker's.
+
+That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
+
+What remains in Phase 15 is the measurement, one failure path and the injection drill. The overlap number still comes from an offline run rather than from the worker's own counters, external exposure has not been through the deployed worker, a ledger write failure has been proven by unit test and not against the live worker, and the prompt injection drill wants a real finding. Increment 2, the model, has not started. [Phase 15's worklog](worklog/phase-15-scc-triage.md) records what the work changed about the contract: `gcloud` cannot reach Security Command Center v2, a finding carries three names and cannot be written back at the one it is read at, `eventTime` tracks substance rather than scans, and the same cluster arrives under two resource names depending on which detector raised the finding.
 
 The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
 

@@ -1,7 +1,7 @@
 # Worklog: Phase 15 Security Command Center triage
 
 Date: 2026-09-20, extended 2026-09-21
-Status: In progress. The transport, the identity and the worker are applied. One real finding has been triaged end to end, from the subscription through the ledger to the log entry the alert policy reads. Every failure-path drill is open, and the model is not called yet.
+Status: In progress. The transport, the identity and the worker are applied. One real finding has been triaged end to end, from the subscription through the ledger to the mail the platform owner received. Every failure-path drill is open, and the model is not called yet.
 
 ## Goal
 
@@ -607,6 +607,8 @@ Two nodes. The cost posture asks whether an idle agent forces a third, and it do
 used   pods 1/4   requests.cpu 50m/1   requests.memory 128Mi/1Gi
 ```
 
+![One Pod of four, 50m of one CPU, 128Mi of one gibibyte](../images/phase15-agents-quota-usage.png)
+
 The image carries no shell, which is visible from outside:
 
 ```bash
@@ -642,6 +644,8 @@ Nothing was arranged. The worker started, pulled the Event Threat Detection find
   }
 }
 ```
+
+![The tail of the same record, including the fields the excerpt leaves out](../images/phase15-verdict-settled-by-rules.png)
 
 `new` is the designed answer, not a miss. `mapping.yaml` leaves that category unpriced deliberately: the corpus carries `control:pod-security-restricted-agents` as the fact that settles it, and deterministic resolution cannot tell the drill that produced this finding from a real privilege escalation in another namespace. Pairing them would auto-accept both. It waits for Increment 2 to reason from the control rather than match on it.
 
@@ -690,6 +694,14 @@ gcloud logging read 'logName="projects/.../logs/triage-verdict"' \
 
 The second line is the hand-written probe from [slice 2](#slice-2-the-alert-filter-that-could-not-be-left-open), and it is kept because it is the failure this contract exists to prevent. Both entries are in the same log and both carry a verdict the metric counts. Only the first matches `resource.type = "k8s_container"`, which the alert policy's condition requires. The `global` one is counted and never alerts.
 
+### The mail arrives
+
+The verdict reached the address the availability alert already uses. No second channel was added.
+
+![The alert mail, naming the policy, the condition and the verdict](../images/phase15-verdict-alert-firing.png)
+
+The mail carries what a decision needs and nothing more: the policy, the condition, the finding's category, its severity and `verdict: new`. It fired at 21:55Z against a log entry written at 21:51:43.884557Z. That gap is Cloud Monitoring's alignment, not the worker's, which the ledger above dates to the millisecond.
+
 ### Counters
 
 ```text
@@ -706,6 +718,14 @@ One finding, settled by the rules, no model. The number this phase publishes is 
 `provenance.image_digest` came back empty on the first verdict. An image cannot learn its own digest during its own build, and the worker holds no cluster credential to read its own Pod status with, which is the permission boundary working as intended rather than a gap to close.
 
 The digest is therefore set in the Deployment, next to the image it names, and a rollout changes both. That is duplication, and the alternative is a provenance field that records two of the three things the plan asks for. The first verdict above was produced before this fix and carries the empty field, which is why it is quoted with only two provenance values.
+
+The fix is applied. `IMAGE_DIGEST` sits in the Deployment beside the image, and the apply replaced the running Pod:
+
+![The Deployment reconfigured, not recreated](../images/phase15-worker-digest-applied.png)
+
+![The replacement Pod loads the same 131 entries and resumes pulling](../images/phase15-worker-corpus-loaded.png)
+
+The replacement started at 22:25:12Z and has counted `received 0` since. The claim stays open: the field is set, and no verdict has carried it yet.
 
 ### The offline overlap measurement
 
@@ -729,6 +749,169 @@ Reading the export also produced one fact the mapping needed and no document rec
 ```
 
 `zones` and `locations`. Exact matching makes that visible on the first run. Name similarity would have hidden it, and a matcher that shrugged at the difference would have been quietly wrong about which cluster a decision covered.
+
+## Slice 7: The crash boundaries, drilled
+
+Five failure paths, run against the deployed worker on 2026-09-21. Four real findings were muted to publish a message, and every mute was reversed afterwards.
+
+### A crash point, because the windows are too small to aim at
+
+The three boundaries the [idempotency decision](../decisions.md#triage-idempotency) orders are sub-millisecond apart. Deleting a Pod cannot land inside one, so the worker gained `-crash-at`, which names a boundary and exits there with 70. It is empty everywhere but a drill, and it reads only the command line. The reasoning is in [decisions.md](../decisions.md#drill-fault-injection).
+
+The flag announces itself, which is the guard against a worker quietly left holding it:
+
+```text
+{"level":"WARN","msg":"the crash drill boundary is set, this worker will stop on purpose","boundary":"received"}
+```
+
+### Redelivery is faster than the acknowledgement deadline
+
+The first drill corrected an assumption the procedure was built on. The subscription sets `ackDeadlineSeconds: 120`, so the plan was to remove the flag inside a two minute window. The message came back in about 25 seconds instead:
+
+| Event | Time |
+| --- | --- |
+| Muted, message published | 00:29:56Z |
+| Worker crashed, first delivery | 00:29:58Z |
+| Worker crashed, second delivery | 00:30:25Z |
+
+Killing the process closes the StreamingPull stream, and Pub/Sub returns an outstanding message when its stream closes rather than waiting out the deadline. That matters because `maxDeliveryAttempts` is 5. A crash loop spends the budget in about two minutes, not ten, and a finding that exhausts it goes to the dead letter topic instead of being triaged. Drill 1 spent three of five. The later drills removed the flag as soon as the crash was observed, and none spent more than three.
+
+### Kill after inference, before persistence
+
+```text
+[00:30:13Z] restarts=1 exitCode=70
+ledger objects for 932b4341: 0
+{"time":"2026-09-21T00:30:25.265Z","level":"ERROR","msg":"crashing on purpose, the drill boundary was reached","boundary":"received"}
+```
+
+Nothing was on record. The finding had been parsed, settled and validated, and the crash landed before the first write, which is the window the decision says costs a re-inference and nothing else.
+
+The flag was removed at 00:30:44Z. The redelivery was triaged in full:
+
+```text
+received.json#1789950686421179                00:31:26.421179Z
+classified.json#1789950686483729              00:31:26.483729Z
+notification_attempted.json#1789950686537268  00:31:26.537268Z
+acknowledged.json#1789950686706032            00:31:26.706032Z
+```
+
+Four states, one generation each, written inside 285ms. The finding was re-inferred and triaged once, and the verdict carries the image that produced it:
+
+```text
+verdict     : new
+settled_by  : rules
+image       : sha256:b3770360802ba4567b171016dc11f10bb04167a30a2d67fc687503e2adf3803d
+agentCommit : f3f931d7665f1fdc5d3c229d5c2022e0c5787c80
+```
+
+This is the first verdict to carry `image_digest`. The field was applied on 2026-09-20 and [no verdict had been produced since](#what-the-image-cannot-know-about-itself).
+
+### A redelivery produces one verdict, and the drift net catches the difference
+
+Unmuting the same finding republishes it. A mute does not advance `eventTime`, so the message arrives under the key already in the ledger:
+
+```text
+unmuted 00:33:32Z
+{"time":"2026-09-21T00:33:36.461Z","level":"WARN","msg":"the finding body moved without advancing its event time",
+ "recorded_digest":"sha256:ba33f1ab...","delivered_digest":"sha256:7ebbc531..."}
+ledger objects for 932b4341: 4
+```
+
+The ledger did not move. The furthest state was `acknowledged`, so the worker dropped the message without inference, which is the redelivery row of the state machine on a real delivery rather than in a unit test.
+
+The digest comparison fired at the same time. It was written as a safety net for a detector that mutates a body without advancing `eventTime`, and a mute is exactly that shape: the `mute` field changed, the body digest changed, and `eventTime` did not. The net has now been exercised by something real.
+
+### Kill after persistence, before notification
+
+At the crash, with the verdict durable and nobody told:
+
+```text
+[00:35:21Z] restarts=1
+classified.json
+received.json
+```
+
+`notification_attempted` is absent, which is the whole claim. The flag was removed at 00:36:11Z, and the finding was notified after the restart:
+
+| | Time | Source |
+| --- | --- | --- |
+| `notification_attempted` written | 00:36:34.779549Z | Cloud Storage generation `1789950994779549` |
+| The log entry the alert reads | 00:36:34.786733Z | Cloud Logging |
+
+7.18ms apart, and the record is first. Two independent clocks, neither of them the worker's own, dating the ordering across a crash rather than inside one process.
+
+### Kill after notification, before acknowledgement
+
+The window the state machine exists to close. At the crash:
+
+```text
+[00:38:15Z] restarts=1
+classified.json
+notification_attempted.json
+received.json
+```
+
+`acknowledged` is absent, so the message was still outstanding after the owner had been told. The flag was removed at 00:38:32Z, and the finding was notified again on every delivery until one of them acknowledged:
+
+```text
+2026-09-21T00:38:09.620937650Z  new
+2026-09-21T00:38:31.819331453Z  new
+2026-09-21T00:38:58.929951324Z  new
+```
+
+Three notifications, one ledger record:
+
+```text
+1 acknowledged.json#1789951139130628
+1 classified.json#1789951089551176
+1 notification_attempted.json#1789951089611034
+1 received.json#1789951089491298
+```
+
+That is the trade the decision names, observed rather than argued. The ledger holds one `notification_attempted` and not two verdicts, and the owner was told three times. Duplicate email is accepted and a missed notification is not.
+
+The same two-clock measurement holds here: the record was written at 00:38:09.611034Z and the first log entry landed at 00:38:09.620937Z, 9.90ms later.
+
+The duplication is bounded by the alert policy rather than by the worker. All three entries carry the same verdict, category and severity, so they group into one incident while it is open.
+
+### A finding that arrives while the worker is stopped
+
+```text
+scaled to 0          00:39:59Z
+No resources found in agents namespace.
+muted, published     00:40:10Z
+ledger objects for e5d7b4d9 while stopped: 0
+scaled to 1          00:41:01Z
+ledger objects for e5d7b4d9: 4, acknowledged present
+```
+
+The message waited with no subscriber, and the worker triaged it after it came back. Nothing was lost and nothing was dropped.
+
+### The ledger after the drills
+
+```text
+distinct findings : 5
+live objects      : 20
+versions          : 21
+```
+
+Five findings, four states each, one generation per state. The twenty-first version is `probe/identity-drill.json`, a noncurrent object from [the identity drill](#the-grant-is-scoped-to-the-verb-not-the-resource) and outside every finding prefix. It is also a small piece of evidence for an open item: that object could be deleted at all because `roles/storage.objectUser` is wider than the worker needs.
+
+Every verdict in the ledger was settled without a model:
+
+```text
+new rules PRIMITIVE_ROLES_USED                sha256:b3770360802ba
+new rules NON_ORG_IAM_MEMBER                  sha256:b3770360802ba
+new rules INTRANODE_VISIBILITY_DISABLED       sha256:b3770360802ba
+new rules CLUSTER_SECRETS_ENCRYPTION_DISABLED sha256:b3770360802ba
+new rules Privilege Escalation: Launch of privileged container   none
+```
+
+`settled_by_model` is 0. Four of the five carry the image digest, and the fifth predates the field.
+
+Two classes have now been through the deployed worker, misconfiguration and threat. External exposure has not, so that item stays open.
+
+All four muted findings were unmuted afterwards, and the project reports none muted.
 
 ## What is applied
 
@@ -766,7 +949,7 @@ One notification channel, which is the requirement: verdicts reach the address t
 | Claim | State |
 | --- | --- |
 | Four APIs enabled, metric and alert policy applied | Proven, read back from the API |
-| Verdicts reach the existing email channel and no second channel exists | Proven as far as the log entry. A real verdict landed with `resource.type = k8s_container`, which the alert condition requires. The mail itself is not recorded here |
+| Verdicts reach the existing email channel and no second channel exists | Proven end to end. A real verdict landed with `resource.type = k8s_container`, the alert fired on it at 21:55Z, and the mail arrived at the Platform owner channel |
 | `k8s_container` is required, and the wrong resource type fails silently | Proven, by writing an entry that landed as `global` |
 | A replacement of the public certificate cannot happen as a side effect | Proven for the cause found, and guarded by `prevent_destroy` |
 | Findings reach the topic, subscription and dead letter | Proven. A real finding from a real detector arrived about two seconds after the change, on both a mute and an unmute |
@@ -778,15 +961,18 @@ One notification channel, which is the requirement: verdicts reach the address t
 | The idempotency key in the contract distinguishes a change from a redelivery | Yes, for substance. `eventTime` holds across re-evaluation and moves on a real change. Attribute-only changes such as a mute collapse into a redelivery, deliberately |
 | Security Command Center and `.checkov.baseline` overlap | Three of seven active misconfigurations, after this phase's own bucket raised `BUCKET_LOGGING_DISABLED` against the `CKV_GCP_62` already in the baseline. Still by hand, not the provenanced measurement |
 | The overlap is measured with provenance | Open. Three of seven, produced offline by the deployed classifier and corpus rather than by the deployed worker, which has seen one finding |
-| A finding arriving while the worker is stopped is triaged afterwards | Open |
+| A finding arriving while the worker is stopped is triaged afterwards | Proven. Scaled to 0, muted a finding, scaled to 1. The message waited and was triaged after the restart |
 | A finding carrying an instruction is triaged to the same verdict | Open. Covered by a unit test, not by a real finding |
-| The worker settles a finding without a model | Proven. One finding, `settled_by_rules 1`, `settled_by_model 0` |
+| A redelivered message produces one verdict, not two | Proven by replaying a real delivery. The unmute arrived under the key already acknowledged, and the ledger did not move |
+| The drift net catches a body that moves without its event time | Proven on a real delivery. The mute changed the body digest and not `eventTime`, and the worker logged it without inference |
+| Record before notifying, across a crash | Proven twice, by two clocks that are not the worker's. 7.18ms at the notification boundary and 9.90ms at the acknowledgement boundary, storage generation before log timestamp |
+| The worker settles a finding without a model | Proven. Five findings in the ledger, every one `settled_by rules`, `settled_by_model 0` |
 | Record before notifying, notify before acknowledging | Proven, and dated by two independent clocks. `notification_attempted` was written 8.3ms before the log entry |
-| The ledger is append-only | Proven. Four states, one generation each, nothing overwritten |
+| The ledger is append-only | Proven across five findings. Twenty objects, one generation per state, nothing overwritten. Three notifications produced one `notification_attempted` record |
 | The corpus is compiled at build time and cannot change under the worker | Proven. 131 entries baked into the image, and the build fails on a citation that does not resolve |
 | The idle agent fits inside the two-node floor | Proven. `kubectl get nodes` returns two, and the namespace budget reads `pods 1/4` |
-| Every verdict records the image it came from | Open until the next rollout. The first verdict carries the two commits and an empty `image_digest` |
-| The three crash-boundary drills | Open |
+| Every verdict records the image it came from | Proven. Four verdicts carry `sha256:b3770360`. The fifth predates the field |
+| The three crash-boundary drills | Proven, each against the deployed worker. Nothing recorded at the inference boundary, `notification_attempted` absent at the notification boundary, `acknowledged` absent at the acknowledgement boundary |
 | A ledger write failure stops the worker before it notifies | Open against the live worker. Covered by a unit test |
 | An input over the token budget is refused rather than truncated | Open, and belongs to Increment 2 |
 
