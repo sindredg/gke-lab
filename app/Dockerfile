@@ -1,5 +1,6 @@
 # Serves the project page from an image that already runs as non-root.
-FROM nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:45ce1e2e699234253d1def7baa96218a5d00b498d1ba0cbb1a17b6bdf73d1351
+# Pinned by digest, so a rebuild reproduces the same packages. Dependabot moves the pin.
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:04a3275f25d766cff8926d2e57b2ff34a783d6b12a702dc98bb82226d2d9a508
 
 # The entrypoint runs envsubst on this at startup, which carries Pod facts.
 COPY default.conf.template /etc/nginx/templates/default.conf.template

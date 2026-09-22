@@ -485,11 +485,28 @@ Failure paths, each proven by making it happen:
 
 Split out of Phase 15 on 2026-09-21. Triage counts vulnerabilities and does not answer them, as recorded in [decisions.md](decisions.md#vulnerability-scope). Something else has to.
 
-Security Command Center reported 38 active `OS_VULNERABILITY` findings in the two workloads on 2026-09-21: 21 in `sky` and 17 in `nginx`, 8 of them CRITICAL, in curl, perl and openssl, none with known exploitation. They are Debian 12 packages in the images this repository builds and pins, not in GKE's node image, which [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) showed GKE patches by itself.
+Security Command Center reported 38 active `OS_VULNERABILITY` findings in the two workloads on 2026-09-21: 21 in `sky` and 17 in `nginx`, none with known exploitation. They are in the images this repository builds and pins, not in GKE's node image, which [slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) showed GKE patches by itself.
 
-- [ ] Rebuild `sky` on a patched base image and re-pin `nginx` to a patched digest.
-- [ ] Record which of the 38 closed, measured by Security Command Center rather than by the rebuild.
-- [ ] Decide what triggers the next rebuild, so the count does not grow back unnoticed.
+Read again on 2026-09-22 at 03:04Z:
+
+| Image | Running | Active | OS | Fix available |
+| --- | --- | --- | --- | --- |
+| `frontend@e5174ac8` | No, replaced 2026-09-21 14:46Z | 17 | Alpine 3.24 | Yes, for all of them |
+| `frontend@361d14c5` | Yes | 17, the same packages | Alpine 3.24 | Yes, for all of them |
+| `sky@8d74b7ae` | No, replaced 2026-09-21 14:48Z | 21 | Debian 12 | For one package of eight |
+| `sky@46ebc6f9` | Yes | 22, the same packages and one new CVE | Debian 12 | For one package of eight |
+
+This repository is public, so package names and versions are left out while an image carrying them is running. They are read from Security Command Center with `gcloud scc findings list` and a `category="OS_VULNERABILITY"` filter.
+
+- The redeploy did not remediate anything. Both base images are pinned by digest, so the rebuild reproduced the same packages under a new digest. The 38 moved to the new digests; they did not close.
+- The earlier "Debian 12" description was wrong for `nginx`. Its findings read `lib/apk/db/installed` and `cpe:/o:alpine:alpine_linux:3.24`. Only `sky` is Debian.
+- Findings on a retired digest close by themselves. The 17 on `frontend@26b054d9` went `INACTIVE` about 28 hours after that ReplicaSet scaled to zero, while the ReplicaSet still existed.
+- `sky` cannot be fixed by a rebuild. Seven of its eight packages have no fixed version in Debian 12. The Debian 13 `python:3.14.7-slim-trixie` carries newer versions of all eight, which is a change in the `sky` repository. Its Dependabot moves the digest within `bookworm` and never across a Debian release.
+
+- [ ] Re-pin the `nginx` base to `1.30.5-alpine`, with Dependabot proposing the next base digest.
+- [ ] Move `sky` to a Debian 13 base in its own repository, then bump the pin.
+- [ ] Record which findings closed, measured by Security Command Center and not by the rebuild. That includes the old digests closing by themselves, expected around 2026-09-22 19:00Z.
+- [ ] Trigger the next rebuild with Dependabot on the base image digest, in each repository that builds one. Configured for `app/` here, and already present in `sky`. Unproven here until it opens a pull request.
 
 **Follow-ups from Phase 15, not blocking:**
 
