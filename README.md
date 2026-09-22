@@ -185,6 +185,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 - [Availability drill postmortem](worklog/notes/postmortem-availability-drill.md)
 - [Load test harness](loadtest/README.md)
 - [Troubleshooting log](troubleshooting.md)
+- [Operations reference](reference/operations.md)
 - [Networking reference](reference/networking.md)
 - [Kubernetes concepts reference](reference/kubernetes-concepts.md)
 - [kubectl command reference](reference/kubectl-commands.md)

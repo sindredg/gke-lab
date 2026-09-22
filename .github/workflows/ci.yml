@@ -88,6 +88,51 @@ jobs:
       - name: Lint manifests for security and reliability
         run: kube-linter lint --config .kube-linter.yaml kubernetes/
 
+      # The worker records IMAGE_DIGEST with every verdict, so it has to name the image that runs.
+      - name: Check each Deployment declares the digest it pins
+        run: ./scripts/check-image-digests.sh
+
+  # The deploy workflows apply one Deployment each. Every other manifest reaches the cluster only when
+  # an operator applies it, so a merged change to one is not deployed until someone does. Said here,
+  # before the merge, instead of left to be discovered.
+  operator-owned:
+    name: Manifests no pipeline applies
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: List changed manifests an operator applies
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          changed="$RUNNER_TEMP/operator-owned.txt"
+          git diff --name-only "origin/${BASE_REF}...HEAD" -- kubernetes/ \
+            | { grep -vxE 'kubernetes/(nginx|sky)/deployment\.yml' || true; } > "$changed"
+
+          if [ ! -s "$changed" ]; then
+            echo "No changed manifest waits for an operator."
+            exit 0
+          fi
+
+          {
+            echo "### An operator applies these after merge"
+            echo ""
+            # shellcheck disable=SC2016 # The backticks are Markdown, not a command.
+            sed 's/.*/- `&`/' "$changed"
+            echo ""
+            echo '```bash'
+            cut -d/ -f2 "$changed" | sort -u | sed 's#^#./scripts/apply-operator-owned.sh #'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r f; do
+            echo "::warning file=${f}::No pipeline applies this file. An operator applies it after merge; the job summary has the command."
+          done < "$changed"
+
   static-analysis:
     name: Static analysis
     runs-on: ubuntu-24.04

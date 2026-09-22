@@ -448,7 +448,7 @@ Decision: Render this run's digest into `deployment.yml` with `kubectl set image
 
 Why: A patch only ever changed the fields it named. Every other edit to `deployment.yml` merged to `main` and never reached the cluster, which is how a Deployment declaring five environment variables ran with one. Applying carries the image and the rest of the manifest in the same rollout, and an apply that changes nothing is a no-op. Both deploy workflows also trigger on their workload's manifest directory, so a change to `deployment.yml` alone rolls out on merge. Until 2026-09-16 the nginx workflow triggered on `app/**` only, and a manifest-only change waited for the next image change.
 
-Cost: Only the Deployment is applied. The namespace, quotas, policies and routes stay manual, because letting the pipeline apply them means granting it authority over its own RBAC. A change to another file in `kubernetes/nginx/`, such as the Service, still triggers a full build and rollout that does not apply the file that changed.
+Cost: Only the Deployment is applied. The namespace, quotas, policies and routes stay manual, because letting the pipeline apply them means granting it authority over its own RBAC. Until 2026-09-22 a change to another file in `kubernetes/nginx/`, such as the Service, triggered a full build and a green rollout that did not apply the file that changed. Each workflow now triggers only on the Deployment it applies, a pull request that changes any other manifest is told so by CI, and `scripts/apply-operator-owned.sh` applies the rest without touching the pipeline's Deployment. [reference/operations.md](reference/operations.md) lists who applies what.
 
 Alternatives: Apply the whole directory, which needs a far broader Role. Keep patching and apply by hand, which is what failed.
 
@@ -458,7 +458,7 @@ Decision: Have the pipeline set the Deployment's image to the digest it just bui
 
 Why: One source of change and no commit loop. The workflow needs no write access to the repository.
 
-Cost: The digest in `kubernetes/nginx/deployment.yml` no longer matches what runs. Git describes the workload's shape; the cluster holds the current version. A controller reconciling from git closes this, and the [deferred decision](#deferred-decision-records) on Argo CD and Flux is where that is settled.
+Cost: The digest in `kubernetes/nginx/deployment.yml` no longer matches what runs, and the same holds for `sky`. Git describes the workload's shape; the cluster holds the current version. Applying either file by hand rolls the workload back to its bootstrap image, which is why `scripts/apply-operator-owned.sh` skips them. A controller reconciling from git closes this, and the [deferred decision](#deferred-decision-records) on Argo CD and Flux is where that is settled.
 
 Alternatives: Commit the digest back to `main`, or substitute a placeholder at deploy time.
 

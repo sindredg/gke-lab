@@ -9,8 +9,9 @@ name: Deploy triage worker
 on:
   push:
     branches: [main]
+    # What goes into the image: the agent pin, and the three corpus sources compiled into it. The
+    # manifests in kubernetes/agents/ are not built and not applied here, so they do not trigger it.
     paths:
-      - 'kubernetes/agents/**'
       - '.github/ai-k8s.ref'
       - '.github/workflows/deploy-triage-worker.yml'
       - '.checkov.baseline'
@@ -123,11 +124,12 @@ jobs:
             echo "| agent commit | \`${AGENT_REF}\` |"
             echo "| corpus commit | \`${CORPUS_COMMIT}\` |"
             echo ""
-            echo "This pipeline publishes and stops. It holds no RBAC in \`agents\`, so an operator rolls it out:"
+            echo "This pipeline publishes and stops. It holds no RBAC in \`agents\`, so an operator rolls it out. The script moves the image and \`IMAGE_DIGEST\` together, which the worker records with every verdict:"
             echo ""
             echo '```bash'
-            echo "kubectl set image -f kubernetes/agents/deployment.yml --local -o yaml \\"
-            echo "  worker=${IMAGE}@${DIGEST} | kubectl apply -f -"
+            echo "./scripts/pin-worker-image.sh ${DIGEST}"
+            echo "git commit -am 'feat: roll the triage worker to ${DIGEST:7:12}'"
+            echo "kubectl apply -f kubernetes/agents/deployment.yml"
             echo "kubectl rollout status deployment/triage-worker -n agents --timeout=180s"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

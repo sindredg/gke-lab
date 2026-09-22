@@ -1,11 +1,14 @@
 # Builds sky from a pinned upstream commit, publishes it, and rolls it out.
+#
+# It applies kubernetes/sky/deployment.yml and nothing else, so it triggers on nothing else. The
+# rest of kubernetes/sky/ is applied by an operator, as reference/operations.md lists.
 name: Deploy sky
 
 on:
   push:
     branches: [main]
     paths:
-      - 'kubernetes/sky/**'
+      - 'kubernetes/sky/deployment.yml'
       - '.github/sky-upstream.ref'
       - '.github/workflows/deploy-sky.yml'
   workflow_dispatch:
@@ -142,16 +145,18 @@ jobs:
             echo "${IMAGE}@${DIGEST}"
             echo '```'
             echo ""
-            echo "But \`deployment/${DEPLOYMENT}\` does not exist in \`${NAMESPACE}\`, and this pipeline can patch workloads rather than create them. An operator applies the manifests once:"
+            echo "But \`deployment/${DEPLOYMENT}\` does not exist in \`${NAMESPACE}\`, and this pipeline can patch workloads rather than create them. An operator creates it once, with this run's digest rather than the committed one:"
             echo ""
-            echo '```'
-            echo "kubectl apply -f kubernetes/sky/"
+            echo '```bash'
+            echo "./scripts/apply-operator-owned.sh sky"
+            echo "kubectl set image -f kubernetes/sky/deployment.yml --local -o yaml \\"
+            echo "  ${CONTAINER}=${IMAGE}@${DIGEST} | kubectl apply -f -"
             echo '```'
             echo ""
             echo "Every run after that is an ordinary patch."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::error::deployment/${DEPLOYMENT} does not exist in ${NAMESPACE}. Apply kubernetes/sky/ once as an operator, then re-run. See the run summary."
+          echo "::error::deployment/${DEPLOYMENT} does not exist in ${NAMESPACE}. An operator creates it once, then re-run. See the run summary."
           exit 1
 
       # The digest is what deploys. The tag above is only for a reader.

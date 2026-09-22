@@ -1,4 +1,7 @@
 # Builds, publishes, and rolls out the frontend image without a stored key.
+#
+# It applies kubernetes/nginx/deployment.yml and nothing else, so it triggers on nothing else. The
+# rest of kubernetes/nginx/ is applied by an operator, as reference/operations.md lists.
 name: Deploy
 
 on:
@@ -6,7 +9,7 @@ on:
     branches: [main]
     paths:
       - 'app/**'
-      - 'kubernetes/nginx/**'
+      - 'kubernetes/nginx/deployment.yml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
