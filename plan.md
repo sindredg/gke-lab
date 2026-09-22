@@ -513,8 +513,18 @@ This repository is public, so package names and versions are left out while an i
 - `sky` cannot be fixed by a rebuild. Seven of its eight packages have no fixed version in Debian 12. The Debian 13 `python:3.14.7-slim-trixie` carries newer versions of all eight, which is a change in the `sky` repository. Its Dependabot moves the digest within `bookworm` and never across a Debian release.
 
 - [x] Re-pin the `nginx` base to a patched digest. `1.30.5-alpine` in #133, then `1.31.5-alpine` from Dependabot in #134, which moved from the stable line to mainline. `apk info -v` inside that base shows a fixed version of every affected package. Running as `frontend@98601c1c` since 12:15Z on 2026-09-22.
-- [ ] Move `sky` to a Debian 13 base in its own repository, then bump the pin. [sky#60](https://github.com/sindredg/sky/pull/60) is merged: lint, format and 143 tests pass on both bases, and the endpoints answer the same. The pin moves in #136.
-- [ ] Record which findings closed, measured by Security Command Center and not by the rebuild. The retired digests closed by themselves; the running `frontend@98601c1c` and the next `sky` digest have not been scanned yet.
+- [x] Move `sky` to a Debian 13 base in its own repository, then bump the pin. [sky#60](https://github.com/sindredg/sky/pull/60): lint, format and 143 tests pass on both bases, and the endpoints answer the same. Pinned in #136, and running as `sky@a72b45d5` since 13:58Z on 2026-09-22.
+- [x] Record which findings closed, measured by a scanner and not assumed from the rebuild. Artifact Analysis read each running digest on 2026-09-22 at 14:10Z:
+
+  | Image | CRITICAL | HIGH |
+  | --- | --- | --- |
+  | `frontend@361d14c5`, before | 2 | 15 |
+  | `frontend@98601c1c`, running | 0 | 0 |
+  | `sky@46ebc6f9`, before | 6 | 16 |
+  | `sky@a72b45d5`, running | 0 | 6, no fixed version for any |
+
+  Both before counts match Security Command Center's, 17 and 22, which count CRITICAL and HIGH. The six left are accepted until Debian ships a fix, as recorded in [decisions.md](decisions.md#residual-image-vulnerabilities).
+- [ ] Re-read Security Command Center once it has scanned the running digests, and confirm the findings on the replaced ones went `INACTIVE`. The previous digests closed 14 to 28 hours after replacement, so this is a dated follow-up for 2026-09-23 and does not hold Phase 15b open.
 - [x] Trigger the next rebuild with Dependabot on the base image digest, in each repository that builds one. Proven here: Dependabot opened #134 at 04:47Z on 2026-09-22, less than a minute after #133 added the ecosystem. Already configured in `sky`.
 
 **Follow-ups from Phase 15, not blocking:**

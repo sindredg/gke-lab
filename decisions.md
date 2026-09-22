@@ -798,9 +798,19 @@ They have two owners, and neither is triage, as [slice 9](worklog/phase-15-scc-t
 | `sky` Deployment | 21 active | This repository | Rebuilding `sky` on a patched base image |
 | `nginx` Deployment | 17 active | This repository | Re-pinning `nginx` to a patched digest |
 
-Cost: The 38 active vulnerabilities in `sky` and `nginx`, 8 of them CRITICAL in curl, perl and openssl, have no process acting on them. None has known exploitation. Out of scope for triage is not handled, so the gap is recorded as open work in the plan. Counting keeps the volume visible, and it is not a response.
+Cost: When this was decided, the 38 active vulnerabilities in `sky` and `nginx`, 8 of them CRITICAL, had no process acting on them. None had known exploitation. Out of scope for triage is not handled, so the gap became [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds). Counting keeps the volume visible, and it is not a response.
 
 Alternatives: Triage them with the rules alone, which is one `new` mail per vulnerability. Send them to the model, which pays per finding to say `new`. Drop them at the notification config filter, which hides the volume where nothing reports it.
+
+### Residual image vulnerabilities
+
+Decision: Accept the HIGH vulnerabilities left in `sky` after the Debian 13 base when no fixed package exists. Pick up the fix through Dependabot's digest bumps within `trixie`, and do not rebuild on a different distribution to escape them.
+
+Why: On 2026-09-22 Artifact Analysis read 6 HIGH and 0 CRITICAL in `sky@a72b45d5`, in four packages, and reported no fixed version for any of them. The Debian 12 image it replaced read 6 CRITICAL and 16 HIGH. Four of those packages are in the Python slim base itself, so any Debian-based Python image carries them until Debian ships a fix. None has known exploitation. `sky` runs as a non-root user on a read-only root filesystem, and its egress is limited by NetworkPolicy.
+
+Cost: Six known HIGH findings stay open on a public service, with no date. This repository is public, so the packages are named in Artifact Analysis and Security Command Center and not here.
+
+Alternatives: A distroless Python base, which drops most of the four packages but changes how `sky` installs its dependencies and its timezone data. That is a change in the `sky` repository, worth making if a fix does not arrive. Muting the findings, which removes the only signal that one has.
 
 ### Injection test scope
 

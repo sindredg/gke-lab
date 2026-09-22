@@ -110,7 +110,9 @@ Milestone 3 closed with eleven of the twelve findings in [the threat model](refe
 
 Whether the model is worth it is measured in [slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model), on a reviewed set of 25 findings asked five times each. At first the model tied the rules alone, trading false contradictions for real ones. With a contradiction required to land on a control that applies to the finding's resource, it gets 16 of 18 dev cases and 7 of 7 sealed holdout cases right on every run, against 14 and 5 for the rules, with no false contradiction in 125 runs.
 
-Next: bring the false contradiction rate down, and [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds), which patches the images whose vulnerabilities triage counts.
+[Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds) patched the images whose vulnerabilities triage counts: `frontend` from 17 CRITICAL and HIGH to 0, and `sky` from 22 to 6, none of which has a fixed package yet.
+
+Next: [Phase 16](plan.md#phase-16-cluster-access-through-an-audited-gateway), cluster reads through an audited gateway, starting with a threat model pass.
 
 ## Measured
 
