@@ -24,7 +24,9 @@ What was run, what came back, and what it proves. `plan.md` holds the intent,
 | [12d Autoscaling](phase-12d-autoscaling.md) | Eight replicas across three zones hold 125 rps with no failures |
 | [13 Security baseline](phase-13-security-baseline.md) | The platform measured against its own threat model, not against a reading of it |
 | [14 Close the baseline](phase-14-close-the-baseline.md) | The hardening that baseline ranked, with its remaining gaps stated |
-| [15 SCC triage](phase-15-scc-triage.md) | Findings reach a notification path, and two plans that looked right and were not |
+| [15 SCC triage](phase-15-scc-triage.md) | Findings are triaged by reviewed mapping and then by model, every failure path is drilled, and the model beats the rules alone only once a contradiction has to land on a control |
+
+Phase 15b, patching the images, is recorded in [the plan](../plan.md#phase-15b-patch-the-images-this-repository-builds), with the counts a scanner read. The project closed after it, on 2026-09-22.
 
 ## Other records
 
@@ -34,7 +36,7 @@ What was run, what came back, and what it proves. `plan.md` holds the intent,
 | [Repository review](notes/repository-review.md) | A pass over the repository itself rather than the platform |
 | [Manifest linting](notes/manifest-linting.md) | How the manifest checks were chosen and tuned |
 | [Shared smoke test](notes/shared-smoke-test.md) | Why both delivery workflows call one composite action |
-| [Upstream pin automation](notes/upstream-pin-automation.md) | How the `sky` pin is proposed and what reviews it |
+| [Upstream pin automation](notes/upstream-pin-automation.md) | How the `sky` pin is proposed and what reviews it. The `ai-k8s` pin adds a signature check, in [Phase 15](phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled) |
 
 ## Reading one
 

@@ -27,8 +27,12 @@ flowchart TB
         Registry["Artifact Registry"]
         Identity["Workload<br/>Identity<br/>Federation"]
         Uptime["Uptime check<br/>three prober regions"]
-        Observability["Cloud Logging<br/>Cloud Monitoring<br/>dashboard and alert policy"]
+        Observability["Cloud Logging<br/>Cloud Monitoring<br/>dashboard and alert policies"]
         Notify["Email notification<br/>channel"]
+        SCC["Security Command Center"]
+        PubSub["Pub/Sub findings subscription<br/>and dead letter topic"]
+        Vertex["Vertex AI<br/>gemini-2.5-flash"]
+        Ledger["Verdict ledger<br/>create-only bucket"]
 
         subgraph VPC["Custom VPC"]
             ControlPlane["GKE control plane<br/>DNS-only endpoint"]
@@ -38,6 +42,7 @@ flowchart TB
                 Nginx["nginx<br/>two replicas<br/>serves /"]
                 Sky["sky<br/>two replicas<br/>serves /sky, /api, /static"]
                 Guardrails["Pod Security, NetworkPolicy,<br/>quotas, disruption budgets"]
+                Worker["triage worker<br/>agents namespace"]
             end
 
             NAT["Cloud NAT"]
@@ -66,6 +71,11 @@ flowchart TB
     Uptime -- "probes /healthz every 60s" --> Ingress
     Uptime -. the result is the metric .-> Observability
     Observability -. opens an incident .-> Notify
+    SCC -- "finding changes" --> PubSub
+    Worker -- "pulls" --> PubSub
+    Worker -- "only what the rules leave unmatched" --> Vertex
+    Worker -- "records before notifying" --> Ledger
+    Worker -. "verdict log entry" .-> Observability
 
     classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
     classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
@@ -74,8 +84,8 @@ flowchart TB
 
     class User,Developer external
     class Terraform,GitHub delivery
-    class ControlPlane,NAT,Routes,Nginx,Sky,Guardrails workload
-    class Ingress,Registry,Identity,Uptime,Observability,Notify managed
+    class ControlPlane,NAT,Routes,Nginx,Sky,Guardrails,Worker workload
+    class Ingress,Registry,Identity,Uptime,Observability,Notify,SCC,PubSub,Vertex,Ledger managed
 
     style Delivery fill:#211A0D,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
     style GCP fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
@@ -85,7 +95,7 @@ flowchart TB
 
 ## Status
 
-Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operate the platform. Open gaps are listed next to what works.
+Complete, and closed on 2026-09-22. Milestones 1 to 3 are done, and Milestone 4 closed at Phase 15 and Phase 15b. Phases 16 to 19 are optional extensions and were not built; [the plan](plan.md#status) says what would justify each, and lists the follow-ups still dated.
 
 | Area | State |
 | --- | --- |
@@ -95,14 +105,16 @@ Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operat
 | Delivery | Keyless federation scoped to `main`, gated rollout, required checks, upstream CI checked before a pin moves |
 | Ingress | Public Gateway on a custom domain, managed TLS, HTTP to HTTPS redirect |
 | Resilience | Node floor of two, a disruption budget per workload, nightly maintenance window |
-| Observability | Uptime check, one actionable alert, dashboard as code |
+| Observability | Uptime check, dashboard as code, and three alerts: availability, a finding that needs a decision, and a finding that was dead-lettered |
 | Proven | Both failure drills run and recorded |
 | Hardened | One network, vulnerability scanning on, logs queryable, TLS 1.2 floor, rate limit, response security headers |
 | Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
 | Modelled | Eight trust boundaries with [a threat model](reference/threat-model.md), measured rather than assumed, and scanned daily from outside |
 | Streaming | Security Command Center findings reach a subscription in about two seconds, and park in a dead letter topic when nothing acknowledges them |
-| Triaged | An agent in its own namespace settles findings against a corpus compiled into its image, holding four scoped grants and no cluster credential |
-| Drilled | The worker is stopped at each of the three crash boundaries and recovers at each, notifying again rather than silently skipping |
+| Triaged | An agent in its own namespace settles findings by reviewed mapping, then by model, against a corpus compiled into its image. It holds four scoped grants and no cluster credential |
+| Drilled | The worker is stopped at each of the three crash boundaries and recovers at each, notifying again rather than silently skipping. Every model failure path was made to happen |
+| Evaluated | Rules alone against rules plus the model, on 25 reviewed findings with a sealed holdout, scored for citations that support the verdict, and rerun by CI rule when the prompt, cases or mapping change |
+| Patched | The images this repository builds, measured by a scanner, with Dependabot moving each base image |
 
 Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
 
@@ -112,7 +124,19 @@ Whether the model is worth it is measured in [slices 13 and 14](worklog/phase-15
 
 [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds) patched the images whose vulnerabilities triage counts: `frontend` from 17 CRITICAL and HIGH to 0, and `sky` from 22 to 6, none of which has a fixed package yet.
 
-Next: [Phase 16](plan.md#phase-16-cluster-access-through-an-audited-gateway), cluster reads through an audited gateway, starting with a threat model pass.
+Not built: cluster reads through an audited gateway, a first responder on alerts, findings as Kubernetes objects, and remediation by pull request. Their designs and decisions are in [the plan](plan.md#phase-16-cluster-access-through-an-audited-gateway). None has a requirement behind it yet, and the triage worker needs none of them.
+
+## Known limitations
+
+| Limitation | Why it stands |
+| --- | --- |
+| Terraform state is local, on one workstation | One operator and no automated apply. The [decision gate](plan.md#later-decision-gates) for remote state is collaboration or automated apply, and neither arrived |
+| The bootstrap order has not been rehearsed on an empty project | It is reconstructed from the worklogs in [the operations reference](reference/operations.md#bootstrap-order) |
+| Zonal control plane | Cost. The node pool spans three zones; the control plane does not |
+| Egress from `agents` admits any host on 443 | NetworkPolicy cannot match hostnames. Recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) |
+| Six HIGH vulnerabilities in `sky` | No fixed package exists. [Accepted](decisions.md#residual-image-vulnerabilities) until Debian ships one |
+| The evaluation is 25 cases, and the holdout shares its author | A check against tuning, not an independent sample. [Slice 13](worklog/phase-15-scc-triage.md#limitations) lists the rest |
+| Event Threat Detection depends on a Security Command Center Premium trial | The tier is re-read when the trial ends. Standard drops the threat class of findings |
 
 ## Measured
 
@@ -131,9 +155,14 @@ Next: [Phase 16](plan.md#phase-16-cluster-access-through-an-audited-gateway), cl
 | Security Command Center finding change to a message on the subscription | about 2 seconds |
 | Unacknowledged message to the dead letter topic | 5 delivery attempts |
 | Outstanding message returned after the worker is killed | about 25 seconds, on stream close rather than on the 120s deadline |
+| Findings right on every one of five runs, rules plus the model | 16 of 18 dev, 7 of 7 holdout. Rules alone: 14 and 5 |
+| False contradictions raised by the model | 0 of 125 runs, from 15 before the check in code |
+| Model call latency, p95 | about 2 seconds |
+| Model cost per call | about 0.003 USD, estimated from token counts |
+| CRITICAL and HIGH vulnerabilities in the images built here | `frontend` 0, from 17. `sky` 6 with no fix, from 22 |
 | Crash to a recorded verdict on redelivery | four ledger states in 285ms |
 
-Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md) and [Phase 12d](worklog/phase-12d-autoscaling.md).
+Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md), [Phase 12d](worklog/phase-12d-autoscaling.md), [Phase 15](worklog/phase-15-scc-triage.md) and [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds).
 
 ## Platform capabilities
 

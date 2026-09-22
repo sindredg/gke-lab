@@ -1,10 +1,33 @@
 # Secure GKE Workload Platform Plan
 
+## Status
+
+**Closed on 2026-09-22.**
+
+| Milestone | State | Evidence |
+| --- | --- | --- |
+| 1. Complete platform slice, Phases 1 to 11 | Complete | [Phase 1](worklog/phase-01-infrastructure.md) to [Phase 11](worklog/phase-11-hardening.md) |
+| 2. Load and autoscaling, Phase 12 | Complete | [12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
+| 3. Security baseline, Phases 13 and 14 | Complete. Eleven of twelve threat model findings closed, one accepted | [Phase 13](worklog/phase-13-security-baseline.md), [Phase 14](worklog/phase-14-close-the-baseline.md) |
+| 4. Agent-operated security | Phases 15 and 15b complete. Phases 16 and 17 are optional and were not built | [Phase 15](worklog/phase-15-scc-triage.md) |
+| 5. The agent as a platform citizen | Optional, not built | |
+
+Open follow-ups. None holds a phase open:
+
+| Follow-up | When |
+| --- | --- |
+| Re-read Security Command Center for the image digests Phase 15b replaced | 2026-09-23 |
+| Re-read the Security Command Center tier | When the Premium trial ends |
+| Six HIGH vulnerabilities in `sky` with no fixed package, [accepted](decisions.md#residual-image-vulnerabilities) | When Debian ships a fix. Dependabot proposes the digest |
+| A reproducible verdict on borderline findings, and abstention on a finding that names no workload | Before the model, the prompt or the corpus next changes |
+
+Everything below is the plan as it was built, kept as history. A ticked box links the evidence that proved it. Phases 16 to 19 are marked optional, each with the condition that would justify building it.
+
 ## Goal
 
-Build and prove a secure GKE workload delivery platform. The platform is the portfolio project. Once it is proven, agents operate it: triaging its security findings, reaching it through an audited path, and answering its alerts, held to the same evidence standard as the platform itself.
+Build and prove a secure GKE workload delivery platform. The platform is the portfolio project. Once it is proven, agents operate it: triaging its security findings, reaching it through an audited path, and answering its alerts, held to the same evidence standard as the platform itself. The first of those was built and measured. The other two are the optional phases below.
 
-## Current baseline
+## Starting baseline
 
 **Status:** Complete
 
@@ -334,7 +357,7 @@ Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), for the reas
 
 ### Phase 15: Security Command Center triage
 
-Built in three parts, all three applied. Increment 1 of the agent is deployed and has triaged a real finding end to end, without calling a model. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md).
+**Status:** Complete. Built in three parts, all applied. The worker settles findings by reviewed mapping first and by model second, and the decision quality of both is measured. Evidence for everything ticked is in [the worklog](worklog/phase-15-scc-triage.md), and how the worker works is in [the triage worker reference](reference/triage-worker.md).
 
 **Dependency: Security Command Center Premium.** Event Threat Detection is a Premium detector. This phase triages the threat class alongside misconfiguration and external exposure, and it has already produced one threat finding: a drill Pod that Pod Security refused, which Event Threat Detection reported as a privileged container launch, and which the worker identity then pulled from the subscription. Standard drops that detector, and a class of this phase's input with it. Premium is a dependency of Phase 15, not a bonus on top of it.
 
@@ -362,7 +385,7 @@ The billing mode is a free trial, confirmed by the owner on 2026-09-20. There is
 | --- | --- | --- | --- |
 | Pull findings | `roles/pubsub.subscriber` | The `scc-triage` subscription, not the project | Applied and proven. `:pull` returns 200, `get` on the same subscription returns 403 |
 | Write verdict records | `k8_lab_ledger_appender`, create, get and list | The verdict ledger bucket | Applied and proven. Delete and overwrite return 403, and a verdict has been written through it |
-| Invoke the model | `roles/aiplatform.user` | The project | Applied, and wider than the worker needs. A publisher model needs `aiplatform.endpoints.predict` alone |
+| Invoke the model | `k8_lab_model_invoker`, `aiplatform.endpoints.predict` alone | The project | Applied and proven. Removing the binding produces a 403 naming that permission |
 | Notify | `roles/logging.logWriter` | The project | Applied. The role writes and cannot read any log |
 | Federate | `roles/iam.workloadIdentityUser` | `agents/triage-worker` alone | Applied and proven. A Pod in that namespace receives `k8-lab-triage`, and the user-managed key list is empty |
 
@@ -371,16 +394,16 @@ Denied, and the denial is part of the design:
 | Denied | Why it matters |
 | --- | --- |
 | Security Command Center API access | The worker reads findings from Pub/Sub. A read or a mute at the source would let a triage verdict silence its own input |
-| Object deletion and overwrite in the ledger | The ledger is the replay source Phase 18 rebuilds from. A worker that can erase a record can erase the evidence that it ran |
-| Any cluster credential | Phase 16 owns cluster reads. The worker holds no kubeconfig and no Kubernetes RBAC beyond its own ServiceAccount |
+| Object deletion and overwrite in the ledger | The ledger is the record of every verdict, and the replay source for anything built on it. A worker that can erase a record can erase the evidence that it ran |
+| Any cluster credential | Cluster reads would go through an audited gateway, Phase 16. The worker holds no kubeconfig and no Kubernetes RBAC beyond its own ServiceAccount |
 | Broad project roles | No `roles/editor`, no `roles/viewer`, no `*.admin`. `PRIMITIVE_ROLES_USED` is already a live finding against this project |
 
-One grant above is wider than the boundary the table describes, and one was narrowed:
+Two grants started wider than the boundary and were narrowed once an applied call path showed what they needed:
 
 - [x] Replace `roles/aiplatform.user` with a custom role holding `aiplatform.endpoints.predict`, once an applied call path shows which permissions the call needs. `k8_lab_model_invoker` carried five calls, and removing its binding produced `403 Permission 'aiplatform.endpoints.predict' denied`.
 - [x] Replace `roles/storage.objectUser` with create and read only, so the worker cannot delete or overwrite a ledger object. [Slice 8](worklog/phase-15-scc-triage.md#the-grant-read-back-and-probed).
 
-Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) and rated at the Phase 16 threat model pass.
+Egress out of `agents` is also wider than intended. NetworkPolicy cannot match hostnames, so the rule admits everything outside the cluster on TCP 443 rather than the Google API range. It is recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) as a residual: a compromised worker could send what it holds, findings and verdicts, to any host on 443.
 
 #### Part 3: The agent
 
@@ -535,6 +558,8 @@ This repository is public, so package names and versions are left out while an i
 
 ### Phase 16: Cluster access through an audited gateway
 
+**Optional extension, not built.** Build it when an agent needs to read cluster state. Nothing running does: the triage worker reads findings from Pub/Sub and never the cluster. The design below and its [decision](decisions.md#gateway-client-authentication) stand for whoever builds it.
+
 - Hold the cluster credentials in one service, and expose reads as MCP tools.
 - Expose tasks rather than verbs: `get_workload_health`, `get_recent_events`, `get_rollout_history`, `get_pod_logs`. A generic verb and resource allowlist still lets a caller compose a request nobody designed.
 - Read the Kubernetes API and nothing else. Cloud Monitoring and Cloud Logging are a separate boundary, described in Phase 17.
@@ -557,6 +582,8 @@ This repository is public, so package names and versions are left out while an i
 - [ ] The threat model carries the new boundary, with its findings ranked alongside the existing twelve.
 
 ### Phase 17: First responder on alert
+
+**Optional extension, not built.** Build it when alerts arrive often enough that a first diagnosis saves time, or when agent tooling is the learning goal. The one alert this phase would answer, availability, has fired only in the Phase 10 drill. It needs Phase 16 first.
 
 **The event path.** One path, stated rather than implied:
 
@@ -593,7 +620,11 @@ Documentation: [Security Command Center notifications](https://cloud.google.com/
 
 Follows Milestone 4. The agents stop standing beside the platform and become part of it. Their state becomes Kubernetes state, and their output goes through the same delivery chain as every other change.
 
+**Optional, not built.** Neither phase has a requirement behind it yet, as each says below.
+
 ### Phase 18: Findings as Kubernetes objects
+
+**Optional extension, not built.** Build it when someone needs to query findings from the cluster. Today the ledger and the alert mail are the interface, and a controller would add state, RBAC and a reconcile loop for a view nobody has asked for.
 
 **What is authoritative.** Phase 15 writes a Cloud Storage ledger and this phase adds a custom resource. Only one of them can be the source of truth, and it is the ledger.
 
@@ -623,6 +654,8 @@ After a controller crash, state is rebuilt by replaying the ledger rather than b
 - [ ] A custom resource with no ledger record is removed rather than reconciled.
 
 ### Phase 19: Remediation by pull request
+
+**Optional extension, not built.** Build it when triage finds mechanical fixes often enough to automate them. The fixes Phase 15 found were base image bumps, and Dependabot already proposes those. It is also the highest-risk phase here, because it is the only one that writes.
 
 The agent's only write capability is a pull request against this repository. It holds no cluster write access, through the Phase 16 gateway or otherwise.
 
@@ -702,7 +735,7 @@ Four more apply to the agents, because their cost behaves differently from the p
 - Emit the token count and the estimated cost of every model run, so cost is attributable to a finding rather than to a month.
 - Enforce a spend ceiling in the agent itself. Credits cover the bill, so a billing budget threshold measures something other than what is being spent, and an alert that arrives after the spend is not a limit.
 
-## Immediate next step
+## How the milestones closed
 
 Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
 
@@ -720,8 +753,10 @@ The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each o
 
 That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
 
-Phase 15 is closed. The worker triages every in-scope finding, the rules settle what the reviewed mapping pairs, and the model settles the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled). [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) scored the model on twelve real findings: it changes one outcome the rules cannot reach, and on a borderline one its verdict is not stable at temperature 0. One item waits on the calendar: the tier when the trial ends. Phase 15b patches the images whose vulnerabilities triage counts and does not answer, and Phase 16 follows.
+Phase 15 is closed. The worker triages every in-scope finding, the rules settle what the reviewed mapping pairs, and the model settles the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled). [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) scored the model on twelve real findings: it changes one outcome the rules cannot reach, and on a borderline one its verdict is not stable at temperature 0. One item waits on the calendar: the tier when the trial ends.
 
-The agents land on a platform whose security posture has been tested rather than described. All three in Milestone 4 read and none can change the cluster, so the threat model comes back in Phase 16, when an agent first holds cluster credentials.
+Slice 12 could not say whether the model was worth having, so [slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model) measured it on 25 reviewed findings, asked five times each, against the rules alone. At first the model tied the rules, trading 15 false contradictions for contradictions the rules cannot reach. An instruction to stop that measured worse. A check in code, requiring a contradiction to rest on a control that applies to the finding's resource, brought cases right every run to 16 of 18 on the dev set and 7 of 7 on the sealed holdout, against 14 and 5 for the rules, with no false contradiction.
 
-Phases 16 to 19 were revised on 2026-09-20, before any of them started. Four things that were implied are now decided: how one Pod authenticates to another, where observability data is read, what is authoritative between the ledger and the custom resource, and what enforces the human merge boundary. The decisions are under [Agents](decisions.md#agents).
+Phase 15b patched the images whose vulnerabilities triage counts and does not answer. `frontend` went from 17 CRITICAL and HIGH to none, and `sky`, moved to Debian 13, from 22 to 6 that have no fixed package yet. The review before closing also narrowed each deploy workflow to what it applies, and made the worker's image and recorded digest move in one step.
+
+The project closed there, on 2026-09-22. Phases 16 to 19 were revised on 2026-09-20, before any of them started, and four things they implied were decided: how one Pod authenticates to another, where observability data is read, what is authoritative between the ledger and the custom resource, and what enforces the human merge boundary. The decisions are under [Agents](decisions.md#agents). The phases stay as optional extensions, each with the condition that would justify building it.

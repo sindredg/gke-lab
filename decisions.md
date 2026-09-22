@@ -736,6 +736,8 @@ Alternatives: Keep the defaults and retry on the client, which hides the error f
 
 ## Agents
 
+Phase 15 was built. The records below that name Phases 16 to 19 were decided for those phases before they started, and those phases were not built. The records stand for whoever builds one.
+
 ### Agent source location
 
 Decision: Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), a separate public repository. This repository keeps the Terraform, the manifests, the identities, the Pub/Sub and Security Command Center configuration, the image pins, and all narrative evidence including worklogs about agent failures.

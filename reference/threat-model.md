@@ -142,7 +142,7 @@ The mechanism is identical and the stakes are not. A malicious commit to `sky` c
 
 Three things narrow it, and none of them is new machinery. The corpus the agent cites stays in this repository, so a commit to `ai-k8s` cannot add the `.checkov.baseline` entry a forged acceptance would have to resolve against. The pin is reviewed here by the same human reading the same kind of diff. And the same check-run query that guards the `sky` pin guards this one from the first bump rather than as a follow-up, because finding 7 already established that a pin proposed without reading upstream CI is the weak step.
 
-The residual is the same one: this repository's CI does not run on a pin bump, so the human reading the diff is the control. Carried forward to the Phase 16 revision rather than closed here.
+The residual is the same one: this repository's CI does not run on a pin bump, so the human reading the diff is the control. It was carried to the Phase 16 revision, and Phase 16 was not built, so the residual stands as written.
 
 Re-ranked on 2026-09-20, against this second edge and against Phase 19's ability to open a pull request in `k8-lab`. The deferred acceptance on [boundary 8](#boundary-8-public-registries-to-the-running-image) holds. Signing proves which pipeline built an image, and neither new edge produces an image from a different pipeline: both produce a commit this pipeline would build and sign correctly.
 

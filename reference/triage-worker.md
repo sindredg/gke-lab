@@ -2,7 +2,7 @@
 
 How the Phase 15 worker turns a Security Command Center finding into a verdict, and where the model fits.
 
-State on 2026-09-21: running `ai-k8s` [`7135820`](https://github.com/sindredg/ai-k8s/tree/7135820), image `sha256:dff5c0bb`, with `-model=gemini-2.5-flash`. Evidence is in [the Phase 15 worklog](../worklog/phase-15-scc-triage.md).
+State on 2026-09-22: running `ai-k8s` [`a2159a1`](https://github.com/sindredg/ai-k8s/tree/a2159a1), image `sha256:a626b64f`, with `-model=gemini-2.5-flash` and 137 corpus entries. Evidence is in [the Phase 15 worklog](../worklog/phase-15-scc-triage.md). To roll it out, see [the operations reference](operations.md#rolling-out-the-triage-worker).
 
 ## The path
 
@@ -57,6 +57,7 @@ The order is fixed by [triage idempotency](../decisions.md#triage-idempotency): 
 | Whether a finding is `accepted` | The reviewed pairing in `mapping.yaml` | Acceptance is the quiet path. A model pairs findings to decisions by name, and did so wrongly twice while this phase was drafted |
 | `new` versus `insufficient_evidence` for a finding missing a field | The worker | The boundary cannot drift if the model does not hold it |
 | Whether a citation is real | Exact lookup in the compiled corpus | Injected text cannot create a corpus entry |
+| Whether a contradiction lands on this finding | A cited control whose `applies_to` covers a resource the finding names | A citation can resolve and be about something else. Before this check the model raised 15 false contradictions in 125 runs, and after it none |
 | Budget, spend ceiling, retries, notification | The worker | The model owns no delivery semantics |
 | `new`, `contradicts_decision` or `insufficient_evidence` for an unmatched finding, and the explanation | The model | This is the judgement the rules cannot make |
 
@@ -66,7 +67,7 @@ Recorded in [model scope](../decisions.md#model-scope).
 
 | | |
 | --- | --- |
-| Sees | One finding the rules did not match, as escaped JSON, and all 134 corpus entries as id and summary |
+| Sees | One finding the rules did not match, as escaped JSON, and all 137 corpus entries as id and summary |
 | May return | `new`, `contradicts_decision`, `insufficient_evidence` |
 | Never returns | `accepted`. It is absent from the schema, refused by the worker, and rejected by the validator |
 | Tools | None declared. A tool call in the reply is rejected |
@@ -76,9 +77,10 @@ Recorded in [model scope](../decisions.md#model-scope).
 | Spend ceiling | 1.00 USD a UTC day. Each call reserves its worst case in the ledger bucket first, so the ceiling survives restarts |
 | Timeout | 30 s. A timeout is an error, not a verdict |
 | Typical call | About 8900 tokens in, 100 out, 0.003 USD, 1.2 s |
-| Repeatability | Not guaranteed. On identical input one borderline verdict flipped between runs, see [slice 12](../worklog/phase-15-scc-triage.md#temperature-0-does-not-fix-the-verdict) |
+| Repeatability | Not guaranteed. Four of 25 evaluation cases move between two defensible answers across five runs, and none moves between right and wrong. See [slice 14](../worklog/phase-15-scc-triage.md#slice-14-a-contradiction-has-to-land-on-something) |
+| Measured quality | Cases right every run: 16 of 18 dev and 7 of 7 holdout, against 14 and 5 for the rules alone. How it is scored is in [the ai-k8s README](https://github.com/sindredg/ai-k8s#evaluation) |
 
-A reply is refused as `insufficient_evidence`, naming the reason, when it does not decode strictly, cites an id that does not resolve, calls `new` something it also cites, or returns `accepted`. The refusal is still a verdict and still notifies. Every model verdict records the model, parameters, prompt digest, tokens and estimated cost, on the ledger record and as labels on the log entry.
+A reply is refused as `insufficient_evidence`, naming the reason, when it does not decode strictly, cites an id that does not resolve, calls `new` something it also cites, returns `accepted`, or calls something a contradiction without citing a control that applies to it. The refusal is still a verdict and still notifies. Every model verdict records the model, parameters, prompt digest, tokens and estimated cost, on the ledger record and as labels on the log entry.
 
 ## When something fails
 
