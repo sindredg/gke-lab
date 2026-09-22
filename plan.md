@@ -481,6 +481,15 @@ Failure paths, each proven by making it happen:
 - [x] Stop the agent while a finding is waiting. After the agent restarts, verify that it processes the finding successfully. Scaled to 0, muted a finding, scaled to 1, and the waiting message was triaged.
 - [x] A finding carrying an instruction is triaged to the same verdict as one without. Test every untrusted field the worker reads, not the resource name alone: category, resource name, description, external URI, source properties, and the finding's own severity. Use a real finding from a real detector. Live: a real finding carried the instruction in `resourceName`, `externalUri` and `sourceProperties`, and got the same verdict as one without. Category, description and severity come from the detector and cannot carry one, so they are covered by unit test, as decided in [injection test scope](decisions.md#injection-test-scope).
 
+**Decision quality.** Whether the model makes triage better than the rules alone. [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) could not answer that, because nine of its twelve cases accepted only what the rules already return. Built in [ai-k8s#6](https://github.com/sindredg/ai-k8s/pull/6), measured in [slice 13](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model).
+
+- [x] A reviewed set with expected outcomes and the evidence behind each: 18 dev cases and a sealed holdout of 7. It includes ambiguous findings, missing fields, planted text, a decision about another resource, controls that did not hold, and a finding where abstention is right.
+- [x] Score rules alone against rules plus the model, through the function the worker calls. Cases right on every run: 14 of 18 each on dev, 5 of 7 each on holdout.
+- [x] Check that a citation supports the verdict, not only that it resolves. A right verdict resting on a citation outside the reviewed list scores as wrong.
+- [x] Measure wrong verdicts by direction, unsupported citations, flips across five repeats, latency and cost. 15 false contradictions in 125 model-path runs and none silenced; p95 1.9s; about 0.003 USD a call.
+- [x] Fail CI when a committed result is stale: the prompt, parameters, cases, mapping or controls changed after the run. An edit here to `decisions.md`, the threat model or the checkov baseline only warns, because it does not run ai-k8s CI.
+- [x] Bring the false contradiction rate down on the dev set, then run the holdout once. From 15 of 125 model-path runs to 0: a contradiction stands only on a control that applies to a resource the finding names, in [ai-k8s#7](https://github.com/sindredg/ai-k8s/pull/7). Cases right every run: dev 16 of 18, holdout 7 of 7, against 14 and 5 for the rules alone. [Slice 14](worklog/phase-15-scc-triage.md#slice-14-a-contradiction-has-to-land-on-something), including the prompt change that measured worse and was reverted.
+
 ### Phase 15b: Patch the images this repository builds
 
 Split out of Phase 15 on 2026-09-21. Triage counts vulnerabilities and does not answer them, as recorded in [decisions.md](decisions.md#vulnerability-scope). Something else has to.
@@ -500,18 +509,19 @@ This repository is public, so package names and versions are left out while an i
 
 - The redeploy did not remediate anything. Both base images are pinned by digest, so the rebuild reproduced the same packages under a new digest. The 38 moved to the new digests; they did not close.
 - The earlier "Debian 12" description was wrong for `nginx`. Its findings read `lib/apk/db/installed` and `cpe:/o:alpine:alpine_linux:3.24`. Only `sky` is Debian.
-- Findings on a retired digest close by themselves. The 17 on `frontend@26b054d9` went `INACTIVE` about 28 hours after that ReplicaSet scaled to zero, while the ReplicaSet still existed.
+- Findings on a retired digest close by themselves, and not on a fixed delay. The 17 on `frontend@26b054d9` went `INACTIVE` about 28 hours after that ReplicaSet scaled to zero. The 38 on `frontend@e5174ac8` and `sky@8d74b7ae` went `INACTIVE` at 04:52Z on 2026-09-22, about 14 hours after theirs. The ReplicaSets still existed each time.
 - `sky` cannot be fixed by a rebuild. Seven of its eight packages have no fixed version in Debian 12. The Debian 13 `python:3.14.7-slim-trixie` carries newer versions of all eight, which is a change in the `sky` repository. Its Dependabot moves the digest within `bookworm` and never across a Debian release.
 
-- [ ] Re-pin the `nginx` base to `1.30.5-alpine`, with Dependabot proposing the next base digest.
-- [ ] Move `sky` to a Debian 13 base in its own repository, then bump the pin.
-- [ ] Record which findings closed, measured by Security Command Center and not by the rebuild. That includes the old digests closing by themselves, expected around 2026-09-22 19:00Z.
-- [ ] Trigger the next rebuild with Dependabot on the base image digest, in each repository that builds one. Configured for `app/` here, and already present in `sky`. Unproven here until it opens a pull request.
+- [x] Re-pin the `nginx` base to a patched digest. `1.30.5-alpine` in #133, then `1.31.5-alpine` from Dependabot in #134, which moved from the stable line to mainline. `apk info -v` inside that base shows a fixed version of every affected package. Running as `frontend@98601c1c` since 12:15Z on 2026-09-22.
+- [ ] Move `sky` to a Debian 13 base in its own repository, then bump the pin. [sky#60](https://github.com/sindredg/sky/pull/60) is merged: lint, format and 143 tests pass on both bases, and the endpoints answer the same. The pin moves in #136.
+- [ ] Record which findings closed, measured by Security Command Center and not by the rebuild. The retired digests closed by themselves; the running `frontend@98601c1c` and the next `sky` digest have not been scanned yet.
+- [x] Trigger the next rebuild with Dependabot on the base image digest, in each repository that builds one. Proven here: Dependabot opened #134 at 04:47Z on 2026-09-22, less than a minute after #133 added the ecosystem. Already configured in `sky`.
 
 **Follow-ups from Phase 15, not blocking:**
 
-- [ ] Fix the spend ceiling refusal, which prints a 0.001 USD ceiling as `0.00 USD`.
-- [ ] Make a borderline contradiction reproducible: a fixed `seed`, or two calls that must agree before `contradicts_decision` is raised. [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) measured the flip.
+- [x] Fix the spend ceiling refusal, which printed a 0.001 USD ceiling as `0.00 USD`. Fixed in [ai-k8s#6](https://github.com/sindredg/ai-k8s/pull/6) and proven by unit test. The worker carries it from the next pin.
+- [ ] Make a borderline verdict reproducible: a fixed `seed`, or two calls that must agree. After [slice 14](worklog/phase-15-scc-triage.md#slice-14-a-contradiction-has-to-land-on-something), no case moves between right and wrong: three dev cases and one holdout case move between two answers that are both defensible. Not blocking.
+- [ ] Get the model to abstain on a finding that names no workload. It returns `new` on every run, and the rules do the same.
 
 ### Phase 16: Cluster access through an audited gateway
 

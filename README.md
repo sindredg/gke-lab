@@ -106,9 +106,11 @@ Milestones 1 to 3 are complete, and Milestone 4 is under way: agents that operat
 
 Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
 
-Next: the rest of [Phase 15](worklog/phase-15-scc-triage.md). The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) is deployed and has settled five findings without calling a model. The three crash boundaries are drilled, along with a redelivery and a finding that arrived while the worker was stopped.
+[Phase 15](worklog/phase-15-scc-triage.md) is closed. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) settles what the reviewed mapping pairs, and asks Vertex AI about the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen.
 
-Still open: external exposure has not been through the deployed worker, a ledger write failure is covered by a unit test rather than against the live worker, and the prompt injection drill wants a real finding. The overlap Phase 14 left open stands at three of seven active misconfigurations, counted offline rather than with the provenance the exit criteria ask for. Increment 2, the model, has not started.
+Whether the model is worth it is measured in [slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model), on a reviewed set of 25 findings asked five times each. At first the model tied the rules alone, trading false contradictions for real ones. With a contradiction required to land on a control that applies to the finding's resource, it gets 16 of 18 dev cases and 7 of 7 sealed holdout cases right on every run, against 14 and 5 for the rules, with no false contradiction in 125 runs.
+
+Next: bring the false contradiction rate down, and [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds), which patches the images whose vulnerabilities triage counts.
 
 ## Measured
 
@@ -151,7 +153,7 @@ Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](wo
 | Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
 | Load and autoscaling | k6 harness on a throwaway load generator, `preStop` and keep-alive for clean rollouts, HPA on sky with requests and quota sized from measured load, nodes across three zones | [Load and scaling](decisions.md#load-and-scaling) | [Phase 12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
 | Security baseline | Twelve ranked threat model findings, eleven closed with evidence, federation scoped to a ref, CSP on both paths, CAA on a signed zone, a measured rate limit | [Workload security](decisions.md#workload-security) | [Phase 13](worklog/phase-13-security-baseline.md), [Phase 14](worklog/phase-14-close-the-baseline.md) |
-| Finding transport | Security Command Center notification config onto Pub/Sub, subscription with a dead letter policy, verdict ledger bucket. No consumer yet | [Agents](decisions.md#agents) | [Phase 15](worklog/phase-15-scc-triage.md) |
+| Finding triage | Security Command Center findings over Pub/Sub with a dead letter policy, a worker that settles them by reviewed mapping and then by model, an append-only verdict ledger, and a scored evaluation of both | [Agents](decisions.md#agents) | [Phase 15](worklog/phase-15-scc-triage.md) |
 
 ## Documentation
 
