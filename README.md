@@ -4,6 +4,8 @@ A private GKE cluster, a couple of workloads, and an AI agent that handles the s
 
 Terraform builds it. GitHub Actions ships to it, keylessly. Each phase has a worklog, and [decisions.md](decisions.md) covers the why.
 
+**Closed on 2026-09-22.** [plan.md](plan.md) has the status table and what stayed optional. The site below still runs.
+
 ## Live
 
 [sindrg.com](https://sindrg.com)
