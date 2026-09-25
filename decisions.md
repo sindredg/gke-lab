@@ -254,19 +254,23 @@ Alternatives: Copy the source into this repository, which forks it and makes ups
 
 ### Supply-chain control timing
 
-Decision: The deferred acceptance of provenance, an SBOM, signing and admission enforcement stands. One adjacent control moves earlier instead: the pinned `ai-k8s` commit is checked for signature and authorship before it is built, and the upstream check-run query guards that pin from its first bump rather than as a follow-up.
+Decision: Provenance, an SBOM, signing and admission enforcement stay deferred. One control moves earlier: the pinned `ai-k8s` commit is checked for signature and authorship before it is built, and the upstream check-run query guards that pin from its first bump.
 
-Why: The acceptance was written when one upstream repository crossed [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Milestone 4 adds a second, and Milestone 5 gives an agent the ability to open a pull request here, so the ranking was re-run on 2026-09-20 against both.
+Why: The ranking was re-run on 2026-09-20, when Milestone 4 added a second upstream repository to [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline) and Milestone 5 planned an agent that opens pull requests here.
 
-Neither new edge is answered by attestation. Signing proves that this pipeline built the image. The new paths are a bad commit that the pipeline would build and sign correctly, or a compromise of the pipeline identity, whose signature would also be valid. The registry already has a single writer and images are pulled by digest, so the gap signing closes, an image that did not come from this pipeline, is not the gap either edge opens.
+| New edge | Does attestation answer it? |
+| --- | --- |
+| A bad `ai-k8s` commit | No. The pipeline would build and sign it correctly |
+| A compromised pipeline identity | No. Its signature is also valid |
+| Phase 19 agent opens a pull request | No. Federation is scoped to `main`, the ruleset gates the merge, and the agent cannot approve its own work. See [the human merge boundary](#the-human-merge-boundary) |
 
-Phase 19's write capability ranks lower than it first reads. The agent opens a pull request against `k8-lab`, which is the repository that reaches Google Cloud, but a proposal is not a deployment: federation is scoped to `refs/heads/main`, the merge is gated by the ruleset, and the agent cannot approve its own work. The controls on that path are [the human merge boundary](#the-human-merge-boundary) and the scope check, not attestation.
+Signing closes one gap: an image that did not come from this pipeline. The registry already has one writer and images are pulled by digest, so neither new edge opens that gap.
 
-What the `ai-k8s` edge does change is the value of one control that was accepted rather than closed. Threat S on boundary 5, a commit from an unexpected author, was accepted because `sky`'s commits are all the owner's. `ai-k8s` holds the logic that decides whether a security finding is reported as accepted, as contradicting a decision, or not reported at all, and it is new enough to have exactly one author from the first commit. A signature and authorship check is cheap there and answers the edge directly, so it moves into Phase 15 with the first build.
+The `ai-k8s` edge does change one accepted threat. Threat S on boundary 5, a commit from an unexpected author, was accepted because every `sky` commit is the owner's. `ai-k8s` decides whether a finding is reported at all, and has had one author from the first commit. A signature and authorship check is cheap there and answers the edge directly.
 
-Cost: Commits in `ai-k8s` have to be signed, and the pin workflow gains a verification step that fails closed when it cannot read the signature. The deferred work stays deferred, so an image that did not come from this pipeline is still caught by nothing at admission.
+Cost: `ai-k8s` commits have to be signed, and the pin workflow fails closed when it cannot read a signature. Nothing at admission catches an image from outside this pipeline.
 
-Alternatives: Move all supply-chain work before Phase 16, which spends a phase on the lowest-ranked row in the threat model while the highest-ranked new risk is a pin a human reviews. Change nothing, which leaves a new repository holding the agent's decision logic under an author assumption written for a different repository.
+Alternatives: Move all supply-chain work before Phase 16, which spends a phase on the lowest-ranked threat. Change nothing, which leaves the agent's decision logic under an author assumption written for another repository.
 
 ## Infrastructure and configuration
 
@@ -740,17 +744,15 @@ Phase 15 was built. The records below that name Phases 16 to 19 were decided for
 
 ### Agent source location
 
-Decision: Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), a separate public repository. This repository keeps the Terraform, the manifests, the identities, the Pub/Sub and Security Command Center configuration, the image pins, and all narrative evidence including worklogs about agent failures.
+Decision: Agent source lives in [ai-k8s](https://github.com/sindredg/ai-k8s), a separate public repository. This repository keeps the Terraform, manifests, identities, Pub/Sub and Security Command Center configuration, image pins, and all evidence, including worklogs about agent failures.
 
-Why: Phases 15 to 19 are a software project rather than a few deployment scripts, and they would otherwise dilute a repository about platform engineering. The split also separates the agent from its own source: the Phase 19 agent opens pull requests against `k8-lab`, and the prompts and tests that decide its verdicts are not in the repository it can write to.
+Why: Phases 15 to 19 are a software project, and would dilute a platform repository. The split also keeps the Phase 19 agent, which opens pull requests against `k8-lab`, away from the prompts and tests that decide its verdicts.
 
-It costs nothing at the federation boundary, which is the reason it is safe to do. `k8-lab` will build the agent the way it already builds `sky`, by shallow-fetching a pinned commit and building it under this repository's identity, so `ai-k8s` holds no Google Cloud credential and the provider's `attribute_condition` stays pinned to `sindredg/k8-lab` on `refs/heads/main`. [Threat model](reference/threat-model.md#findings) finding 2, closed in Phase 14 by narrowing exactly that condition, is untouched.
+It costs nothing at the federation boundary. `k8-lab` builds the agent the way it builds `sky`, from a pinned commit under this repository's identity. `ai-k8s` holds no Google Cloud credential, and the provider stays pinned to `sindredg/k8-lab` on `refs/heads/main`, so [threat model](reference/threat-model.md#findings) finding 2 is untouched. The image is stamped with both the agent and corpus commits, and the corpus is baked in, so no egress to GitHub opens and finding 11 stands.
 
-Because the build runs inside a `k8-lab` checkout, both provenance fields fall out of it. The image is stamped with the agent commit it was built from and the corpus commit of the tree that built it, and the corpus is baked into the image rather than fetched at runtime, so no egress to GitHub is opened and finding 11 stands.
+Cost: A second repository to protect, pin and watch, and a second edge on [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Code and evidence no longer sit together.
 
-Cost: A second repository to protect, pin and watch, and a second edge on [boundary 5](reference/threat-model.md#boundary-5-upstream-repositories-to-the-pipeline). Evidence and code no longer sit together, which is why the evidence stays here rather than splitting.
-
-Alternatives: Keep everything in `k8-lab`, which mixes model and prompt releases into infrastructure changes and gives the Phase 19 agent a path to its own prompts. Several repositories, one per component, which is more boundary than five phases need.
+Alternatives: Keep everything in `k8-lab`, which mixes prompt releases into infrastructure changes and gives the Phase 19 agent a path to its own prompts. One repository per component, which is more boundary than five phases need.
 
 ### Agent implementation language
 
@@ -774,15 +776,15 @@ Alternatives: Self-hosted inference on GPU nodes, which conflicts with the cost 
 
 ### Model scope
 
-Decision: The model sees only findings the reviewed mapping did not match and that parsed completely. It may return `new`, `contradicts_decision` or `insufficient_evidence`. It never returns `accepted`: the value is absent from its output schema, refused by the worker, and rejected by the validator when `settled_by` is `model`.
+Decision: The model sees only findings the reviewed mapping did not match and that parsed completely. It may return `new`, `contradicts_decision` or `insufficient_evidence`. It never returns `accepted`: the value is absent from its schema, refused by the worker, and rejected by the validator when `settled_by` is `model`.
 
-Why: The rules already settle every finding, as `accepted` when a reviewed pairing exists and as `new` when none does, so "what the rules could not settle" needed a meaning. Acceptance is the quiet path, and two records here say a model is the wrong thing to open it. [Triage verdict record](#triage-verdict-record) measured name-based pairing doubling the reported overlap, and [agent permission boundary](#agent-permission-boundary) names this worker as the one identity reading attacker-influenced strings. Keeping acceptance with the mapping means the worst an injected instruction achieves is a louder verdict. It cannot make a finding quiet.
+Why: Acceptance is the quiet path, and two records say a model should not open it. [Triage verdict record](#triage-verdict-record) measured name-based pairing doubling the overlap, and [agent permission boundary](#agent-permission-boundary) names this worker as the identity reading attacker-influenced strings. With acceptance held by the mapping, an injected instruction can make a verdict louder, never quieter.
 
-What the model adds is judgement on the unmatched ones: explaining a new finding, catching a recorded decision the finding contradicts, and refusing when the verdict depends on a fact the corpus does not carry. The privileged container finding from Phase 15's own drill is the last case exactly.
+The model adds judgement on unmatched findings: explaining a new one, catching a decision it contradicts, and abstaining when the corpus lacks a needed fact. The privileged container finding from Phase 15's drill is that last case.
 
-Cost: `contradicts_decision` no longer requires `corpus_match: matched`. `corpus_match` records what deterministic resolution found, and a contradiction found on an unmatched finding carries `none` and stands on its resolved citations. A model call per unmatched finding: ten of fifteen at the backfill. A matched pairing whose decision has quietly stopped holding is not re-checked.
+Cost: `contradicts_decision` no longer requires `corpus_match: matched`. A contradiction on an unmatched finding carries `none` and stands on its resolved citations. One model call per unmatched finding: 10 of 15 at the backfill. A reviewed pairing whose decision has stopped holding is not re-checked.
 
-Alternatives: The model on every in-scope finding, re-checking each accepted pairing for a contradiction, which costs a call per finding to second-guess pairings already reviewed for their exact resource. The model writing explanations only, with the worker's verdict unchanged, which is cheapest and never classifies anything.
+Alternatives: The model on every finding, which pays a call to second-guess reviewed pairings. Explanations only, which is cheapest and never classifies anything.
 
 ### Vulnerability scope
 
@@ -826,95 +828,101 @@ Alternatives: A synthetic finding published into the topic with an instruction i
 
 ### Triage verdict record
 
-Decision: Every verdict is a versioned record carrying the verdict, its severity and confidence, cited evidence, a reasoning summary, missing evidence, a recommended action, an empty tool-call trace, and provenance: model id, generation parameters, prompt digest, corpus commit, agent commit and image digest. Output that does not validate against the schema is rejected rather than parsed.
+Decision: Every verdict is a versioned record: verdict, severity, confidence, cited evidence, reasoning summary, missing evidence, recommended action, an empty tool-call trace, and provenance (model id, generation parameters, prompt digest, corpus commit, agent commit, image digest). Output that fails the schema is rejected, not parsed.
 
-Citation requirements differ by verdict, because not every finding has something to cite.
+| Verdict | Means | Citation requirement |
+| --- | --- | --- |
+| `accepted` | A reviewed pairing covers it | At least one corpus citation that resolves |
+| `contradicts_decision` | It contradicts a recorded decision | At least one corpus citation that resolves. `corpus_match` may be `none`, see [model scope](#model-scope) |
+| `new` | Parsed, complete, within budget, and no corpus entry for the category and resource | The source finding, with `corpus_match: none` |
+| `insufficient_evidence` | A field is missing or unparseable, the input is over budget, a citation does not resolve, or the corpus lacks a needed fact | Optional. The record lists what is missing |
 
-| Verdict | Citation requirement |
-| --- | --- |
-| `accepted` | At least one corpus citation that resolves |
-| `contradicts_decision` | At least one corpus citation that resolves. `corpus_match` may be `none`, see [model scope](#model-scope) |
-| `new` | The source finding, and `corpus_match: none` recorded explicitly |
-| `insufficient_evidence` | Optional. The record lists what evidence is missing |
+The validator rejects `accepted` or `contradicts_decision` with no resolved citation, `new` when resolution found a match, and `insufficient_evidence` with an empty missing-evidence list. The worker, not the model, decides between `new` and `insufficient_evidence`, so that boundary cannot drift.
 
-Corrected 2026-09-20. The rule here was that every verdict must cite a corpus entry. That is wrong for `new`. A genuinely new finding has no applicable corpus entry, and the old rule pushed every real new risk into `insufficient_evidence`, where it reads as a worker fault rather than as something the platform has not decided about. The two verdicts that assert something about a recorded decision still require a citation that resolves, which is where the check was doing its work.
+Corrected on 2026-09-20: the first rule required a corpus citation for every verdict. That pushed every real new risk into `insufficient_evidence`, where it reads as a worker fault.
 
-The worker separates `new` from `insufficient_evidence`, not the model. `new` means the finding parsed, every required field is present, the input fit the budget, and deterministic resolution returned no entry for the category and resource. `insufficient_evidence` means one of those failed: a missing or unparseable field, an input over budget, a citation that does not resolve, or a verdict that depends on a fact the corpus does not carry.
+Why: A resolved citation makes the output checkable, not trusted. While this phase was drafted, a reading of the live findings paired `CLUSTER_SECRETS_ENCRYPTION_DISABLED` with `CKV_GCP_65` and `INTRANODE_VISIBILITY_DISABLED` with `CKV_GCP_61` by name. Those checks are `GKEKubernetesRBACGoogleGroups` and `GKEEnableVPCFlowLogs`, so the reported overlap was double the real one. A model makes that error more fluently.
 
-Schema validation enforces the split. It rejects `accepted` or `contradicts_decision` with no resolved citation, rejects `new` when resolution returned a match, and rejects `insufficient_evidence` with an empty missing-evidence list. The boundary between the two unmatched verdicts cannot drift, because the model does not decide where it is.
+It also bounds prompt injection. Resource names inside a finding are attacker-chosen, but injected text cannot create a corpus entry, so the worst outcome is an abstention, not a forged acceptance.
 
-Why: The citation check is what makes the output checkable rather than trusted. Drafting this phase, a reading of the live findings paired `CLUSTER_SECRETS_ENCRYPTION_DISABLED` with `CKV_GCP_65` and `INTRANODE_VISIBILITY_DISABLED` with `CKV_GCP_61` on the strength of the names. `CKV_GCP_65` is `GKEKubernetesRBACGoogleGroups` and `CKV_GCP_61` is `GKEEnableVPCFlowLogs`, so both pairings were wrong and the reported overlap was double the real one. A model will make that error more fluently than a human does. Resolving the citation catches it without asking the model to be right.
+The tool-call trace is empty in Phase 15 so that Phase 17 can fill it without a schema bump.
 
-It also bounds prompt injection. Finding bodies carry resource names chosen by whoever created the resource, so instructions can arrive inside the data. Injected text cannot manufacture a corpus entry that exists, so the worst it achieves is an abstention rather than a forged acceptance. Relaxing the citation rule for `new` does not reopen that, because deterministic resolution decides whether a finding is unmatched and the validator rejects a `new` verdict when resolution found a match.
+The verdict set is a cross-repository contract carried by one string. `terraform/modules/observability/triage.tf` alerts on `jsonPayload.verdict != "accepted"`, so the worker in `ai-k8s` must emit exactly that lowercase spelling.
 
-The tool-call trace is empty in Phase 15 and present anyway, so Phase 17 does not bump the schema version to add it.
+Cost: A verdict is only as good as the corpus. A real risk the corpus does not describe is reported as `new`, which is the intended failure direction. The alert fails open the other way: a misspelled `accepted` pages the owner for every accepted finding.
 
-The `verdict` field is a closed set of four values: `accepted`, `contradicts_decision`, `new` and `insufficient_evidence`. The worker that emits them is built in `ai-k8s`, a separate repository, so this closed set is a cross-repository contract carried by a single string and recorded nowhere else. `terraform/modules/observability/triage.tf` alerts on `jsonPayload.verdict != "accepted"`, matching the exact lowercase string, so the worker must emit exactly that spelling for the quiet path to stay quiet.
-
-Cost: A verdict is only as good as the corpus it can cite, so a real risk that nothing in the corpus describes is reported as new rather than assessed. That is the intended failure direction. The alert match fails open in the other direction: any spelling of `accepted` other than the exact lowercase string matches `!=` and pages the platform owner, and the first real run is mostly accepted verdicts, so a mismatch is a mailbox flood rather than a missed page.
-
-Alternatives: Trust the model's citation, which is what produced the wrong overlap above. Free-text verdicts, which cannot be scored or diffed.
+Alternatives: Trust the model's citation, which produced the wrong overlap above. Free-text verdicts, which cannot be scored or diffed.
 
 ### Triage idempotency
 
-Decision: Key on the finding's canonical name, its event time and its state. The ledger holds one prefix per key in a Cloud Storage bucket, and each state below is a separate object written once under that prefix. A finding's current state is the furthest state present.
+Decision: Key on the finding's canonical name, event time and state. The ledger holds one prefix per key in a Cloud Storage bucket, and writes each state below once, as its own object. The current state is the furthest one present.
 
 | State | Written | On redelivery |
 | --- | --- | --- |
-| `received` | First, before anything else | The create fails. Read the prefix and resume from the furthest state present |
-| `classified` | After the verdict validates, before any notification | Resume at `notification_attempted` |
-| `notification_attempted` | Before the log entry that triggers the alert is emitted | Notify again. The state means a notification may or may not have gone out |
-| `acknowledged` | After the Pub/Sub acknowledgement returns | Nothing to do. Drop the message |
+| `received` | First | The create fails. Resume from the furthest state present |
+| `classified` | After the verdict validates, before notifying | Resume at `notification_attempted` |
+| `notification_attempted` | Before the log entry that triggers the alert | Notify again. A notification may have gone out |
+| `acknowledged` | After the Pub/Sub acknowledgement returns | Drop the message |
 
-Every write uses the create-only precondition `ifGenerationMatch=0`. Nothing in the ledger is ever overwritten, and two workers racing on the same message produce one object and one loser that reads it. Duplicate email is accepted. A missed notification is not.
+Every write uses `ifGenerationMatch=0`, so nothing is overwritten, and two racing workers produce one object and one loser that reads it. Duplicate email is accepted. A missed notification is not.
 
-Why: Pub/Sub is at-least-once, so a restart redelivers. Keying on the finding alone would collapse real events: the four `loadgen` findings went `ACTIVE` at 17:02 on 2026-09-18 and `INACTIVE` at 17:27 when the load generator and its VPC were deleted, which is two events on one canonical name. Recording before acknowledging means a crash between inference and persistence re-infers, costing a fraction of a cent, while a crash between persistence and notification re-notifies without paying for inference again. Duplicate model calls are cheap, so the ordering trades them away first.
+Why: Pub/Sub is at-least-once, so a restart redelivers.
 
-That ordering alone still leaves one window open. A worker that dies after the notification and before the acknowledgement re-notifies on redelivery, and a two-write ledger holds no state that says so. `notification_attempted` is written before the log entry is emitted, which turns the window from an unknown into a recorded one. After a crash the worker knows a notification may already have gone out, and sends again deliberately.
+| Choice | Reason |
+| --- | --- |
+| State in the key | One name can carry several real events. The four `loadgen` findings went `ACTIVE` at 17:02 and `INACTIVE` at 17:27 on 2026-09-18 |
+| Record before acknowledging | A crash re-infers, at a fraction of a cent, and never re-pays after persistence |
+| `notification_attempted` before emitting | A crash after notifying becomes a recorded state, not an unknown. The worker sends again on purpose |
+| Send again, not drop | A security tool that tells its owner twice beats one that silently tells them nothing. The alert policy groups on verdict, category and severity for 1800 s, which absorbs most repeats |
 
-Sending again is the right direction. Writing the notification record after emitting would instead drop a notification silently whenever the worker died in that window, and a security tool that quietly fails to tell its owner about a finding is worse than one that tells them twice. The duplication is bounded in practice rather than in principle: the alert policy groups on verdict, category and severity and auto-closes after 1800s, so a repeat carrying the same labels while that incident is open updates it instead of sending a second mail. Different labels open a new incident, so this bounds the common case and guarantees nothing.
+Each crash boundary is drilled, not reasoned about. See [drill fault injection](#drill-fault-injection).
 
-Each crash boundary is drilled rather than reasoned about. Phase 15 carries three: a kill after inference, a kill after persistence, and a kill after notification.
+`eventTime` tracks substance, not scans. Measured on 2026-09-20: a mute publishes in about 2 s with the same name, `state` and `eventTime`, so the key treats it as a redelivery. That is intended, because a mute is a person silencing a finding and should not cost a model call. A new finding, `BUCKET_LOGGING_DISABLED`, carried a fresh `eventTime` 5 s after the bucket was created.
 
-Measured on 2026-09-20, after the transport was applied. Muting an active finding publishes a message in about two seconds, and that message carries the same name, the same `state` and the same `eventTime` as before the mute: `eventTime` was the previous day and a mute does not advance it. So the key collapses attribute-only changes into redeliveries. Reading the same detectors a day apart shows unchanged findings holding their `eventTime` across re-evaluation, and a genuinely new finding, `BUCKET_LOGGING_DISABLED`, carrying a fresh one five seconds after the ledger bucket was created. `eventTime` tracks substance rather than scans, so the collapse is the intended behaviour and not a gap: a mute is a human silencing a finding, not a change in posture, and it should not cost a model call.
+The ledger also stores a digest of the finding body. A matching key with a different digest is recorded as drift, without inference. It would catch a detector that changes substance without advancing `eventTime`, which has been checked for and not found.
 
-The ledger additionally carries a digest of the finding body. A redelivery whose key matches and whose digest differs is recorded as drift without inference. This is a safety net rather than a fix: it is the evidence that would catch a detector mutating substance without advancing `eventTime`, which has been checked for and not found rather than assumed away.
+One finding carries three names: `name` is organization scoped, `canonicalName` is project number scoped, and `parent` is neither. `:setMute` on the organization-scoped name returns "Security Command Center Legacy has been permanently disabled", while the same call at project scope returns 200. So the key and the write address are separate values. `canonicalName` is the key because the project number is immutable.
 
-Two things about the name, both measured rather than documented by Google. One finding carries three: `name` is organization scoped, `canonicalName` is project number scoped, and `parent` is neither. And the scopes are not interchangeable. A finding is read at organization scope, but `:setMute` against that organization-scoped name returns "Security Command Center Legacy has been permanently disabled", while the identical call at project scope returns 200. The worker cannot round-trip the name it reads, so the key and the address for any write are separate values. `canonicalName` is the key because the project number is immutable.
+Cost: A bucket to manage, an object read per message, a body hash per message, and four writes where the first design had two. The create-only precondition fails on every redelivery, which is the signal, not an error. The owner can get the same finding twice after a crash.
 
-Cost: A bucket and its lifecycle to manage, and an object read on the path of every message. The digest adds a hash of the body per message and one more field per ledger object. The state machine adds two writes per message over the two the earlier ordering used, and a create-only precondition that fails on every redelivery, which is the signal rather than an error. Accepting duplicate email means the owner can be told about the same finding twice after a crash, which is what buys the removal of the silent miss.
+Alternatives:
 
-Alternatives: Firestore or Cloud SQL, which is a database this project does not otherwise need. A Kubernetes custom resource, which is Phase 18's work and would spend its exit criterion early. In-memory deduplication, which loses exactly when the exit criterion stops the worker. Adding `muteUpdateTime` to the key, which would re-triage a silencing as though it were a posture change. Notifying first and recording afterwards, which drops a notification silently whenever the worker dies in that window. Exactly-once notification, which the email channel cannot provide: it takes no idempotency key, and Cloud Monitoring decides when a policy sends.
+- Firestore or Cloud SQL: a database the project does not otherwise need.
+- A Kubernetes custom resource: Phase 18's work.
+- In-memory deduplication: lost exactly when the worker stops.
+- `muteUpdateTime` in the key: re-triages a silencing as a posture change.
+- Notify first, record after: drops a notification silently on a crash.
+- Exactly-once notification: email takes no idempotency key, and Cloud Monitoring decides when a policy sends.
 
 ### Drill fault injection
 
-Decision: The worker ships a `-crash-at` flag naming one of three boundaries: `received`, `notification_attempted` or `acknowledged`. When it is set, the worker calls `os.Exit(70)` at that point. It is empty everywhere but a drill. `classified` is a ledger state but not a boundary, because nothing observable sits between writing it and writing the notification attempt, so the flag refuses it.
+Decision: The worker ships a `-crash-at` flag naming one boundary: `received`, `notification_attempted` or `acknowledged`. At that point it calls `os.Exit(70)`. The flag is empty outside a drill. It refuses `classified`, because nothing observable sits between that write and the next.
 
-Why: [Triage idempotency](#triage-idempotency) orders three writes around two side effects, and says each crash boundary is drilled rather than reasoned about. Those windows are sub-millisecond, so deleting a Pod cannot land in one. Without a deterministic crash point the three drills cannot be run at all, and an untested recovery path is a claim rather than a control.
+Why: [Triage idempotency](#triage-idempotency) orders writes around side effects, and its windows are sub-millisecond. Deleting a Pod cannot land in one, so without a deterministic crash point the drills cannot run.
 
-`os.Exit` runs no deferred call, so nothing is acknowledged and no client closes. From Pub/Sub's side and the ledger's side that is indistinguishable from a SIGKILL, which is what the recovery path has to survive. Exit code 70 separates a drill crash from the 1 a startup failure uses, so the Pod's last state says which one happened.
+| Detail | Reason |
+| --- | --- |
+| `os.Exit` | Runs no deferred call, so Pub/Sub and the ledger see the same thing as a SIGKILL |
+| Exit code 70 | The Pod's last state separates a drill from a startup failure, which exits 1 |
+| In the published image | One image digest in the ledger. Every verdict records the image it came from |
 
-Shipping the flag in the published image rather than in a separate build keeps one image digest in the ledger. A drill image would put verdicts from two digests under the same exit criterion, and that criterion is that every verdict records the image it came from.
+Cost: A deliberate crash point in an agent with four Google Cloud grants. Reaching it needs RBAC in `agents`, and the pipeline has none, per [agent rollout authority](#agent-rollout-authority). No part of a finding reaches the flag. A worker left with the flag set stops on the next finding, so it logs the boundary at WARN on every start.
 
-Cost: A deliberate crash point exists inside the agent that holds four Google Cloud grants. The surface is the command line, so reaching it needs RBAC in `agents`, and [agent rollout authority](#agent-rollout-authority) gives the delivery pipeline none. No part of a finding reaches the flag, so a finding body cannot trigger it. A worker left holding the flag stops on the next finding it settles, which is why it logs the boundary at WARN on every start.
-
-Alternatives: A build tag and a separate drill image, which leaves the published image clean but spends a second CI run and puts a second image digest in the ledger. A pause at the boundary with an external SIGKILL, which makes the kill genuinely external but adds a timed window to every drill and ships the pause anyway. Revoking a grant to force a failure, which reaches the notification boundary alone and proves a permission error rather than a crash.
+Alternatives: A build tag and a separate drill image, which costs a second CI run and a second digest. A pause plus an external SIGKILL, which adds a timed window to every drill. Revoking a grant, which reaches one boundary and proves a permission error, not a crash.
 
 ### Triage backfill
 
-Decision: Findings the worker has not seen reach it through the transport it already uses. Each one is muted and then unmuted, and Security Command Center publishes both changes to the subscription. The worker triages the first message and treats the second as a redelivery. Nothing is replayed, marked or run outside the deployed worker.
+Decision: Findings the worker has not seen reach it through its own transport. A person mutes and then unmutes each one. Security Command Center publishes both changes, the worker triages the first, and treats the second as a redelivery. Nothing is replayed or run outside the deployed worker.
 
-Why: Security Command Center publishes changes and does not republish. [Slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) measured it: the only bulk traffic the worker has received was a real state change, 598 vulnerability findings closing after a node upgrade. A finding that has not moved since the worker started never reaches it, so the overlap measurement cannot come from the worker's own record without something making the findings move.
+Why: Security Command Center publishes changes and never republishes. [Slice 9](worklog/phase-15-scc-triage.md#slice-9-where-598-vulnerabilities-came-from) found that the only bulk traffic was a real state change: 598 vulnerability findings closing after a node upgrade. A finding that has not moved never reaches the worker.
 
-A mute is the smallest change available. It leaves `state` and `eventTime` alone, so the idempotency key is the finding's real key, and the verdict lands under the same prefix a genuine delivery would use. The unmute that restores the finding arrives under the key already acknowledged and writes nothing.
+A mute is the smallest change available. It leaves `state` and `eventTime` alone, so the verdict lands under the finding's real key. The unmute arrives under a key already acknowledged and writes nothing.
 
-The in-scope set is small. Fifteen findings are not vulnerabilities, and seven of them were in the ledger before the backfill. Vulnerabilities are counted and skipped by the worker, so their volume does not reach the backfill.
+The set is small: 15 findings are not vulnerabilities, and 7 were already in the ledger. The worker counts and skips vulnerabilities.
 
-Cost: Two writes per finding against Security Command Center state, made by a person, because the worker holds no Security Command Center permission and [must not](#agent-permission-boundary). A finding that is muted when it should not be is the failure, so each mute is reversed in the same session and the project is read back for muted findings afterwards. Every `new` verdict notifies, so the backfill sends mail.
+Cost: Two writes per finding against Security Command Center state, made by a person, because the worker [must not](#agent-permission-boundary) hold that permission. Each mute is reversed in the same session, and the project is read back for muted findings afterwards. Every `new` verdict sends mail. A verdict from an earlier image is not re-triaged, because only a real state change changes the key.
 
-A finding whose verdict was produced by an earlier image stays as it is. A mute arrives as a redelivery, so re-triaging it would need a changed key, and nothing short of a real state change provides one.
-
-Alternatives: Publishing an export into the topic, which is cheap and makes the ledger claim a delivery Security Command Center never sent, unless every replayed message is marked, which is a contract change. Running the worker's image as a one-off Job over an export, which is the same code and identity but not the transport, and produces a better offline number rather than the measurement.
+Alternatives: Publish an export into the topic, which makes the ledger claim a delivery Security Command Center never sent. Run the worker image as a one-off Job over an export, which gives an offline number, not the measurement.
 
 ### Triage notification path
 
@@ -938,19 +946,28 @@ Alternatives: Run the worker in `demo`, which widens egress for the public workl
 
 ### Agent permission boundary
 
-Decision: The triage worker holds four grants and nothing else. Consume on one Pub/Sub subscription, object create and read on the verdict ledger bucket, invoke on the Vertex AI model, and write on its own log. It holds no Security Command Center permission, no object delete or overwrite, no cluster credential, and no broad project role. [Phase 15](plan.md#part-2-the-identity-and-the-namespace) carries the matrix and the state of each grant.
+Decision: The triage worker holds four grants and nothing else. [Phase 15](plan.md#part-2-the-identity-and-the-namespace) carries the matrix.
 
-Why: This is the one identity in the project that parses attacker-influenced strings, so what it can reach when that goes wrong is the question worth answering up front.
+| Grant | Role |
+| --- | --- |
+| Consume one Pub/Sub subscription | `roles/pubsub.subscriber` on that subscription |
+| Create and read ledger objects | `k8_lab_ledger_appender`: `storage.objects.create`, `get`, `list` |
+| Invoke the model | `k8_lab_model_invoker`: `aiplatform.endpoints.predict` |
+| Write its log entries | `roles/logging.logWriter` |
 
-Three denials are load-bearing. No Security Command Center access, because the worker reads findings from Pub/Sub and a read or a mute at the source would let a triage verdict silence its own input. No object delete or overwrite, because the ledger is what Phase 18 rebuilds from and a worker that can erase a record can erase the evidence that it ran. No cluster credential, because Phase 16 owns cluster reads and this worker predates that boundary by a phase.
+Why: This is the one identity that parses attacker-influenced strings. Three denials carry the weight:
 
-The append-only ledger is what makes the second denial implementable. Every state object is written once with a create-only precondition, so the worker never needs a permission it should not hold.
+| Denied | Because |
+| --- | --- |
+| Any Security Command Center permission | A read or mute at the source would let a verdict silence its own input |
+| Object delete or overwrite | The ledger is the evidence that the worker ran, and what Phase 18 rebuilds from |
+| Any cluster credential | Phase 16 owns cluster reads |
 
-Cost: The model grant is written as `k8_lab_model_invoker`, a custom role holding `aiplatform.endpoints.predict` alone, replacing `roles/aiplatform.user`, which also allows creating training jobs, pipelines, endpoints and notebooks. It is proven when a model call succeeds through it at the end of Phase 15.
+The append-only ledger makes the second denial possible: each state is written once, so the worker never needs overwrite. Overwrite needs delete as well as create, so the ledger role is append-only on its own.
 
-The ledger grant was narrowed on 2026-09-21 from `roles/storage.objectUser` to `k8_lab_ledger_appender`, a custom role holding `storage.objects.create`, `get` and `list`, one permission per call the worker makes. Overwrite needs delete as well as create, so the role states append-only independently of the create-only precondition. `objectCreator` plus `objectViewer` was the predefined alternative, and it carries folder, managed folder and multipart upload permissions the worker never calls. The cost is a role definition to keep in step with the worker's calls: a new call is a 403 until the role grows. [Slice 8](worklog/phase-15-scc-triage.md#slice-8-the-ledger-grant-narrowed-and-then-broken-on-purpose) has the evidence.
+Cost: Two custom roles to keep in step with the worker's calls. A new call is a 403 until the role grows. `roles/aiplatform.user` was replaced because it also creates training jobs, pipelines, endpoints and notebooks. `roles/storage.objectUser` was narrowed on 2026-09-21. The predefined `objectCreator` plus `objectViewer` carries folder and multipart permissions the worker never calls. [Slice 8](worklog/phase-15-scc-triage.md#slice-8-the-ledger-grant-narrowed-and-then-broken-on-purpose) has the evidence.
 
-Alternatives: Project-level roles throughout, which is one line of Terraform and an identity that can read every subscription in the project. A single broad role such as `roles/editor`, which the project already carries `PRIMITIVE_ROLES_USED` for.
+Alternatives: Project-level roles, which read every subscription in the project. `roles/editor`, which the project already carries `PRIMITIVE_ROLES_USED` for.
 
 ### Gateway client authentication
 
@@ -966,21 +983,22 @@ Alternatives: Google-signed identity tokens with an audience claim, which work a
 
 ### Observability read boundary
 
-Decision: The Phase 17 responder reads Cloud Monitoring and Cloud Logging directly, with its own Google identity scoped to read. It does not read them through the Phase 16 gateway, and that gateway exposes no Google Cloud tool.
+Decision: The Phase 17 responder reads Cloud Monitoring and Cloud Logging with its own read-scoped Google identity, not through the Phase 16 gateway. The gateway exposes no Google Cloud tool.
 
-Why: The gateway exists because the Kubernetes API has no per-tool authorization and a kubeconfig is coarse inside whatever RBAC it carries. Google APIs are not like that. They authorize per permission and record each call in Cloud Audit Logs, so putting a gateway in front of them adds a hop without adding a boundary.
+Why: The gateway exists because the Kubernetes API has no per-tool authorization. Google APIs authorize per permission and write Cloud Audit Logs, so a gateway in front of them adds a hop and no boundary. A gateway holding cluster credentials plus Monitoring plus Logging is also a bigger prize than either alone.
 
-The cost of doing it anyway is the real argument. A service holding cluster credentials plus Cloud Monitoring plus Cloud Logging is a general Google Cloud gateway, and a bigger prize than either boundary on its own. Keeping the gateway to one API keeps its blast radius describable in a sentence.
+Two tools move as a result. `query_workload_logs` and `get_alert_metric` leave the gateway. Pod logs from the Kubernetes API stay, as `get_pod_logs`.
 
-This moves two tools. An earlier draft listed `query_workload_logs` and `get_alert_metric` as gateway tools. Pod logs read from the Kubernetes API stay on the gateway as `get_pod_logs`. Cloud Monitoring and Cloud Logging reads belong to the responder's own identity.
+| Grant | Scope |
+| --- | --- |
+| `roles/monitoring.viewer` | Metrics |
+| `roles/logging.viewAccessor` | One custom log view, created in Phase 17 once the queries are known |
 
-Cost: A second Google identity to scope and watch, and the responder reaches two more Google APIs, which widens `agents` egress further while the egress policy is already wider than intended.
+Data Access audit logs for Logging and Monitoring are off by default, and were turned on on 2026-09-20. The stock `_Default` view excludes them, so a responder scoped to a view built on that exclusion cannot read the log of its own reads. That property is to be measured.
 
-Data Access audit logs for Logging and Monitoring are off by default, so without them "every call is logged with the identity that made it" is not true of these reads. They are turned on, decided 2026-09-20. The cost is log volume in `_Default`, which retains for 30 days. The stock `_Default` view excludes data access logs, so a responder scoped to a view built on that exclusion cannot read the log recording its own reads, which is the property worth having and is measured rather than assumed.
+Cost: A second Google identity to scope and watch. Two more Google APIs widen `agents` egress, which is already wider than intended. Audit log volume in `_Default`, retained for 30 days.
 
-The grant is `roles/monitoring.viewer` for metrics and `roles/logging.viewAccessor` on one log view, not `roles/logging.viewer` on the project. The project has no custom log view today, so Phase 17 creates one. Which logs it admits waits for the responder's actual queries.
-
-Alternatives: Extend the gateway with Google Cloud tools, rejected above. A second gateway for Google APIs, which is another service to operate for something IAM already authorizes per permission.
+Alternatives: Google Cloud tools on the gateway, rejected above. A second gateway for Google APIs, which is another service for something IAM already authorizes.
 
 ### Finding state authority
 

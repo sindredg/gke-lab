@@ -711,11 +711,16 @@ These are not implementation commitments yet.
 - Create a regional cluster temporarily for availability and recovery validation.
 - Test sudden node loss and drain under load once autoscaling is in place.
 
-Two gates closed into Milestone 3. Cloud Armor rate limiting was conditional on load testing showing that a single client can drive the namespace to its quota, and Phase 12 showed exactly that. Advanced supply-chain controls were conditional on the basic image pipeline being complete, and it is.
+Gates that closed:
 
-A third closes into Milestone 4, on a condition it was not written for. Pub/Sub and workers were gated on synchronous processing becoming a limitation, and no such limitation arrived. Security Command Center pushes findings continuously instead, with no synchronous request to attach them to, so Phase 15 commits to the gate for a different reason than the one recorded here.
-
-Three of the [deferred decision records](decisions.md#deferred-decision-records) close with it, each on the condition it was written for. Vertex AI against self-hosted inference is decided in [decisions.md](decisions.md#inference-provider). A namespace per workload was gated on a third workload or a second owner arriving, and the triage worker is the third workload, decided in [decisions.md](decisions.md#agent-namespace). The choice between a required approval and a second identity, to stop the Phase 19 agent merging its own pull request, is decided in favour of a required approval in [decisions.md](decisions.md#the-human-merge-boundary).
+| Gate | Closed into | Because |
+| --- | --- | --- |
+| Cloud Armor rate limiting | Milestone 3 | Phase 12 showed one client can drive the namespace to its quota |
+| Advanced supply-chain controls | Milestone 3 | The basic image pipeline was complete |
+| Pub/Sub and workers | Milestone 4 | Security Command Center pushes findings continuously. The original condition, a synchronous limit, never arrived |
+| [Inference provider](decisions.md#inference-provider) | Milestone 4 | Phase 15 needed a model |
+| [Namespace per workload](decisions.md#agent-namespace) | Milestone 4 | The triage worker is the third workload |
+| [Human merge boundary](decisions.md#the-human-merge-boundary) | Milestone 4 | Decided in favour of a required approval |
 
 Documentation: [Kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/), [Cloud Storage Terraform state](https://cloud.google.com/docs/terraform/resource-management/store-state), [regional GKE clusters](https://cloud.google.com/kubernetes-engine/docs/concepts/regional-clusters)
 
@@ -737,26 +742,23 @@ Four more apply to the agents, because their cost behaves differently from the p
 
 ## How the milestones closed
 
-Milestones 1 and 2 are closed. The platform is guarded, delivery is keyless, the workloads are public through Gateway API, rollouts drop no requests, and sky scales from two to eight replicas across nodes in three zones, with every claim above backed by evidence.
+| Milestone | Outcome |
+| --- | --- |
+| 1 and 2 | Guarded workloads, keyless delivery, public through Gateway API. Rollouts drop no requests, and `sky` scales from 2 to 8 replicas across three zones |
+| 3 | [The threat model](reference/threat-model.md) ranks 12 findings. Phase 14 closed 11 with evidence: federation scoped to a ref, both repositories protected, CSP on both paths, CAA on a signed zone, a measured rate limit. Provenance and signing is accepted for now |
+| 4 | Replaced the manifest reviewer, retired for the reason in [decisions.md](decisions.md#ai-workload-direction), with Security Command Center triage |
 
-Milestone 3 is closed. [The threat model](reference/threat-model.md) ranks twelve findings, Phase 13 measured the platform against that frame rather than against a reading of it, and Phase 14 closed eleven of them with evidence: federation scoped to a ref and both directions proven, both repositories protected under one mechanism, a Content Security Policy on both paths, CAA restricting issuance on a signed zone, and a rate limit measured under a flood at the rate Phase 12d used unthrottled. The twelfth, provenance and signing, is accepted for now with its reason recorded.
+Phase 15, in the order it was built:
 
-Phase 15 is under way, and Milestone 4 is not the milestone that used to be here. The deterministic manifest reviewer is retired, with the reason recorded in [decisions.md](decisions.md#ai-workload-direction): it needed nothing the cluster provides, and the measurement worth having was already written down. Phase 14 named the Security Command Center overlap as the comparison worth making and left it open, and Security Command Center has been producing findings since 2026-09-18 that nobody reads.
+| Step | Result |
+| --- | --- |
+| Transport | A finding change reaches the subscription in about 2 s. An unacknowledged message reaches the dead letter topic after 5 attempts, body intact. The apply raised its own first finding, `BUCKET_LOGGING_DISABLED` on the ledger bucket, already in `.checkov.baseline` as `CKV_GCP_62` |
+| Identity and namespace | A Pod in `agents` federates to `k8-lab-triage`, pulls a finding, and is refused a `get` on the subscription. Pod Security and the quota each reject a probe built to trip only that one |
+| Worker, increment 1 | Settled a real Event Threat Detection finding as `new` against 131 corpus entries, with no model call. `notification_attempted` was written 8.3 ms before the alerting log entry |
+| Crash boundaries | Stopped at each of the three boundaries on 2026-09-21, and recovered at each. A redelivery produced one verdict, not two. This needed a deterministic crash point and commit signing on `ai-k8s` |
+| Model | Settles what the rules leave unmatched, within a token budget and a daily spend ceiling. Every failure path drilled in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled) |
+| Evaluation | [Slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model): 25 findings, 5 runs each. A check in code requiring a contradiction to land on an applicable control took the model to 16 of 18 dev and 7 of 7 holdout, against 14 and 5 for the rules, with no false contradiction. A prompt instruction measured worse |
 
-The transport is applied and measured. A finding change reaches the subscription in about two seconds, and a message nobody acknowledges is republished to a dead letter topic after five attempts with its body intact. The apply also produced its own first finding: `BUCKET_LOGGING_DISABLED` against the verdict ledger bucket, five seconds after Terraform created it, against a `CKV_GCP_62` already in `.checkov.baseline`. That is the overlap thesis on a resource created during the measurement, and it moves the hand count to three of seven.
+Phase 15b took `frontend` from 17 CRITICAL and HIGH vulnerabilities to 0, and `sky`, on Debian 13, from 22 to 6 with no fix. The review before closing narrowed each deploy workflow to what it applies.
 
-The identity and the namespace are applied and proven too. A Pod in `agents` federates to `k8-lab-triage`, pulls a real finding, and is refused a `get` on the same subscription. Pod Security and the quota each reject a probe built to trip only that one.
-
-Increment 1 of the worker is deployed and reads. It pulled the Event Threat Detection finding that Phase 15's own drill produced, settled it as `new` against a corpus of 131 entries compiled into its image, wrote four ledger states under one create-only prefix, and emitted the log entry the alert policy reads with `resource.type = k8s_container`. No model was called. Two independent clocks date the ordering the idempotency decision requires: `notification_attempted` was written 8.3ms before the entry that triggers the alert.
-
-The crash boundaries are drilled. On 2026-09-21 the worker was stopped at each of the three points the idempotency decision orders, and recovered at each: nothing on record at the inference boundary, `notification_attempted` absent at the notification boundary, and `acknowledged` absent at the acknowledgement boundary. A redelivery produced one verdict and not two, a finding published while the worker was scaled to zero was triaged after it came back, and the ledger now holds five findings at four states each with one generation per state. Record before notifying held across a crash twice, measured at 7.18ms and 9.90ms by two clocks that are not the worker's.
-
-That work needed a deterministic crash point, because the windows are sub-millisecond and deleting a Pod cannot land inside one. It also needed commit signing, which did not exist: `ai-k8s` commits were unsigned, so the pin gate would have refused every bump. Setting it up turned the first automated bump into the evidence the two pin guards were waiting for.
-
-Phase 15 is closed. The worker triages every in-scope finding, the rules settle what the reviewed mapping pairs, and the model settles the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen in [slice 11](worklog/phase-15-scc-triage.md#slice-11-the-model-and-its-failure-paths-drilled). [Slice 12](worklog/phase-15-scc-triage.md#slice-12-does-the-model-change-anything) scored the model on twelve real findings: it changes one outcome the rules cannot reach, and on a borderline one its verdict is not stable at temperature 0. One item waits on the calendar: the tier when the trial ends.
-
-Slice 12 could not say whether the model was worth having, so [slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model) measured it on 25 reviewed findings, asked five times each, against the rules alone. At first the model tied the rules, trading 15 false contradictions for contradictions the rules cannot reach. An instruction to stop that measured worse. A check in code, requiring a contradiction to rest on a control that applies to the finding's resource, brought cases right every run to 16 of 18 on the dev set and 7 of 7 on the sealed holdout, against 14 and 5 for the rules, with no false contradiction.
-
-Phase 15b patched the images whose vulnerabilities triage counts and does not answer. `frontend` went from 17 CRITICAL and HIGH to none, and `sky`, moved to Debian 13, from 22 to 6 that have no fixed package yet. The review before closing also narrowed each deploy workflow to what it applies, and made the worker's image and recorded digest move in one step.
-
-The project closed there, on 2026-09-22. Phases 16 to 19 were revised on 2026-09-20, before any of them started, and four things they implied were decided: how one Pod authenticates to another, where observability data is read, what is authoritative between the ledger and the custom resource, and what enforces the human merge boundary. The decisions are under [Agents](decisions.md#agents). The phases stay as optional extensions, each with the condition that would justify building it.
+The project closed on 2026-09-22. Phases 16 to 19 were revised on 2026-09-20 and stay optional. The four decisions they implied are under [Agents](decisions.md#agents).

@@ -1,222 +1,170 @@
 # Secure Kubernetes Platform on GKE
 
-A private GKE cluster, a couple of workloads, and an AI agent that handles the security findings nobody wants to read.
+A private GKE cluster, two workloads, and an AI agent that triages the security findings. Terraform builds it and GitHub Actions deploys to it with no stored key.
 
-Terraform builds it. GitHub Actions ships to it, keylessly. Each phase has a worklog, and [decisions.md](decisions.md) covers the why.
-
-**Closed on 2026-09-22, and shut down on 2026-09-25.** [plan.md](plan.md) has the status table and what stayed optional. The infrastructure is destroyed, and the DNS records for `sindrg.com` are deleted. [The shutdown worklog](worklog/shutdown.md) holds the final screenshots, the state it was in, and the teardown.
-
-The Terraform, manifests and workflows are kept as they were at the close, so they describe the platform as it ran.
+> [!NOTE]
+> **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The code is kept as it ran. See [the shutdown worklog](worklog/shutdown.md).
 
 ## Architecture
 
 ```mermaid
-flowchart TB
+flowchart LR
     User(["User"])
-    Developer(["Developer"])
-    DNS["Cloudflare DNS<br/>sindrg.com"]
+    Dev(["Developer"])
+    DNS["Cloudflare DNS<br/>sindrg.com<br/>DNSSEC, CAA"]
 
-    subgraph Delivery["Infrastructure and delivery"]
-        Terraform["Terraform"]
-        GitHub["GitHub Actions"]
+    subgraph Delivery["Delivery"]
+        GH["GitHub Actions"]
+        TF["Terraform"]
     end
 
     subgraph GCP["Google Cloud"]
-        Ingress["Global external<br/>Application Load Balancer<br/>reserved address"]
-        Certs["Certificate Manager<br/>managed TLS"]
-        Registry["Artifact Registry"]
-        Identity["Workload<br/>Identity<br/>Federation"]
-        Uptime["Uptime check<br/>three prober regions"]
-        Observability["Cloud Logging<br/>Cloud Monitoring<br/>dashboard and alert policies"]
-        Notify["Email notification<br/>channel"]
-        SCC["Security Command Center"]
-        PubSub["Pub/Sub findings subscription<br/>and dead letter topic"]
-        Vertex["Vertex AI<br/>gemini-2.5-flash"]
-        Ledger["Verdict ledger<br/>create-only bucket"]
-
-        subgraph VPC["Custom VPC"]
-            ControlPlane["GKE control plane<br/>DNS-only endpoint"]
-
-            subgraph Cluster["GKE node pool, floor of two nodes"]
-                Routes["Gateway and<br/>HTTPRoutes"]
-                Nginx["nginx<br/>two replicas<br/>serves /"]
-                Sky["sky<br/>two replicas<br/>serves /sky, /api, /static"]
-                Guardrails["Pod Security, NetworkPolicy,<br/>quotas, disruption budgets"]
-                Worker["triage worker<br/>agents namespace"]
-            end
-
-            NAT["Cloud NAT"]
+        subgraph Edge["Edge"]
+            LB["Global Application<br/>Load Balancer<br/>Cloud Armor rate limit"]
+            Cert["Certificate Manager<br/>managed TLS"]
         end
+
+        subgraph VPC["Custom VPC, private nodes, Cloud NAT"]
+            CP["GKE control plane<br/>DNS-only endpoint"]
+            subgraph demo["demo namespace, Pod Security restricted"]
+                GW["Gateway<br/>HTTPRoutes"]
+                Nginx["nginx<br/>2 replicas<br/>/"]
+                Sky["sky<br/>2 to 8 replicas, HPA<br/>/sky /api /static"]
+            end
+            subgraph agents["agents namespace"]
+                Worker["Triage worker"]
+            end
+        end
+
+        WIF["Workload Identity<br/>Federation"]
+        AR["Artifact Registry"]
+        SCC["Security Command<br/>Center"]
+        PS["Pub/Sub<br/>findings, dead letter"]
+        Vertex["Vertex AI<br/>gemini-2.5-flash"]
+        Ledger[("Verdict ledger<br/>create-only bucket")]
+        Ops["Cloud Monitoring<br/>uptime check, dashboard, alerts"]
     end
 
     User --> DNS
-    DNS --> Ingress
-    Certs -. terminates TLS .-> Ingress
-    Certs -. validated by a DNS record .-> DNS
-    Ingress -- "Pod IPs via NEG" --> Nginx
-    Ingress -- "Pod IPs via NEG" --> Sky
-    Routes -. configures .-> Ingress
-    Guardrails -. protects .-> Nginx
-    Guardrails -. protects .-> Sky
-    Developer --> Terraform
-    Developer --> GitHub
-    Terraform --> ControlPlane
-    GitHub -. federates .-> Identity
-    GitHub -. builds and pushes .-> Registry
-    GitHub -. deploys .-> ControlPlane
-    Registry -. images pulled by nodes .-> Cluster
-    ControlPlane --> Cluster
-    Cluster -- "node egress" --> NAT
-    Cluster -. telemetry .-> Observability
-    Uptime -- "probes /healthz every 60s" --> Ingress
-    Uptime -. the result is the metric .-> Observability
-    Observability -. opens an incident .-> Notify
-    SCC -- "finding changes" --> PubSub
-    Worker -- "pulls" --> PubSub
-    Worker -- "only what the rules leave unmatched" --> Vertex
-    Worker -- "records before notifying" --> Ledger
-    Worker -. "verdict log entry" .-> Observability
+    DNS --> LB
+    LB -- "NEG" --> Nginx
+    LB -- "NEG" --> Sky
+    GW -. "configures" .-> LB
+    Cert -. "TLS" .-> LB
 
-    classDef external fill:#4B201D,stroke:#F28B82,color:#F8FAFC,stroke-width:2px
-    classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
-    classDef workload fill:#123C2D,stroke:#81C995,color:#F8FAFC,stroke-width:2px
-    classDef managed fill:#402060,stroke:#C58AF9,color:#F8FAFC,stroke-width:2px
+    Dev --> GH
+    Dev --> TF
+    GH -- "OIDC token" --> WIF
+    GH -- "push image" --> AR
+    GH -- "apply by digest" --> CP
+    TF -. "provisions" .-> GCP
+    AR -. "pull" .-> demo
 
-    class User,Developer external
-    class Terraform,GitHub delivery
-    class ControlPlane,NAT,Routes,Nginx,Sky,Guardrails,Worker workload
-    class Ingress,Registry,Identity,Uptime,Observability,Notify,SCC,PubSub,Vertex,Ledger managed
+    SCC -- "finding changes" --> PS
+    PS -- "pull" --> Worker
+    Worker -- "unmatched only" --> Vertex
+    Worker -- "record first" --> Ledger
+    Worker -. "verdict log" .-> Ops
 
-    style Delivery fill:#211A0D,stroke:#FDD663,color:#F8FAFC,stroke-width:2px
-    style GCP fill:#101828,stroke:#8AB4F8,color:#F8FAFC,stroke-width:2px
-    style VPC fill:#102A23,stroke:#81C995,color:#F8FAFC,stroke-width:2px
-    style Cluster fill:#183B31,stroke:#A8DAB5,color:#F8FAFC,stroke-width:2px
+    Ops -- "probe /healthz" --> LB
+    Ops -- "alert email" --> Dev
+
+    classDef actor fill:#4B201D,stroke:#F28B82,color:#F8FAFC
+    classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC
+    classDef workload fill:#123C2D,stroke:#81C995,color:#F8FAFC
+    classDef managed fill:#26344F,stroke:#8AB4F8,color:#F8FAFC
+    classDef agent fill:#402060,stroke:#C58AF9,color:#F8FAFC
+
+    class User,Dev,DNS actor
+    class GH,TF delivery
+    class CP,GW,Nginx,Sky workload
+    class LB,Cert,WIF,AR,Ops managed
+    class Worker,SCC,PS,Vertex,Ledger agent
+
+    linkStyle 0,1,2,3,4,5,18 stroke:#8AB4F8,stroke-width:2px
+    linkStyle 6,7,8,9,10,11,12 stroke:#FDD663,stroke-width:2px
+    linkStyle 13,14,15,16,17,19 stroke:#C58AF9,stroke-width:2px
 ```
 
-## Status
-
-Complete, closed on 2026-09-22, and shut down on 2026-09-25. Milestones 1 to 3 are done, and Milestone 4 closed at Phase 15 and Phase 15b. Phases 16 to 19 are optional extensions and were not built; [the plan](plan.md#status) says what would justify each, and lists the follow-ups still dated.
-
-| Area | State |
+| Colour | Path |
 | --- | --- |
-| Foundation | Private GKE on modular Terraform, custom VPC, Cloud NAT, DNS-only control plane |
-| Workloads | Two behind one Gateway: `nginx` at two replicas, `sky` autoscaled from two to eight |
-| Guardrails | Pod Security `restricted`, namespace budget, default-deny NetworkPolicies |
-| Delivery | Keyless federation scoped to `main`, gated rollout, required checks, upstream CI checked before a pin moves |
-| Ingress | Public Gateway on a custom domain, managed TLS, HTTP to HTTPS redirect |
-| Resilience | Node floor of two, a disruption budget per workload, nightly maintenance window |
-| Observability | Uptime check, dashboard as code, and three alerts: availability, a finding that needs a decision, and a finding that was dead-lettered |
-| Proven | Both failure drills run and recorded |
-| Hardened | One network, vulnerability scanning on, logs queryable, TLS 1.2 floor, rate limit, response security headers |
-| Under load | Rollouts drop no requests, sky autoscales to 125 rps with no failures, nodes scale across three zones |
-| Modelled | Eight trust boundaries with [a threat model](reference/threat-model.md), measured rather than assumed, and scanned daily from outside |
-| Streaming | Security Command Center findings reach a subscription in about two seconds, and park in a dead letter topic when nothing acknowledges them |
-| Triaged | An agent in its own namespace settles findings by reviewed mapping, then by model, against a corpus compiled into its image. It holds four scoped grants and no cluster credential |
-| Drilled | The worker is stopped at each of the three crash boundaries and recovers at each, notifying again rather than silently skipping. Every model failure path was made to happen |
-| Evaluated | Rules alone against rules plus the model, on 25 reviewed findings with a sealed holdout, scored for citations that support the verdict, and rerun by CI rule when the prompt, cases or mapping change |
-| Patched | The images this repository builds, measured by a scanner, with Dependabot moving each base image |
+| Blue | Serving: a request reaches a Pod through the load balancer, straight to Pod IPs |
+| Amber | Delivery: GitHub Actions federates, pushes an image, and applies it by digest |
+| Purple | Triage: a finding is settled by rules or by model, recorded, then alerted on |
 
-Milestone 3 closed with eleven of the twelve findings in [the threat model](reference/threat-model.md) measured and closed across [Phase 13](worklog/phase-13-security-baseline.md) and [Phase 14](worklog/phase-14-close-the-baseline.md), the twelfth carrying a recorded acceptance.
+[The triage worker reference](reference/triage-worker.md) has the finding path in detail.
 
-[Phase 15](worklog/phase-15-scc-triage.md) is closed. The worker in [ai-k8s](https://github.com/sindredg/ai-k8s) settles what the reviewed mapping pairs, and asks Vertex AI about the rest through a one-permission role, within a token budget and a daily spend ceiling. Every failure path it adds was made to happen.
+## What it does
 
-Whether the model is worth it is measured in [slices 13 and 14](worklog/phase-15-scc-triage.md#slice-13-decision-quality-rules-alone-against-rules-plus-the-model), on a reviewed set of 25 findings asked five times each. At first the model tied the rules alone, trading false contradictions for real ones. With a contradiction required to land on a control that applies to the finding's resource, it gets 16 of 18 dev cases and 7 of 7 sealed holdout cases right on every run, against 14 and 5 for the rules, with no false contradiction in 125 runs.
+| Area | What exists | Why | Evidence |
+| --- | --- | --- | --- |
+| Foundation | Custom VPC, private nodes, Cloud NAT, DNS-only control plane, Dataplane V2, zonal GKE Standard | [Networking](decisions.md#networking), [Cluster](decisions.md#cluster) | [Phase 1](worklog/phase-01-infrastructure.md) |
+| Workloads | `nginx` and `sky` in `demo`, with probes, limits and ClusterIP Services | [Configuration](decisions.md#infrastructure-and-configuration) | [Phase 2](worklog/phase-02-nginx-workload.md) |
+| CI | Credential-free pull request checks, required on `main` | [Delivery](decisions.md#delivery) | [Phase 3](worklog/phase-03-ci.md) |
+| Guardrails | Pod Security `restricted`, namespace quota, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md) |
+| Images | Private registry, immutable tags, non-root images pulled by digest | [Supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
+| Delivery | Keyless deploys scoped to `main`, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
+| Upstream pins | A scheduled workflow proposes each pin bump, and the merge is the review | [Pin automation](decisions.md#upstream-pin-automation) | [Notes](worklog/notes/upstream-pin-automation.md) |
+| Ingress | GKE Gateway, managed TLS, HTTP to HTTPS redirect, path routing | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
+| Observability | Uptime check, dashboard as code, alerts for availability, findings and dead letters | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
+| Resilience | Node floor of two, disruption budgets, maintenance window, two failure drills | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md), [Phase 10](worklog/phase-10-failure-drills.md) |
+| Hardening | Default network removed, vulnerability scanning, Log Analytics | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
+| Load | k6 harness, clean rollouts, HPA on `sky`, nodes across three zones | [Load and scaling](decisions.md#load-and-scaling) | [12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
+| Security baseline | [Threat model](reference/threat-model.md) with 12 findings: 11 closed, 1 accepted | [Workload security](decisions.md#workload-security) | [Phase 13](worklog/phase-13-security-baseline.md), [Phase 14](worklog/phase-14-close-the-baseline.md) |
+| Finding triage | Findings over Pub/Sub, settled by reviewed mapping then by model, in an append-only ledger | [Agents](decisions.md#agents) | [Phase 15](worklog/phase-15-scc-triage.md) |
+| Patching | Dependabot moves each base image, and a scanner counts what remains | [Residual vulnerabilities](decisions.md#residual-image-vulnerabilities) | [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds) |
 
-[Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds) patched the images whose vulnerabilities triage counts: `frontend` from 17 CRITICAL and HIGH to 0, and `sky` from 22 to 6, none of which has a fixed package yet.
-
-Not built: cluster reads through an audited gateway, a first responder on alerts, findings as Kubernetes objects, and remediation by pull request. Their designs and decisions are in [the plan](plan.md#phase-16-cluster-access-through-an-audited-gateway). None has a requirement behind it yet, and the triage worker needs none of them.
-
-## Known limitations
-
-| Limitation | Why it stands |
-| --- | --- |
-| Terraform state is local, on one workstation | One operator and no automated apply. The [decision gate](plan.md#later-decision-gates) for remote state is collaboration or automated apply, and neither arrived |
-| The bootstrap order has not been rehearsed on an empty project | It is reconstructed from the worklogs in [the operations reference](reference/operations.md#bootstrap-order) |
-| Zonal control plane | Cost. The node pool spans three zones; the control plane does not |
-| Egress from `agents` admits any host on 443 | NetworkPolicy cannot match hostnames. Recorded on [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) |
-| Six HIGH vulnerabilities in `sky` | No fixed package exists. [Accepted](decisions.md#residual-image-vulnerabilities) until Debian ships one |
-| The evaluation is 25 cases, and the holdout shares its author | A check against tuning, not an independent sample. [Slice 13](worklog/phase-15-scc-triage.md#limitations) lists the rest |
-| Event Threat Detection depends on a Security Command Center Premium trial | The tier is re-read when the trial ends. Standard drops the threat class of findings |
+The worker code lives in [ai-k8s](https://github.com/sindredg/ai-k8s). Phases 16 to 19 are optional and were not built. [The plan](plan.md#status) says what would justify each.
 
 ## Measured
 
-| | |
+| Area | Metric | Result |
+| --- | --- | --- |
+| Delivery | Merge to Ready workload | 59 s |
+| Delivery | Deploy duration, median of 12 runs | 70.5 s |
+| Observability | Alert detection floor | About 3 min |
+| Cost | Running cost | kr461.81 a week, covered by credits |
+| Load | `sky` saturation, 2 replicas | 40 rps, p95 230 ms |
+| Load | `sky` saturation, 8 replicas | 125 rps, p95 394 ms, no failures |
+| Load | HPA decision to a Pod on a new node | 97 s |
+| Rollouts | Failed requests at 20 rps, before `preStop` | 1.14% |
+| Rollouts | Connection failures after `preStop` | 0 of 3 rollouts, from 72 |
+| Rollouts | Closed-connection 503s after keep-alive | 0 of 7,150, from 6 |
+| Triage | Finding change to message on the subscription | About 2 s |
+| Triage | Crash to recorded verdict on redelivery | 285 ms |
+| Triage | Right on all 5 runs, rules plus model | 16 of 18 dev, 7 of 7 holdout |
+| Triage | Right on all 5 runs, rules alone | 14 of 18 dev, 5 of 7 holdout |
+| Triage | False contradictions from the model | 0 of 125 runs, from 15 |
+| Triage | Model call p95 latency and cost | About 2 s, about 0.003 USD |
+| Images | CRITICAL and HIGH vulnerabilities | `frontend` 0, from 17. `sky` 6 with no fix, from 22 |
+
+The command behind each number is in [the worklogs](worklog/README.md).
+
+## Known limitations
+
+| Limitation | Reason |
 | --- | --- |
-| Merge to Ready workload | 59s |
-| Deploy duration, median of twelve runs | 70.5s |
-| Alert detection floor | about 3 minutes |
-| Running cost | kr461.81 a week, covered by credits |
-| sky saturation, two replicas | 40 requests a second, p95 230ms |
-| Requests failed during a rollout at 20 rps | 1.14%, error window up to 20.4s |
-| Connection failures in a rollout, after `preStop` | 0 across three rollouts, from 72 |
-| Closed-connection 503s in a ramp, after keep-alive | 0 of 7,150, from 6 |
-| sky saturation, autoscaled to eight replicas | 125 requests a second, p95 394ms, no failures |
-| HPA decision to a Pod running on a new node | 97s |
-| Security Command Center finding change to a message on the subscription | about 2 seconds |
-| Unacknowledged message to the dead letter topic | 5 delivery attempts |
-| Outstanding message returned after the worker is killed | about 25 seconds, on stream close rather than on the 120s deadline |
-| Findings right on every one of five runs, rules plus the model | 16 of 18 dev, 7 of 7 holdout. Rules alone: 14 and 5 |
-| False contradictions raised by the model | 0 of 125 runs, from 15 before the check in code |
-| Model call latency, p95 | about 2 seconds |
-| Model cost per call | about 0.003 USD, estimated from token counts |
-| CRITICAL and HIGH vulnerabilities in the images built here | `frontend` 0, from 17. `sky` 6 with no fix, from 22 |
-| Crash to a recorded verdict on redelivery | four ledger states in 285ms |
-
-Method and evidence: [Phase 8](worklog/phase-08-observability.md), [Phase 10](worklog/phase-10-failure-drills.md), [Phase 12a](worklog/phase-12a-load-baseline.md), [Phase 12b](worklog/phase-12b-rollout-baseline.md), [Phase 12c](worklog/phase-12c-rollouts-connections.md), [Phase 12d](worklog/phase-12d-autoscaling.md), [Phase 15](worklog/phase-15-scc-triage.md) and [Phase 15b](plan.md#phase-15b-patch-the-images-this-repository-builds).
-
-## Platform capabilities
-
-| Domain | What exists | Decisions | Evidence |
-| --- | --- | --- | --- |
-| Networking | Custom VPC, private nodes, Cloud NAT, DNS-only control plane, Dataplane V2 | [Networking](decisions.md#networking) | [Phase 1](worklog/phase-01-infrastructure.md) |
-| Cluster | Zonal GKE Standard, autoscaling node pool, Shielded Nodes, Regular release channel | [Cluster](decisions.md#cluster) | [Phase 1](worklog/phase-01-infrastructure.md) |
-| Identity | Workload Identity Federation, dedicated node service account | [Identity and access](decisions.md#identity-and-access) | [Phase 1](worklog/phase-01-infrastructure.md) |
-| Workload | `demo` namespace, two Deployments (`nginx` and `sky`), health probes, resource limits, ClusterIP Services | [Infrastructure and configuration](decisions.md#infrastructure-and-configuration) | [Phase 2](worklog/phase-02-nginx-workload.md) |
-| Delivery | Credential-free pull request validation, required checks on `main` | [Delivery](decisions.md#delivery) | [Phase 3](worklog/phase-03-ci.md) |
-| Policy | Pod Security `restricted` enforced, dedicated ServiceAccount, namespace budget, default-deny NetworkPolicies | [Workload security](decisions.md#workload-security) | [Phase 4](worklog/phase-04-workload-guardrails.md), [Phase 5](worklog/phase-05-custom-image.md) |
-| Images | Private Artifact Registry repository, immutable tags, retention policy, node read access | [Images and supply chain](decisions.md#images-and-supply-chain) | [Phase 5](worklog/phase-05-custom-image.md) |
-| Deployment | Keyless GitHub Actions delivery for both workloads, federation scoped to `main`, namespaced pipeline RBAC, gated rollout | [Delivery](decisions.md#delivery) | [Phase 6](worklog/phase-06-keyless-delivery.md) |
-| Upstream tracking | Scheduled workflow that proposes the sky commit bump as a pull request, with the merge as the review | [Upstream pin automation](decisions.md#upstream-pin-automation) | [Pin automation](worklog/notes/upstream-pin-automation.md) |
-| Ingress | GKE Gateway on a reserved global address, container-native load balancing, Certificate Manager TLS, HTTP to HTTPS redirect, path routing to both workloads | [Ingress and TLS](decisions.md#ingress-and-tls) | [Phase 7](worklog/phase-07-gateway-tls.md) |
-| Observability | Cluster telemetry, uptime check on `/healthz`, one alert policy, dashboard as code, deployment and cost numbers | [Observability](decisions.md#observability) | [Phase 8](worklog/phase-08-observability.md) |
-| Resilience | Node floor of two, disruption budgets on both workloads, spread that survives a rollout, nightly maintenance window | [Cluster](decisions.md#cluster) | [Phase 9](worklog/phase-09-resilience.md) |
-| Failure drills | Deliberate outage with a measured three minute detection floor, and a failed rollout contained by `maxUnavailable: 0` | [Observability](decisions.md#observability) | [Phase 10](worklog/phase-10-failure-drills.md) |
-| Hardening | Only `gke-vpc` remains, workload vulnerability scanning on, Log Analytics and one log-based metric | [Workload security](decisions.md#workload-security) | [Phase 11](worklog/phase-11-hardening.md) |
-| Load and autoscaling | k6 harness on a throwaway load generator, `preStop` and keep-alive for clean rollouts, HPA on sky with requests and quota sized from measured load, nodes across three zones | [Load and scaling](decisions.md#load-and-scaling) | [Phase 12a](worklog/phase-12a-load-baseline.md), [12b](worklog/phase-12b-rollout-baseline.md), [12c](worklog/phase-12c-rollouts-connections.md), [12d](worklog/phase-12d-autoscaling.md) |
-| Security baseline | Twelve ranked threat model findings, eleven closed with evidence, federation scoped to a ref, CSP on both paths, CAA on a signed zone, a measured rate limit | [Workload security](decisions.md#workload-security) | [Phase 13](worklog/phase-13-security-baseline.md), [Phase 14](worklog/phase-14-close-the-baseline.md) |
-| Finding triage | Security Command Center findings over Pub/Sub with a dead letter policy, a worker that settles them by reviewed mapping and then by model, an append-only verdict ledger, and a scored evaluation of both | [Agents](decisions.md#agents) | [Phase 15](worklog/phase-15-scc-triage.md) |
+| Terraform state is local | One operator, no automated apply. See the [decision gate](plan.md#later-decision-gates) |
+| Bootstrap order not rehearsed on an empty project | Reconstructed from the worklogs in [operations](reference/operations.md#bootstrap-order) |
+| Zonal control plane | Cost. The node pool spans three zones |
+| `agents` egress admits any host on 443 | NetworkPolicy cannot match hostnames. See [boundary 3](reference/threat-model.md#boundary-3-pod-to-cluster) |
+| Six HIGH vulnerabilities in `sky` | No fixed package. [Accepted](decisions.md#residual-image-vulnerabilities) |
+| Evaluation is 25 cases, and one person wrote the holdout | A check against tuning, not an independent sample. See [slice 13](worklog/phase-15-scc-triage.md#limitations) |
+| Event Threat Detection needs Security Command Center Premium | Ran on a trial. Standard drops threat findings |
 
 ## Documentation
 
-- [Implementation plan](plan.md)
-- [Architecture decisions](decisions.md)
-- [Phase 1 infrastructure worklog](worklog/phase-01-infrastructure.md)
-- [Phase 2 workload worklog](worklog/phase-02-nginx-workload.md)
-- [Phase 3 CI worklog](worklog/phase-03-ci.md)
-- [Phase 4 guardrails worklog](worklog/phase-04-workload-guardrails.md)
-- [Phase 5 custom image worklog](worklog/phase-05-custom-image.md)
-- [Phase 6 keyless delivery worklog](worklog/phase-06-keyless-delivery.md)
-- [Phase 7 gateway and TLS worklog](worklog/phase-07-gateway-tls.md)
-- [Phase 8 observability worklog](worklog/phase-08-observability.md)
-- [Phase 9 surviving a node worklog](worklog/phase-09-resilience.md)
-- [Phase 10 failure drills worklog](worklog/phase-10-failure-drills.md)
-- [Phase 11 hardening worklog](worklog/phase-11-hardening.md)
-- [Phase 12a load baseline worklog](worklog/phase-12a-load-baseline.md)
-- [Phase 12b rollout baseline worklog](worklog/phase-12b-rollout-baseline.md)
-- [Phase 12c rollouts and connections worklog](worklog/phase-12c-rollouts-connections.md)
-- [Phase 12d autoscaling worklog](worklog/phase-12d-autoscaling.md)
-- [Phase 13 security baseline worklog](worklog/phase-13-security-baseline.md)
-- [Phase 14 close the baseline worklog](worklog/phase-14-close-the-baseline.md)
-- [Phase 15 Security Command Center triage worklog](worklog/phase-15-scc-triage.md)
-- [Upstream pin automation worklog](worklog/notes/upstream-pin-automation.md)
-- [Manifest linting worklog](worklog/notes/manifest-linting.md)
-- [Repository review worklog](worklog/notes/repository-review.md)
-- [Availability drill postmortem](worklog/notes/postmortem-availability-drill.md)
-- [Load test harness](loadtest/README.md)
-- [Troubleshooting log](troubleshooting.md)
-- [Operations reference](reference/operations.md)
-- [Networking reference](reference/networking.md)
-- [Kubernetes concepts reference](reference/kubernetes-concepts.md)
-- [kubectl command reference](reference/kubectl-commands.md)
-- [IAM and Workload Identity Federation reference](reference/iam-and-federation.md)
-- [Triage worker reference](reference/triage-worker.md)
+| Document | Holds |
+| --- | --- |
+| [plan.md](plan.md) | What was built, phase by phase, and what stayed optional |
+| [decisions.md](decisions.md) | Why each choice was made, its cost, and what was rejected |
+| [worklog/](worklog/README.md) | The commands and output behind every claim |
+| [troubleshooting.md](troubleshooting.md) | Failures worth not repeating |
+| [loadtest/](loadtest/README.md) | The k6 harness |
+| [Operations](reference/operations.md) | Where values live, bootstrap order, recovery |
+| [Networking](reference/networking.md) | How a request reaches a Pod, and what blocks everything else |
+| [IAM and federation](reference/iam-and-federation.md) | Who can do what, and how GitHub gets a token |
+| [Threat model](reference/threat-model.md) | Trust boundaries and their findings |
+| [Triage worker](reference/triage-worker.md) | How a finding becomes a verdict |
+| [Kubernetes concepts](reference/kubernetes-concepts.md) | How Kubernetes works, using the objects this cluster runs |
+| [kubectl](reference/kubectl-commands.md) | Commands to operate and inspect the platform |

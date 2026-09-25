@@ -84,7 +84,7 @@ Response headers other than HSTS sit on this boundary too, and finding 6 is clos
 
 The most heavily defended boundary in the system, and the one an adversary gains least from crossing.
 
-A remote code execution in `sky` — the realistic route being a dependency vulnerability in FastAPI, Starlette or uvicorn — lands in a container with no service account token mounted, a read-only root filesystem, every capability dropped, `runAsNonRoot` at uid 10001, `seccompProfile: RuntimeDefault`, PSA `restricted` enforced at admission, and **egress denied by default with only kube-dns permitted**.
+A remote code execution in `sky`, most likely through a dependency vulnerability in FastAPI, Starlette or uvicorn, lands in a container with no service account token mounted, a read-only root filesystem, every capability dropped, `runAsNonRoot` at uid 10001, `seccompProfile: RuntimeDefault`, PSA `restricted` enforced at admission, and **egress denied by default with only kube-dns permitted**.
 
 | | Threat | State |
 | --- | --- | --- |
@@ -122,7 +122,7 @@ The consequence is that **merge protection was not a control on the path to Goog
 
 Written down that way, the trade-off reversed. The cost is smaller than it first looked: `workflow_dispatch` still works from `main`, so the bootstrap path survives, and what is actually lost is exercising delivery from a branch, plus a branch rename breaking it until the condition follows.
 
-Blast radius if this boundary falls, stated plainly: push an image, and patch the Deployment to run it. That is arbitrary content served at `sindrg.com/sky` — the crown jewel, reached without touching any of boundary 3's defences. PSA still blocks a privileged Pod, the quota still bounds the compute, and egress is still denied, so the project is not a mining platform. The integrity of the domain is what is lost.
+Blast radius if this boundary falls, stated plainly: push an image, and patch the Deployment to run it. That is arbitrary content served at `sindrg.com/sky`, the crown jewel, reached without touching any of boundary 3's defences. PSA still blocks a privileged Pod, the quota still bounds the compute, and egress is still denied, so the project is not a mining platform. The integrity of the domain is what is lost.
 
 ## Boundary 5: Upstream repositories to the pipeline
 
@@ -212,7 +212,7 @@ Ranked by likelihood multiplied by impact against the assets above, not by how i
 
 The shape of that table was the finding. Six overlapping controls sat on the bottom row, and the top three had one, none, and none. Phase 13 put a control on four of the six rows, including the highest ranked, and Phase 14 put one on the third, so every row now carries something. The third is still the weakest, because CAA is enforced by the CA rather than by this platform and the zone is outside both repositories.
 
-That is not a criticism of the work. Containment that good is unusual, and it is why the bottom row ranks last. It is what happens when a platform is hardened by category — Pod security, network policy, image provenance — rather than by adversary. Categories are how the guides are organised, so this is the normal outcome of following them well.
+That is not a criticism of the work. Containment that good is unusual, and it is why the bottom row ranks last. It is what happens when a platform is hardened by category (Pod security, network policy, image provenance) and not by adversary. Categories are how the guides are organised, so this is the normal outcome of following them well.
 
 ## What this platform does not defend
 
