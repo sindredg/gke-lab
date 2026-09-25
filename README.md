@@ -9,90 +9,129 @@ A private GKE cluster, two workloads, and an AI agent that triages the security 
 
 ```mermaid
 flowchart LR
-    User(["User"])
-    Dev(["Developer"])
-    DNS["Cloudflare DNS<br/>sindrg.com<br/>DNSSEC, CAA"]
+    user(["User"])
+    dev(["Developer"])
+    gh["GitHub Actions"]
+    edge["Cloudflare DNS<br/>Google load balancer"]
+    scc["Security Command<br/>Center"]
+    mail(["Owner email"])
 
-    subgraph Delivery["Delivery"]
-        GH["GitHub Actions"]
-        TF["Terraform"]
+    subgraph gke["Private GKE cluster"]
+        demo["<b>demo</b><br/>nginx, sky"]
+        agents["<b>agents</b><br/>triage worker"]
     end
 
-    subgraph GCP["Google Cloud"]
-        subgraph Edge["Edge"]
-            LB["Global Application<br/>Load Balancer<br/>Cloud Armor rate limit"]
-            Cert["Certificate Manager<br/>managed TLS"]
-        end
+    user --> edge --> demo
+    dev --> gh -- "deploy" --> demo
+    scc -- "findings" --> agents -- "alerts" --> mail
 
-        subgraph VPC["Custom VPC, private nodes, Cloud NAT"]
-            CP["GKE control plane<br/>DNS-only endpoint"]
-            subgraph demo["demo namespace, Pod Security restricted"]
-                GW["Gateway<br/>HTTPRoutes"]
-                Nginx["nginx<br/>2 replicas<br/>/"]
-                Sky["sky<br/>2 to 8 replicas, HPA<br/>/sky /api /static"]
-            end
-            subgraph agents["agents namespace"]
-                Worker["Triage worker"]
-            end
-        end
-
-        WIF["Workload Identity<br/>Federation"]
-        AR["Artifact Registry"]
-        SCC["Security Command<br/>Center"]
-        PS["Pub/Sub<br/>findings, dead letter"]
-        Vertex["Vertex AI<br/>gemini-2.5-flash"]
-        Ledger[("Verdict ledger<br/>create-only bucket")]
-        Ops["Cloud Monitoring<br/>uptime check, dashboard, alerts"]
-    end
-
-    User --> DNS
-    DNS --> LB
-    LB -- "NEG" --> Nginx
-    LB -- "NEG" --> Sky
-    GW -. "configures" .-> LB
-    Cert -. "TLS" .-> LB
-
-    Dev --> GH
-    Dev --> TF
-    GH -- "OIDC token" --> WIF
-    GH -- "push image" --> AR
-    GH -- "apply by digest" --> CP
-    TF -. "provisions" .-> GCP
-    AR -. "pull" .-> demo
-
-    SCC -- "finding changes" --> PS
-    PS -- "pull" --> Worker
-    Worker -- "unmatched only" --> Vertex
-    Worker -- "record first" --> Ledger
-    Worker -. "verdict log" .-> Ops
-
-    Ops -- "probe /healthz" --> LB
-    Ops -- "alert email" --> Dev
-
-    classDef actor fill:#4B201D,stroke:#F28B82,color:#F8FAFC
-    classDef delivery fill:#493510,stroke:#FDD663,color:#F8FAFC
-    classDef workload fill:#123C2D,stroke:#81C995,color:#F8FAFC
-    classDef managed fill:#26344F,stroke:#8AB4F8,color:#F8FAFC
-    classDef agent fill:#402060,stroke:#C58AF9,color:#F8FAFC
-
-    class User,Dev,DNS actor
-    class GH,TF delivery
-    class CP,GW,Nginx,Sky workload
-    class LB,Cert,WIF,AR,Ops managed
-    class Worker,SCC,PS,Vertex,Ledger agent
-
-    linkStyle 0,1,2,3,4,5,18 stroke:#8AB4F8,stroke-width:2px
-    linkStyle 6,7,8,9,10,11,12 stroke:#FDD663,stroke-width:2px
-    linkStyle 13,14,15,16,17,19 stroke:#C58AF9,stroke-width:2px
+    classDef actor fill:#FFFFFF,stroke:#5F6368,stroke-width:1.5px,color:#202124
+    classDef ext fill:#FEF7E0,stroke:#E37400,stroke-width:1.5px,color:#3C2A00
+    classDef gcp fill:#E8F0FE,stroke:#1A73E8,stroke-width:1.5px,color:#0B2E6B
+    classDef k8s fill:#E6F4EA,stroke:#188038,stroke-width:1.5px,color:#0B3D1C
+    classDef ai fill:#F3E8FD,stroke:#8430CE,stroke-width:1.5px,color:#3B0E6B
+    classDef alert fill:#FCE8E6,stroke:#C5221F,stroke-width:1.5px,color:#5C0B09
+    class user,dev,mail actor
+    class gh,edge ext
+    class scc gcp
+    class demo k8s
+    class agents ai
+    style gke fill:none,stroke:#188038,stroke-width:1.5px,stroke-dasharray:6 4,color:#188038
 ```
 
-| Colour | Path |
-| --- | --- |
-| Blue | Serving: a request reaches a Pod through the load balancer, straight to Pod IPs |
-| Amber | Delivery: GitHub Actions federates, pushes an image, and applies it by digest |
-| Purple | Triage: a finding is settled by rules or by model, recorded, then alerted on |
+Terraform builds everything in Google Cloud: a custom VPC, private nodes across three zones, Cloud NAT, and a control plane reachable only by DNS.
 
-[The triage worker reference](reference/triage-worker.md) has the finding path in detail.
+### Serving
+
+```mermaid
+flowchart LR
+    user(["User"])
+    dns["Cloudflare DNS<br/>DNSSEC, CAA"]
+    lb["Global load balancer<br/>managed TLS, Cloud Armor"]
+    gw["GKE Gateway<br/>HTTPRoutes"]
+    uptime["Uptime check<br/>3 regions"]
+
+    subgraph demo["demo namespace"]
+        nginx["nginx<br/>2 replicas"]
+        sky["sky<br/>2 to 8 replicas, HPA"]
+    end
+
+    user -- "HTTPS" --> dns --> lb
+    lb -- "/" --> nginx
+    lb -- "/sky, /api, /static" --> sky
+    gw -. "configures" .-> lb
+    uptime -. "/healthz every 60 s" .-> lb
+
+    classDef actor fill:#FFFFFF,stroke:#5F6368,stroke-width:1.5px,color:#202124
+    classDef ext fill:#FEF7E0,stroke:#E37400,stroke-width:1.5px,color:#3C2A00
+    classDef gcp fill:#E8F0FE,stroke:#1A73E8,stroke-width:1.5px,color:#0B2E6B
+    classDef k8s fill:#E6F4EA,stroke:#188038,stroke-width:1.5px,color:#0B3D1C
+    classDef ai fill:#F3E8FD,stroke:#8430CE,stroke-width:1.5px,color:#3B0E6B
+    classDef alert fill:#FCE8E6,stroke:#C5221F,stroke-width:1.5px,color:#5C0B09
+    class user actor
+    class dns ext
+    class lb,uptime gcp
+    class gw,nginx,sky k8s
+    style demo fill:none,stroke:#188038,stroke-width:1.5px,stroke-dasharray:6 4,color:#188038
+```
+
+The Gateway programs a global load balancer that sends traffic straight to Pod IPs through network endpoint groups.
+
+### Delivery
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false}}}%%
+sequenceDiagram
+    autonumber
+    actor Dev as Developer
+    participant GH as GitHub Actions
+    participant WIF as Workload Identity<br/>Federation
+    participant AR as Artifact Registry
+    participant GKE as GKE
+
+    Dev->>GH: Merge to main
+    GH->>WIF: OIDC token, main only
+    WIF-->>GH: Short-lived credential
+    GH->>AR: Push image, tagged by commit
+    AR-->>GH: Digest
+    GH->>GKE: Patch Deployment by digest
+    GKE-->>GH: Rollout status, smoke test
+```
+
+No key is stored anywhere. In `demo`, the pipeline can patch Deployments and run a smoke-test Pod, and can create nothing else. See [operations](reference/operations.md#what-each-path-applies).
+
+### Triage
+
+```mermaid
+flowchart LR
+    scc["Security Command<br/>Center"]
+    ps["Pub/Sub"]
+    dead["Dead letter topic"]
+    rules{"Reviewed<br/>mapping?"}
+    model["Vertex AI<br/>gemini-2.5-flash"]
+    ledger[("Verdict ledger")]
+    alert(["Owner email"])
+
+    scc -- "finding change" --> ps
+    ps -- "after 5 failed deliveries" --> dead
+    ps --> rules
+    rules -- "match" --> ledger
+    rules -- "no match" --> model --> ledger
+    ledger -- "not accepted" --> alert
+
+    classDef actor fill:#FFFFFF,stroke:#5F6368,stroke-width:1.5px,color:#202124
+    classDef ext fill:#FEF7E0,stroke:#E37400,stroke-width:1.5px,color:#3C2A00
+    classDef gcp fill:#E8F0FE,stroke:#1A73E8,stroke-width:1.5px,color:#0B2E6B
+    classDef k8s fill:#E6F4EA,stroke:#188038,stroke-width:1.5px,color:#0B3D1C
+    classDef ai fill:#F3E8FD,stroke:#8430CE,stroke-width:1.5px,color:#3B0E6B
+    classDef alert fill:#FCE8E6,stroke:#C5221F,stroke-width:1.5px,color:#5C0B09
+    class scc,ps,dead gcp
+    class rules k8s
+    class model,ledger ai
+    class alert alert
+```
+
+The worker writes each state to the ledger before it notifies. See [the triage worker reference](reference/triage-worker.md).
 
 ## What it does
 
