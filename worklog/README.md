@@ -28,6 +28,8 @@ What was run, what came back, and what it proves. `plan.md` holds the intent,
 
 Phase 15b, patching the images, is recorded in [the plan](../plan.md#phase-15b-patch-the-images-this-repository-builds), with the counts a scanner read. The project closed after it, on 2026-09-22.
 
+[Shutdown](shutdown.md) records the platform's final state and its teardown on 2026-09-25.
+
 ## Other records
 
 | Record | What it is |

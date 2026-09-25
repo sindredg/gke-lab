@@ -4,11 +4,9 @@ A private GKE cluster, a couple of workloads, and an AI agent that handles the s
 
 Terraform builds it. GitHub Actions ships to it, keylessly. Each phase has a worklog, and [decisions.md](decisions.md) covers the why.
 
-**Closed on 2026-09-22.** [plan.md](plan.md) has the status table and what stayed optional. The site below still runs.
+**Closed on 2026-09-22, and shut down on 2026-09-25.** [plan.md](plan.md) has the status table and what stayed optional. The infrastructure is destroyed, and the DNS records for `sindrg.com` are deleted. [The shutdown worklog](worklog/shutdown.md) holds the final screenshots, the state it was in, and the teardown.
 
-## Live
-
-[sindrg.com](https://sindrg.com)
+The Terraform, manifests and workflows are kept as they were at the close, so they describe the platform as it ran.
 
 ## Architecture
 
@@ -97,7 +95,7 @@ flowchart TB
 
 ## Status
 
-Complete, and closed on 2026-09-22. Milestones 1 to 3 are done, and Milestone 4 closed at Phase 15 and Phase 15b. Phases 16 to 19 are optional extensions and were not built; [the plan](plan.md#status) says what would justify each, and lists the follow-ups still dated.
+Complete, closed on 2026-09-22, and shut down on 2026-09-25. Milestones 1 to 3 are done, and Milestone 4 closed at Phase 15 and Phase 15b. Phases 16 to 19 are optional extensions and were not built; [the plan](plan.md#status) says what would justify each, and lists the follow-ups still dated.
 
 | Area | State |
 | --- | --- |

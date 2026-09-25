@@ -2,7 +2,7 @@
 
 ## Status
 
-**Closed on 2026-09-22.**
+**Closed on 2026-09-22. Shut down on 2026-09-25**, recorded in [the shutdown worklog](worklog/shutdown.md).
 
 | Milestone | State | Evidence |
 | --- | --- | --- |
@@ -12,7 +12,7 @@
 | 4. Agent-operated security | Phases 15 and 15b complete. Phases 16 and 17 are optional and were not built | [Phase 15](worklog/phase-15-scc-triage.md) |
 | 5. The agent as a platform citizen | Optional, not built | |
 
-Open follow-ups. None holds a phase open:
+Follow-ups open at the close. Each needed the running platform, so the shutdown ended them unresolved:
 
 | Follow-up | When |
 | --- | --- |
