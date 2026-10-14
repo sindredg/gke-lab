@@ -2,6 +2,21 @@
 
 Decisions are grouped by domain. Each entry records what was chosen, why, what it costs when the cost is not obvious, and what was rejected. Entries keep that order and stay short: the worklog carries the narrative, this file carries the choice.
 
+| Domain | Covers |
+| --- | --- |
+| [Cluster](#cluster) | Mode, availability, node pool, upgrades, replica placement |
+| [Networking](#networking) | VPC and addresses, egress, control plane access |
+| [Identity and access](#identity-and-access) | Workload identity and service accounts |
+| [Workload security](#workload-security) | Pod Security, read-only root, namespace isolation |
+| [Images and supply chain](#images-and-supply-chain) | Registry, base image, immutable tags, image references |
+| [Infrastructure and configuration](#infrastructure-and-configuration) | Terraform structure and state, manifest layout |
+| [Delivery](#delivery) | CI checks, pipeline authentication and authorization, deploy method, pin automation |
+| [Ingress and TLS](#ingress-and-tls) | Gateway, certificates, DNS, health checks, rate limiting |
+| [Observability](#observability) | Telemetry scope, availability signal, alert threshold |
+| [Load and scaling](#load-and-scaling) | Autoscaling, probes, load testing, graceful exit, keep-alive |
+| [Agents](#agents) | The triage worker, the model, and their boundaries |
+| [Project and process](#project-and-process) | Focus, milestones, evidence, cost |
+
 ## Cluster
 
 ### Cluster operating mode

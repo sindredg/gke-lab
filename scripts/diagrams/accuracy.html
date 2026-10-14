@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Triage accuracy</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+  .big { fill: var(--ai); font: 600 40px var(--sans); }
+  .bigbase { fill: var(--muted); font: 600 40px var(--sans); }
+</style>
+</head>
+<body>
+<!-- Scale: y = 248 - percent * 2. Sources are worklog/phase-15-scc-triage.md, slice 14. -->
+<svg viewBox="0 16 960 320" width="960" height="320" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="accuracy-title accuracy-desc">
+  <title id="accuracy-title">Triage accuracy</title>
+  <desc id="accuracy-desc">Cases right on all five runs: rules alone settle 14 of 18 dev cases and 5 of 7 holdout cases, rules plus the model settle 16 of 18 and 7 of 7, and false contradictions fell from 15 of 125 runs to 0.</desc>
+  <rect class="bg" y="16" width="960" height="320"/>
+
+  <text class="eyebrow" x="24" y="34">CASES RIGHT ON ALL 5 RUNS</text>
+
+  <!-- Gridlines and axis -->
+  <line class="grid" x1="64" y1="48" x2="560" y2="48"/>
+  <line class="grid" x1="64" y1="98" x2="560" y2="98"/>
+  <line class="grid" x1="64" y1="148" x2="560" y2="148"/>
+  <line class="grid" x1="64" y1="198" x2="560" y2="198"/>
+  <line class="axis" x1="64" y1="248" x2="560" y2="248"/>
+  <text class="tick" x="56" y="52" text-anchor="end">100%</text>
+  <text class="tick" x="56" y="102" text-anchor="end">75%</text>
+  <text class="tick" x="56" y="152" text-anchor="end">50%</text>
+  <text class="tick" x="56" y="202" text-anchor="end">25%</text>
+  <text class="tick" x="56" y="252" text-anchor="end">0%</text>
+
+  <!-- Dev set -->
+  <rect class="bar base" x="132" y="92" width="64" height="156"/>
+  <rect class="bar focal" x="204" y="70" width="64" height="178"/>
+  <text class="val" x="164" y="84">14 of 18</text>
+  <text class="val ai" x="236" y="62">16 of 18</text>
+  <text class="cat" x="200" y="270" text-anchor="middle">Dev set</text>
+  <text class="tick" x="200" y="286" text-anchor="middle">18 cases</text>
+
+  <!-- Holdout -->
+  <rect class="bar base" x="372" y="105" width="64" height="143"/>
+  <rect class="bar focal" x="444" y="48" width="64" height="200"/>
+  <text class="val" x="404" y="97">5 of 7</text>
+  <text class="val ai" x="476" y="40">7 of 7</text>
+  <text class="cat" x="440" y="270" text-anchor="middle">Holdout</text>
+  <text class="tick" x="440" y="286" text-anchor="middle">7 cases</text>
+
+  <!-- False contradictions -->
+  <line class="rule" x1="616" y1="48" x2="616" y2="248"/>
+  <text class="eyebrow" x="648" y="60">FALSE CONTRADICTIONS</text>
+  <text class="bigbase" x="648" y="116">15</text>
+  <text class="note" x="704" y="110">of 125 runs, citation check only</text>
+  <text class="big" x="648" y="180">0</text>
+  <text class="note" x="704" y="174">of 125 runs, once a contradiction</text>
+  <text class="note" x="704" y="190">must name a control covering</text>
+  <text class="note" x="704" y="206">the finding's resource</text>
+  <text class="note" x="648" y="240">25 cases. The holdout has the same author.</text>
+
+  <!-- Legend -->
+  <line class="rule" x1="24" y1="304" x2="936" y2="304"/>
+  <rect class="bar base" x="24" y="316" width="12" height="12"/>
+  <text class="eyebrow" x="44" y="326">RULES ALONE</text>
+  <rect class="bar focal" x="164" y="316" width="12" height="12"/>
+  <text class="eyebrow" x="184" y="326">RULES PLUS MODEL</text>
+</svg>
+</body>
+</html>
