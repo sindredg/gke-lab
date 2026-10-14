@@ -4,6 +4,15 @@ How the Phase 15 worker turns a Security Command Center finding into a verdict, 
 
 State on 2026-09-22: running `ai-k8s` [`a2159a1`](https://github.com/sindredg/ai-k8s/tree/a2159a1), image `sha256:a626b64f`, with `-model=gemini-2.5-flash` and 137 corpus entries. Evidence is in [the Phase 15 worklog](../worklog/phase-15-scc-triage.md). To roll it out, see [the operations reference](operations.md#rolling-out-the-triage-worker).
 
+The path, speed and results are drawn in [the README](../README.md#ai-triage-agent). This page is how the worker gets there.
+
+| Read | For |
+| --- | --- |
+| [The path](#the-path), then [who decides what](#who-decides-what) | What runs, and where the model's authority ends |
+| [Model scope](../decisions.md#model-scope) | Why the model can never return `accepted` |
+| [Triage idempotency](../decisions.md#triage-idempotency) | Why a crash repeats work and never loses a finding |
+| [What is proven and what is not](../worklog/phase-15-scc-triage.md#what-is-proven-and-what-is-not) | Each claim against its evidence |
+
 ## The path
 
 ```mermaid

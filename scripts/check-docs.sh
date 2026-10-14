@@ -49,8 +49,11 @@ done < <(git ls-files '*.md')
 
 # A screenshot nobody references is dead weight, and a reference to a
 # screenshot that was never committed renders as a broken image on GitHub.
-referenced=$(git ls-files '*.md' | xargs grep -hoE '\((\.\./)?images/[^)]+\)' |
-  tr -d '()' | sed 's|^\.\./||' | sort -u)
+referenced=$({
+  git ls-files '*.md' | xargs grep -hoE '\((\.\./)?images/[^)]+\)' | tr -d '()'
+  # Light and dark diagrams are referenced from <picture> tags.
+  git ls-files '*.md' | xargs grep -hoE '(src|srcset)="(\.\./)?images/[^"]+"' | sed -E 's/^[a-z]+="//; s/"$//'
+} | sed 's|^\.\./||' | sort -u)
 tracked=$(git ls-files 'images/*' | sort)
 
 while IFS= read -r image; do

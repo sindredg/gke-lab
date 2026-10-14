@@ -1,0 +1,96 @@
+/* Shared tokens for the README diagrams, in the palette the Mermaid diagrams use. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #ffffff;
+  --ink: #1f2328;
+  --muted: #59636e;
+  --soft: #6e7781;
+  --rule: rgba(31, 35, 40, 0.12);
+  --zone: rgba(31, 35, 40, 0.025);
+  --gcp: #1a73e8;      --gcp-tint: #e8f0fe;
+  --k8s: #188038;      --k8s-tint: #e6f4ea;
+  --ai: #8430ce;       --ai-tint: #f3e8fd;
+  --ext: #b06000;      --ext-tint: #fef7e0;
+  --alert: #c5221f;    --alert-tint: #fce8e6;
+  --actor: #5f6368;    --actor-tint: #ffffff;
+  --sans: 'Geist', system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0d1117;
+    --ink: #e6edf3;
+    --muted: #9198a1;
+    --soft: #8b949e;
+    --rule: rgba(230, 237, 243, 0.14);
+    --zone: rgba(230, 237, 243, 0.03);
+    --gcp: #6ea8fe;      --gcp-tint: #0f2340;
+    --k8s: #56d364;      --k8s-tint: #0f2a17;
+    --ai: #c297ff;       --ai-tint: #261a3d;
+    --ext: #e3b341;      --ext-tint: #2a2210;
+    --alert: #ff7b72;    --alert-tint: #3a1614;
+    --actor: #9198a1;    --actor-tint: #0d1117;
+  }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: var(--paper); }
+svg { display: block; }
+
+.bg { fill: var(--paper); }
+.mask { fill: var(--paper); }
+
+.n { stroke-width: 1.2; }
+.n.gcp { fill: var(--gcp-tint); stroke: var(--gcp); }
+.n.k8s { fill: var(--k8s-tint); stroke: var(--k8s); }
+.n.ai { fill: var(--ai-tint); stroke: var(--ai); stroke-width: 2; }
+.n.ext { fill: var(--ext-tint); stroke: var(--ext); }
+.n.alert { fill: var(--alert-tint); stroke: var(--alert); }
+.n.actor { fill: var(--actor-tint); stroke: var(--actor); }
+.n.dashed { stroke-dasharray: 5 4; }
+
+.tag { fill: none; stroke-width: 0.8; }
+.tag.gcp { stroke: var(--gcp); } .tagt.gcp { fill: var(--gcp); }
+.tag.k8s { stroke: var(--k8s); } .tagt.k8s { fill: var(--k8s); }
+.tag.ai { stroke: var(--ai); } .tagt.ai { fill: var(--ai); }
+.tag.ext { stroke: var(--ext); } .tagt.ext { fill: var(--ext); }
+.tag.alert { stroke: var(--alert); } .tagt.alert { fill: var(--alert); }
+.tag.actor { stroke: var(--actor); } .tagt.actor { fill: var(--actor); }
+.tagt { font: 500 8px var(--mono); letter-spacing: 0.08em; text-anchor: middle; }
+
+.name { fill: var(--ink); font: 600 14px var(--sans); text-anchor: middle; }
+.sub { fill: var(--muted); font: 400 11px var(--mono); text-anchor: middle; }
+.lbl { fill: var(--soft); font: 500 9px var(--mono); letter-spacing: 0.06em; text-anchor: middle; }
+.lbl.ai { fill: var(--ai); }
+.lbl.start { text-anchor: start; }
+.eyebrow { fill: var(--soft); font: 500 9px var(--mono); letter-spacing: 0.14em; }
+.title { fill: var(--ink); font: 600 17px var(--sans); }
+.note { fill: var(--muted); font: 400 12px var(--sans); }
+.note.strong { fill: var(--ink); font-weight: 600; }
+
+.a { fill: none; stroke: var(--muted); stroke-width: 1.2; marker-end: url(#arrow); }
+.a.ai { stroke: var(--ai); stroke-width: 1.8; marker-end: url(#arrow-ai); }
+.a.alert { stroke: var(--alert); marker-end: url(#arrow-alert); }
+.a.dashed { stroke-dasharray: 5 4; }
+.mk { fill: var(--muted); }
+.mk.ai { fill: var(--ai); }
+.mk.alert { fill: var(--alert); }
+
+.zone { fill: var(--zone); stroke: var(--k8s); stroke-width: 1; stroke-dasharray: 6 4; }
+.zonet { fill: var(--k8s); font: 500 9px var(--mono); letter-spacing: 0.14em; }
+.rule { stroke: var(--rule); stroke-width: 0.8; }
+
+.grid { stroke: var(--rule); stroke-width: 0.8; }
+.axis { stroke: var(--soft); stroke-width: 1; }
+.tick { fill: var(--muted); font: 400 10px var(--mono); }
+.cat { fill: var(--ink); font: 600 13px var(--sans); }
+.bar.base { fill: var(--rule); stroke: var(--muted); stroke-width: 1; }
+.bar.focal { fill: var(--ai-tint); stroke: var(--ai); stroke-width: 1.4; }
+.bar.gcp { fill: var(--gcp-tint); stroke: var(--gcp); stroke-width: 1; }
+.bar.k8s { fill: var(--k8s-tint); stroke: var(--k8s); stroke-width: 1; }
+.val { fill: var(--muted); font: 500 11px var(--mono); text-anchor: middle; }
+.val.ai { fill: var(--ai); }
+.val.start { text-anchor: start; }
+.whisker { stroke: var(--ai); stroke-width: 1.4; }

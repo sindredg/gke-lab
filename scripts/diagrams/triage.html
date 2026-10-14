@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Triage path</title>
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<svg viewBox="0 80 960 344" width="960" height="344" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="triage-title triage-desc">
+  <title id="triage-title">Triage path</title>
+  <desc id="triage-desc">A finding change reaches the worker through Pub/Sub in about two seconds; a reviewed mapping settles it or Vertex AI classifies it, the verdict is written to the ledger, and a verdict that is not accepted alerts the owner about three minutes later.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk" points="0 0, 8 3, 0 6"/></marker>
+    <marker id="arrow-ai" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk ai" points="0 0, 8 3, 0 6"/></marker>
+    <marker id="arrow-alert" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk alert" points="0 0, 8 3, 0 6"/></marker>
+  </defs>
+  <rect class="bg" y="80" width="960" height="344"/>
+
+  <!-- Arrows -->
+  <line class="a ai" x1="152" y1="132" x2="216" y2="132"/>
+  <line class="a ai" x1="336" y1="132" x2="400" y2="132"/>
+  <line class="a ai" x1="544" y1="132" x2="608" y2="132"/>
+  <line class="a" x1="736" y1="132" x2="816" y2="132"/>
+  <line class="a" x1="472" y1="160" x2="472" y2="256"/>
+  <path class="a" d="M 544,284 H 664 Q 672,284 672,276 V 160"/>
+  <line class="a alert dashed" x1="276" y1="160" x2="276" y2="256"/>
+
+  <!-- Arrow labels -->
+  <rect class="mask" x="155" y="111" width="58" height="13" rx="2"/>
+  <text class="lbl ai" x="184" y="121">ABOUT 2 S</text>
+  <rect class="mask" x="557" y="111" width="38" height="13" rx="2"/>
+  <text class="lbl ai" x="576" y="121">MATCH</text>
+  <rect class="mask" x="740" y="111" width="72" height="13" rx="2"/>
+  <text class="lbl" x="776" y="121">ABOUT 3 MIN</text>
+  <rect class="mask" x="480" y="201" width="54" height="13" rx="2"/>
+  <text class="lbl start" x="484" y="211">NO MATCH</text>
+  <rect class="mask" x="568" y="263" width="72" height="13" rx="2"/>
+  <text class="lbl" x="604" y="273">1.3 S AT P50</text>
+  <rect class="mask" x="284" y="201" width="84" height="13" rx="2"/>
+  <text class="lbl start" x="288" y="211">AFTER 5 TRIES</text>
+
+  <!-- Nodes: row 1 -->
+  <rect class="mask" x="16" y="104" width="136" height="56" rx="6"/>
+  <rect class="n gcp" x="16" y="104" width="136" height="56" rx="6"/>
+  <rect class="tag gcp" x="24" y="110" width="28" height="12" rx="2"/>
+  <text class="tagt gcp" x="38" y="119">GCP</text>
+  <text class="name" x="84" y="137">Finding change</text>
+  <text class="sub" x="84" y="152">from SCC</text>
+
+  <rect class="mask" x="216" y="104" width="120" height="56" rx="6"/>
+  <rect class="n gcp" x="216" y="104" width="120" height="56" rx="6"/>
+  <rect class="tag gcp" x="224" y="110" width="28" height="12" rx="2"/>
+  <text class="tagt gcp" x="238" y="119">GCP</text>
+  <text class="name" x="276" y="137">Pub/Sub</text>
+  <text class="sub" x="276" y="152">subscription</text>
+
+  <rect class="mask" x="400" y="104" width="144" height="56" rx="6"/>
+  <rect class="n k8s" x="400" y="104" width="144" height="56" rx="6"/>
+  <rect class="tag k8s" x="408" y="110" width="40" height="12" rx="2"/>
+  <text class="tagt k8s" x="428" y="119">RULES</text>
+  <text class="name" x="472" y="137">Reviewed mapping</text>
+  <text class="sub" x="472" y="152">category + resource</text>
+
+  <rect class="mask" x="608" y="104" width="128" height="56" rx="6"/>
+  <rect class="n gcp" x="608" y="104" width="128" height="56" rx="6"/>
+  <rect class="tag gcp" x="616" y="110" width="28" height="12" rx="2"/>
+  <text class="tagt gcp" x="630" y="119">GCS</text>
+  <text class="name" x="672" y="137">Verdict ledger</text>
+  <text class="sub" x="672" y="152">append-only</text>
+
+  <rect class="mask" x="816" y="104" width="128" height="56" rx="6"/>
+  <rect class="n alert" x="816" y="104" width="128" height="56" rx="6"/>
+  <text class="name" x="880" y="137">Owner email</text>
+  <text class="sub" x="880" y="152">if not accepted</text>
+
+  <!-- Nodes: row 2 -->
+  <rect class="mask" x="216" y="256" width="120" height="56" rx="6"/>
+  <rect class="n alert dashed" x="216" y="256" width="120" height="56" rx="6"/>
+  <text class="name" x="276" y="289">Dead letter</text>
+  <text class="sub" x="276" y="304">alerts the owner</text>
+
+  <rect class="mask" x="400" y="256" width="144" height="56" rx="6"/>
+  <rect class="n ai" x="400" y="256" width="144" height="56" rx="6"/>
+  <rect class="tag ai" x="408" y="262" width="22" height="12" rx="2"/>
+  <text class="tagt ai" x="419" y="271">AI</text>
+  <text class="name" x="472" y="289">Vertex AI</text>
+  <text class="sub" x="472" y="304">gemini-2.5-flash</text>
+
+  <!-- Result line -->
+  <text class="note strong" x="16" y="352">2.9 s from finding change to recorded verdict, measured on the rules path.</text>
+  <text class="note" x="16" y="370">The model call takes 1.3 s at p50 and 1.9 s at p95. The email waits on the alerting floor, not the worker.</text>
+
+  <!-- Legend -->
+  <line class="rule" x1="16" y1="388" x2="944" y2="388"/>
+  <rect class="n gcp" x="16" y="402" width="12" height="12" rx="2"/>
+  <text class="eyebrow" x="36" y="412">GOOGLE CLOUD</text>
+  <rect class="n k8s" x="156" y="402" width="12" height="12" rx="2"/>
+  <text class="eyebrow" x="176" y="412">WORKER RULES</text>
+  <rect class="n ai" x="296" y="402" width="12" height="12" rx="2"/>
+  <text class="eyebrow" x="316" y="412">MODEL</text>
+  <rect class="n alert" x="388" y="402" width="12" height="12" rx="2"/>
+  <text class="eyebrow" x="408" y="412">NOTIFICATION</text>
+  <line class="a ai" x1="532" y1="408" x2="564" y2="408"/>
+  <text class="eyebrow" x="576" y="412">MEASURED 2.9 S PATH</text>
+  <line class="a alert dashed" x1="736" y1="408" x2="768" y2="408"/>
+  <text class="eyebrow" x="780" y="412">FAILURE PATH</text>
+</svg>
+</body>
+</html>
