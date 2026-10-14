@@ -6,14 +6,14 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<svg viewBox="0 32 960 568" width="960" height="568" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="overview-title overview-desc">
+<svg viewBox="0 24 960 576" width="960" height="576" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="overview-title overview-desc">
   <title id="overview-title">Platform overview</title>
-  <desc id="overview-desc">Users reach the demo namespace through Cloudflare and a Google load balancer, a developer deploys to it through GitHub Actions and Workload Identity Federation, and Security Command Center findings reach the triage worker in the agents namespace, which calls Vertex AI for unmatched findings and alerts the owner.</desc>
+  <desc id="overview-desc">Users resolve the domain at Cloudflare and reach the demo namespace through a Google load balancer, a developer deploys to it through GitHub Actions and Workload Identity Federation, and Security Command Center findings reach the triage worker in the agents namespace, which calls Vertex AI for unmatched findings and alerts the owner.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk" points="0 0, 8 3, 0 6"/></marker>
     <marker id="arrow-ai" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon class="mk ai" points="0 0, 8 3, 0 6"/></marker>
   </defs>
-  <rect class="bg" y="32" width="960" height="568"/>
+  <rect class="bg" y="24" width="960" height="576"/>
 
   <!-- Zone -->
   <rect class="zone" x="648" y="56" width="296" height="380" rx="8"/>
@@ -21,8 +21,8 @@
   <text class="zonet" x="670" y="59">PRIVATE GKE CLUSTER</text>
 
   <!-- Arrows: serving -->
-  <line class="a" x1="184" y1="120" x2="248" y2="120"/>
-  <line class="a" x1="400" y1="120" x2="456" y2="120"/>
+  <path class="a" d="M 184,104 H 208 Q 216,104 216,96 V 74 Q 216,66 224,66 H 248"/>
+  <line class="a" x1="184" y1="132" x2="456" y2="132"/>
   <line class="a" x1="616" y1="120" x2="680" y2="120"/>
   <!-- Arrows: delivery -->
   <line class="a" x1="184" y1="240" x2="248" y2="240"/>
@@ -35,16 +35,18 @@
   <line class="a" x1="840" y1="408" x2="840" y2="476"/>
 
   <!-- Arrow labels -->
-  <rect class="mask" x="197" y="99" width="38" height="13" rx="2"/>
-  <text class="lbl" x="216" y="109">HTTPS</text>
+  <rect class="mask" x="186" y="74" width="24" height="13" rx="2"/>
+  <text class="lbl" x="198" y="84">DNS</text>
+  <rect class="mask" x="301" y="111" width="38" height="13" rx="2"/>
+  <text class="lbl" x="320" y="121">HTTPS</text>
   <rect class="mask" x="197" y="219" width="38" height="13" rx="2"/>
   <text class="lbl" x="216" y="229">MERGE</text>
   <rect class="mask" x="412" y="219" width="32" height="13" rx="2"/>
   <text class="lbl" x="428" y="229">OIDC</text>
   <rect class="mask" x="190" y="359" width="52" height="13" rx="2"/>
   <text class="lbl" x="216" y="369">FINDINGS</text>
-  <rect class="mask" x="508" y="359" width="60" height="13" rx="2"/>
-  <text class="lbl ai" x="538" y="369">ABOUT 2 S</text>
+  <rect class="mask" x="494" y="359" width="88" height="13" rx="2"/>
+  <text class="lbl ai" x="538" y="369">STREAMING PULL</text>
   <rect class="mask" x="624" y="483" width="88" height="13" rx="2"/>
   <text class="lbl" x="668" y="493">UNMATCHED ONLY</text>
   <rect class="mask" x="848" y="446" width="40" height="13" rx="2"/>
@@ -55,12 +57,12 @@
   <rect class="n actor" x="24" y="92" width="160" height="56" rx="6"/>
   <text class="name" x="104" y="125">User</text>
 
-  <rect class="mask" x="248" y="92" width="152" height="56" rx="6"/>
-  <rect class="n ext" x="248" y="92" width="152" height="56" rx="6"/>
-  <rect class="tag ext" x="256" y="98" width="34" height="12" rx="2"/>
-  <text class="tagt ext" x="273" y="107">EDGE</text>
-  <text class="name" x="324" y="125">Cloudflare</text>
-  <text class="sub" x="324" y="140">DNSSEC · CAA</text>
+  <rect class="mask" x="248" y="40" width="152" height="52" rx="6"/>
+  <rect class="n ext" x="248" y="40" width="152" height="52" rx="6"/>
+  <rect class="tag ext" x="256" y="46" width="28" height="12" rx="2"/>
+  <text class="tagt ext" x="270" y="55">DNS</text>
+  <text class="name" x="324" y="72">Cloudflare</text>
+  <text class="sub" x="324" y="86">DNSSEC · CAA</text>
 
   <rect class="mask" x="456" y="92" width="160" height="56" rx="6"/>
   <rect class="n gcp" x="456" y="92" width="160" height="56" rx="6"/>

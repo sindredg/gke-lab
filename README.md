@@ -1,6 +1,6 @@
 # Secure Kubernetes Platform on GKE, with an AI Triage Agent
 
-A private GKE cluster, keyless delivery, and an AI agent that turns each security finding into a recorded verdict in seconds. Terraform builds it and GitHub Actions deploys to it with no stored key.
+A private GKE cluster, keyless delivery, and an AI agent that turns each misconfiguration, threat and exposure finding into a recorded verdict in seconds. Terraform builds it and GitHub Actions deploys to it with no stored key.
 
 > [!NOTE]
 > **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The code is kept as it ran. See [the shutdown worklog](worklog/shutdown.md).
@@ -14,7 +14,7 @@ A private GKE cluster, keyless delivery, and an AI agent that turns each securit
 | Delivery | GitHub Actions, Workload Identity Federation, Artifact Registry, deploys by digest |
 | Workload security | Pod Security `restricted`, default-deny NetworkPolicies, Checkov, kube-linter, Dependabot |
 | AI agent | Security Command Center, Pub/Sub, Vertex AI `gemini-2.5-flash`, a Go worker |
-| Evidence | Cloud Monitoring, k6 load tests, failure drills, a worklog per phase |
+| Evidence | Cloud Monitoring, k6 load tests, failure drills, worklogs with the command behind each number |
 
 | Merge to Ready | Peak load, no failures | Finding to verdict | False contradictions | Threat model |
 | --- | --- | --- | --- | --- |
@@ -29,21 +29,21 @@ Sources are in [Measured](#measured) and the [threat model](reference/threat-mod
 | 2 min | This page, down to [the AI triage agent](#ai-triage-agent) |
 | 15 min | [The triage worker](reference/triage-worker.md), then the [model scope](decisions.md#model-scope) and [triage idempotency](decisions.md#triage-idempotency) decisions |
 | Platform | [Networking](reference/networking.md), [IAM and federation](reference/iam-and-federation.md), [threat model](reference/threat-model.md) |
-| Proof | [The worklogs](worklog/README.md), one per phase, each with the commands and their output |
+| Proof | [The worklogs](worklog/README.md), with the commands and their output |
 | Failures | [Troubleshooting](troubleshooting.md#symptoms), indexed by symptom |
 
 ## Architecture
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/overview-dark.png">
-  <img alt="Users reach the demo namespace through Cloudflare and a Google load balancer. A developer deploys through GitHub Actions and Workload Identity Federation. Security Command Center findings reach the triage worker through Pub/Sub, which calls Vertex AI for unmatched findings and alerts the owner." src="images/diagrams/overview-light.png">
+  <img alt="Users resolve the domain at Cloudflare and reach the demo namespace through a Google load balancer. A developer deploys through GitHub Actions and Workload Identity Federation. Security Command Center findings reach the triage worker through Pub/Sub, which calls Vertex AI for unmatched findings and alerts the owner." src="images/diagrams/overview-light.png">
 </picture>
 
 Terraform builds everything in Google Cloud: a custom VPC, private nodes across three zones, Cloud NAT, and a control plane reachable only by DNS. [Serving and delivery](#platform) are drawn in more detail below.
 
 ## AI triage agent
 
-Security Command Center publishes each finding change to Pub/Sub. A worker in the `agents` namespace settles the finding with a reviewed mapping first, and asks Vertex AI only when no mapping matches. It writes every verdict to an append-only ledger before it notifies anyone.
+Security Command Center publishes each finding change to Pub/Sub. A worker in the `agents` namespace counts vulnerability findings and does not triage them, because a vulnerability is fixed by an image pin, not by a decision. It settles every other finding with a reviewed mapping first, and asks Vertex AI only when no mapping matches and the finding is complete. It writes every verdict to an append-only ledger before it notifies anyone.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/triage-dark.png">
@@ -54,10 +54,10 @@ Security Command Center publishes each finding change to Pub/Sub. A worker in th
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/speed-dark.png">
-  <img alt="Rules path, measured end to end: 2.9 seconds, almost all of it Pub/Sub delivery. Model path, summed from measured parts: about 3.6 seconds at p50 and 4.2 seconds at p95." src="images/diagrams/speed-light.png">
+  <img alt="Rules path, measured end to end: 2.9 seconds, almost all of it getting the finding to the worker. Model path, summed from measured parts: about 4.4 seconds at p50 and 5.0 seconds at p95." src="images/diagrams/speed-light.png">
 </picture>
 
-A finding change became a recorded verdict in 2.9 s, measured end to end on the rules path in [slice 8](worklog/phase-15-scc-triage.md#recovery). Pub/Sub delivery is most of it. The model path is summed from its measured parts and was not timed end to end: the model call takes 1.3 s at p50 and 1.9 s at p95, from [slice 13](worklog/phase-15-scc-triage.md#latency-and-cost).
+A finding change became a recorded verdict in 2.9 s, measured end to end on the rules path in [slice 8](worklog/phase-15-scc-triage.md#recovery). Getting the finding to the worker is most of it. The model path was not timed end to end. It is that measured path plus the model call, 1.3 s at p50 and 1.9 s at p95 from [slice 13](worklog/phase-15-scc-triage.md#latency-and-cost), plus the 285 ms a notifying verdict took to write in [slice 7](worklog/phase-15-scc-triage.md#kill-after-inference-before-persistence).
 
 ### Results
 
@@ -75,8 +75,8 @@ The model beats the rules alone only after a contradiction has to land on a cont
 | Cannot accept a finding | `accepted` is absent from the schema, refused by the worker, and rejected by the validator |
 | Cannot act | No tools are declared, and a tool call in the reply is rejected |
 | Cannot overspend | 1.00 USD a UTC day. Each call reserves its worst case in the ledger first, so the ceiling survives restarts |
-| Cannot lose a finding | Record, then notify, then acknowledge. A crash at each boundary was [drilled](worklog/phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled) |
-| Cannot be steered by a finding | An instruction inside a finding gave [the same verdict](worklog/phase-15-scc-triage.md#the-injection) as without it |
+| Cannot lose a finding to a crash | Record, then notify, then acknowledge. A crash at each boundary was [drilled](worklog/phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled). A message that fails five deliveries is parked on the dead letter topic with its body intact, and an alert fires |
+| Was not steered by an injected instruction | An instruction in the fields a resource's creator controls gave [the same verdict](worklog/phase-15-scc-triage.md#the-injection) as without it. The detector-written fields are covered by unit tests only |
 
 The worker holds no Security Command Center permission and no cluster credential. Its code lives in [ai-k8s](https://github.com/sindredg/ai-k8s). How it works is in [the triage worker reference](reference/triage-worker.md).
 
@@ -97,7 +97,8 @@ flowchart LR
         sky["sky<br/>2 to 8 replicas, HPA"]
     end
 
-    user -- "HTTPS" --> dns --> lb
+    user -. "DNS lookup" .-> dns
+    user -- "HTTPS" --> lb
     lb -- "/" --> nginx
     lb -- "/sky, /api, /static" --> sky
     gw -. "configures" .-> lb

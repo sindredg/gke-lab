@@ -6,44 +6,46 @@
 <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<!-- Scale: x = 200 + seconds * 144. Sources are in worklog/phase-15-scc-triage.md, slices 4, 7, 8 and 14. -->
+<!-- Scale: x = 200 + seconds * 120. Sources are in worklog/phase-15-scc-triage.md, slices 7, 8 and 13. -->
 <svg viewBox="0 24 960 240" width="960" height="240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="speed-title speed-desc">
   <title id="speed-title">Triage speed</title>
-  <desc id="speed-desc">The rules path took 2.9 seconds from finding change to recorded verdict, measured end to end; the model path adds a model call of 1.3 seconds at p50 and 1.9 seconds at p95, for about 3.6 seconds composed from measured parts.</desc>
+  <desc id="speed-desc">The rules path took 2.9 seconds from finding change to recorded verdict, measured end to end; adding the model call to the same measured parts gives about 4.4 seconds at p50 and 5.0 seconds at p95.</desc>
   <rect class="bg" y="24" width="960" height="240"/>
 
   <!-- Gridlines and axis -->
-  <line class="grid" x1="344" y1="40" x2="344" y2="156"/>
-  <line class="grid" x1="488" y1="40" x2="488" y2="156"/>
-  <line class="grid" x1="632" y1="40" x2="632" y2="156"/>
-  <line class="grid" x1="776" y1="40" x2="776" y2="156"/>
+  <line class="grid" x1="320" y1="40" x2="320" y2="156"/>
+  <line class="grid" x1="440" y1="40" x2="440" y2="156"/>
+  <line class="grid" x1="560" y1="40" x2="560" y2="156"/>
+  <line class="grid" x1="680" y1="40" x2="680" y2="156"/>
+  <line class="grid" x1="800" y1="40" x2="800" y2="156"/>
   <line class="grid" x1="920" y1="40" x2="920" y2="156"/>
   <line class="axis" x1="200" y1="40" x2="200" y2="156"/>
   <line class="axis" x1="200" y1="156" x2="920" y2="156"/>
   <text class="tick" x="200" y="172" text-anchor="middle">0 s</text>
-  <text class="tick" x="344" y="172" text-anchor="middle">1 s</text>
-  <text class="tick" x="488" y="172" text-anchor="middle">2 s</text>
-  <text class="tick" x="632" y="172" text-anchor="middle">3 s</text>
-  <text class="tick" x="776" y="172" text-anchor="middle">4 s</text>
-  <text class="tick" x="920" y="172" text-anchor="middle">5 s</text>
+  <text class="tick" x="320" y="172" text-anchor="middle">1 s</text>
+  <text class="tick" x="440" y="172" text-anchor="middle">2 s</text>
+  <text class="tick" x="560" y="172" text-anchor="middle">3 s</text>
+  <text class="tick" x="680" y="172" text-anchor="middle">4 s</text>
+  <text class="tick" x="800" y="172" text-anchor="middle">5 s</text>
+  <text class="tick" x="920" y="172" text-anchor="middle">6 s</text>
 
-  <!-- Rules path: delivery 2.80 s, three ledger states 0.13 s -->
+  <!-- Rules path, slice 8: finding change to received 2.80 s, three ledger states 0.13 s -->
   <text class="cat" x="188" y="70" text-anchor="end">Rules path</text>
   <text class="tick" x="188" y="85" text-anchor="end">measured end to end</text>
-  <rect class="bar gcp" x="200" y="56" width="403" height="28"/>
-  <rect class="bar k8s" x="603" y="56" width="19" height="28"/>
-  <text class="val ai start" x="634" y="75">2.9 s</text>
+  <rect class="bar gcp" x="200" y="56" width="336" height="28"/>
+  <rect class="bar k8s" x="536" y="56" width="15" height="28"/>
+  <text class="val ai start" x="564" y="75">2.9 s</text>
 
-  <!-- Model path: delivery about 2 s, model 1.3 s p50 (1.9 s p95), four ledger states 0.29 s -->
+  <!-- Model path: the same 2.80 s, model 1.3 s p50 and 1.9 s p95 (slice 13), four ledger states 0.285 s (slice 7) -->
   <text class="cat" x="188" y="126" text-anchor="end">Model path</text>
   <text class="tick" x="188" y="141" text-anchor="end">sum of measured parts</text>
-  <rect class="bar gcp" x="200" y="112" width="288" height="28"/>
-  <rect class="bar focal" x="488" y="112" width="187" height="28"/>
-  <rect class="bar k8s" x="675" y="112" width="41" height="28"/>
-  <line class="whisker" x1="716" y1="126" x2="803" y2="126"/>
-  <line class="whisker" x1="803" y1="118" x2="803" y2="134"/>
-  <text class="val ai start" x="815" y="123">3.6 s at p50</text>
-  <text class="val start" x="815" y="138">4.2 s at p95</text>
+  <rect class="bar gcp" x="200" y="112" width="336" height="28"/>
+  <rect class="bar focal" x="536" y="112" width="156" height="28"/>
+  <rect class="bar k8s" x="692" y="112" width="34" height="28"/>
+  <line class="whisker" x1="726" y1="126" x2="798" y2="126"/>
+  <line class="whisker" x1="798" y1="118" x2="798" y2="134"/>
+  <text class="val ai start" x="810" y="123">4.4 s at p50</text>
+  <text class="val start" x="810" y="138">5.0 s at p95</text>
 
   <!-- Note -->
   <text class="note" x="16" y="204">The owner email follows about 3 min later. That delay is the alert policy's detection floor, not the worker.</text>
@@ -51,14 +53,14 @@
   <!-- Legend -->
   <line class="rule" x1="16" y1="220" x2="944" y2="220"/>
   <rect class="bar gcp" x="16" y="234" width="12" height="12"/>
-  <text class="eyebrow" x="36" y="244">PUB/SUB DELIVERY</text>
-  <rect class="bar focal" x="196" y="234" width="12" height="12"/>
-  <text class="eyebrow" x="216" y="244">MODEL CALL</text>
-  <rect class="bar k8s" x="336" y="234" width="12" height="12"/>
-  <text class="eyebrow" x="356" y="244">SETTLE AND WRITE LEDGER</text>
-  <line class="whisker" x1="580" y1="240" x2="612" y2="240"/>
-  <line class="whisker" x1="612" y1="234" x2="612" y2="246"/>
-  <text class="eyebrow" x="624" y="244">MODEL P95</text>
+  <text class="eyebrow" x="36" y="244">FINDING CHANGE TO WORKER</text>
+  <rect class="bar focal" x="256" y="234" width="12" height="12"/>
+  <text class="eyebrow" x="276" y="244">MODEL CALL</text>
+  <rect class="bar k8s" x="396" y="234" width="12" height="12"/>
+  <text class="eyebrow" x="416" y="244">SETTLE AND WRITE LEDGER</text>
+  <line class="whisker" x1="640" y1="240" x2="672" y2="240"/>
+  <line class="whisker" x1="672" y1="234" x2="672" y2="246"/>
+  <text class="eyebrow" x="684" y="244">MODEL P95</text>
 </svg>
 </body>
 </html>
