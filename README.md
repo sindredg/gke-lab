@@ -1,4 +1,4 @@
-# Secure Kubernetes Platform on GKE
+# Secure Kubernetes Platform on GKE, with an AI Triage Agent
 
 A private GKE Standard cluster across three zones, built by Terraform and deployed to by GitHub Actions with no stored key. Two web workloads run behind GKE Gateway with restricted Pod Security, default-deny NetworkPolicies, autoscaling, and rollouts that drop no connections. An AI triage agent in its own namespace turns each security finding into a recorded verdict in seconds.
 
