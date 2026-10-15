@@ -1,6 +1,6 @@
 # Secure Kubernetes Platform on GKE, with an AI Triage Agent
 
-A private GKE Standard cluster across three zones, built by Terraform and deployed to by GitHub Actions with no stored key. Two web workloads run behind GKE Gateway with restricted Pod Security, default-deny NetworkPolicies, autoscaling, and rollouts that drop no connections. An AI triage agent in its own namespace turns each security finding into a recorded verdict in seconds.
+A private GKE Standard cluster with nodes in three zones, built by Terraform and deployed to by GitHub Actions with no stored key. Two web workloads run behind GKE Gateway with restricted Pod Security, default-deny NetworkPolicies, autoscaling, and rollouts that drop no connections. An AI triage agent in its own namespace turns each security finding into a recorded verdict in seconds.
 
 > [!NOTE]
 > **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The code is kept as it ran. See [the shutdown worklog](worklog/shutdown.md).
@@ -107,7 +107,7 @@ Each namespace is a trust boundary. `demo` holds no Google identity. `agents` ho
 | NetworkPolicy | Default deny, then DNS, load balancer ranges to `:8080`, and labelled clients | Default deny, then DNS, the metadata server, and `:443` outside private ranges |
 | ResourceQuota | 5 CPU requested, 13 CPU limit, 16 Pods | 1 CPU requested, 2 CPU limit, 4 Pods |
 | LimitRange | Defaults for a container that declares none | Same |
-| RBAC | The pipeline's `deploy` Role: patch Deployments, run a smoke-test Pod | None for the pipeline |
+| RBAC | The pipeline's `deploy` Role: patch Deployments, run a smoke-test Pod | None for the pipeline. An operator applies the worker |
 
 The `demo` quota is sized for `sky` at its HPA maximum during a rollout: 8 replicas, a surge Pod, two Pods still in their `preStop` sleep, `nginx`, and a smoke test.
 
@@ -119,11 +119,11 @@ The `demo` quota is sized for `sky` at its HPA maximum during a rollout: 8 repli
 | `sky` | 2 to 8, HPA at 70% of a 350m CPU request | Rolling, surge 1, unavailable 0 | `minAvailable: 1` | Readiness and liveness on `/health` |
 | `triage-worker` | 1 | `Recreate`, so two workers never pull at once | None | Readiness on `/readyz`, liveness on `/healthz` |
 
-Every container runs as non-root with a read-only root filesystem, all capabilities dropped, no privilege escalation, the `RuntimeDefault` seccomp profile, and no mounted ServiceAccount token. Images are pulled by digest. Topology spread prefers one replica per node and counts only the current ReplicaSet, so the spread survives a rollout.
+Every container runs as non-root with a read-only root filesystem, all capabilities dropped, no privilege escalation, the `RuntimeDefault` seccomp profile, and no mounted ServiceAccount token. Images are pulled by digest. For `nginx` and `sky`, topology spread prefers one replica per node and counts only the current ReplicaSet, so the spread survives a rollout.
 
 ### Rollouts that drop nothing
 
-A rollout dropped 72 connections at 20 rps while the load balancer detached each old Pod. Three changes took it to zero:
+A rollout dropped 72 connections at 20 rps while the load balancer detached each old Pod. The `preStop` sleep took that to zero. The other two changes fixed what the next runs found:
 
 | Change | Value | Effect |
 | --- | --- | --- |
