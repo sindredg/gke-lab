@@ -1,6 +1,6 @@
-# Secure Kubernetes Platform on GKE, with an AI Triage Agent
+# Secure Kubernetes Platform on GKE
 
-A private GKE cluster, keyless delivery, and an AI agent that turns each misconfiguration, threat and exposure finding into a recorded verdict in seconds. Terraform builds it and GitHub Actions deploys to it with no stored key.
+A private GKE Standard cluster across three zones, built by Terraform and deployed to by GitHub Actions with no stored key. Two web workloads run behind GKE Gateway with restricted Pod Security, default-deny NetworkPolicies, autoscaling, and rollouts that drop no connections. An AI triage agent in its own namespace turns each security finding into a recorded verdict in seconds.
 
 > [!NOTE]
 > **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The code is kept as it ran. See [the shutdown worklog](worklog/shutdown.md).
@@ -9,16 +9,18 @@ A private GKE cluster, keyless delivery, and an AI agent that turns each misconf
 
 | Layer | Built with |
 | --- | --- |
-| Infrastructure | Terraform, GKE Standard with private nodes, custom VPC, Cloud NAT, Dataplane V2 |
+| Cluster | GKE Standard, private Shielded nodes in three zones, DNS-only control plane, Dataplane V2, Workload Identity |
+| Kubernetes | Deployments, HPA, PodDisruptionBudgets, topology spread, ResourceQuota, LimitRange, namespaced RBAC |
+| Infrastructure | Terraform, custom VPC, Cloud NAT, Artifact Registry |
 | Edge | GKE Gateway, global load balancer, managed TLS, Cloud Armor, Cloudflare DNS |
 | Delivery | GitHub Actions, Workload Identity Federation, Artifact Registry, deploys by digest |
 | Workload security | Pod Security `restricted`, default-deny NetworkPolicies, Checkov, kube-linter, Dependabot |
 | AI agent | Security Command Center, Pub/Sub, Vertex AI `gemini-2.5-flash`, a Go worker |
 | Evidence | Cloud Monitoring, k6 load tests, failure drills, worklogs with the command behind each number |
 
-| Merge to Ready | Peak load, no failures | Finding to verdict | False contradictions | Threat model |
+| Merge to Ready | Peak load, no failures | Connection failures in a rollout | Finding to verdict | Threat model |
 | --- | --- | --- | --- | --- |
-| **59 s** | **125 rps** on 8 replicas | **2.9 s** | **0** of 125 runs | **11 of 12** closed |
+| **59 s** | **125 rps** on 8 replicas | **0**, from 72 | **2.9 s** | **11 of 12** closed |
 
 Sources are in [Measured](#measured) and the [threat model](reference/threat-model.md).
 
@@ -26,9 +28,11 @@ Sources are in [Measured](#measured) and the [threat model](reference/threat-mod
 
 | Time | Read |
 | --- | --- |
-| 2 min | This page, down to [the AI triage agent](#ai-triage-agent) |
-| 15 min | [The triage worker](reference/triage-worker.md), then the [model scope](decisions.md#model-scope) and [triage idempotency](decisions.md#triage-idempotency) decisions |
-| Platform | [Networking](reference/networking.md), [IAM and federation](reference/iam-and-federation.md), [threat model](reference/threat-model.md) |
+| 2 min | This page, down to [Kubernetes](#kubernetes) |
+| 15 min | [Networking](reference/networking.md), then the [rollouts](worklog/phase-12c-rollouts-connections.md) and [autoscaling](worklog/phase-12d-autoscaling.md) worklogs |
+| Kubernetes | [Kubernetes concepts](reference/kubernetes-concepts.md), using the objects this cluster runs, and [kubectl](reference/kubectl-commands.md) |
+| Security | [IAM and federation](reference/iam-and-federation.md), [threat model](reference/threat-model.md) |
+| AI agent | [The triage worker](reference/triage-worker.md), then the [model scope](decisions.md#model-scope) and [triage idempotency](decisions.md#triage-idempotency) decisions |
 | Proof | [The worklogs](worklog/README.md), with the commands and their output |
 | Failures | [Troubleshooting](troubleshooting.md#symptoms), indexed by symptom |
 
@@ -39,48 +43,107 @@ Sources are in [Measured](#measured) and the [threat model](reference/threat-mod
   <img alt="Users resolve the domain at Cloudflare and reach the demo namespace through a Google load balancer. A developer deploys through GitHub Actions and Workload Identity Federation. Security Command Center findings reach the triage worker through Pub/Sub, which calls Vertex AI for unmatched findings and alerts the owner." src="images/diagrams/overview-light.png">
 </picture>
 
-Terraform builds everything in Google Cloud: a custom VPC, private nodes across three zones, Cloud NAT, and a control plane reachable only by DNS. [Serving and delivery](#platform) are drawn in more detail below.
+Terraform builds everything in Google Cloud: a custom VPC, private nodes across three zones, Cloud NAT, and a control plane reachable only by DNS. [The cluster](#kubernetes) is drawn in more detail below.
 
-## AI triage agent
+## Kubernetes
 
-Security Command Center publishes each finding change to Pub/Sub. A worker in the `agents` namespace counts vulnerability findings and does not triage them, because a vulnerability is fixed by an image pin, not by a decision. It settles every other finding with a reviewed mapping first, and asks Vertex AI only when no mapping matches and the finding is complete. It writes every verdict to an append-only ledger before it notifies anyone.
+### Cluster
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/triage-dark.png">
-  <img alt="A finding change reaches Pub/Sub in about 2 seconds. The reviewed mapping settles a match straight into the verdict ledger. An unmatched finding goes to Vertex AI, 1.3 seconds at p50, and then to the ledger. A verdict that is not accepted emails the owner about 3 minutes later. After 5 failed deliveries a message goes to the dead letter topic." src="images/diagrams/triage-light.png">
-</picture>
+```mermaid
+flowchart TB
+    lb["Global load balancer<br/>Google ranges 130.211.0.0/22, 35.191.0.0/16"]
+    gh["GitHub Actions<br/>k8-lab-deploy identity"]
+    apis["Google APIs<br/>Pub/Sub, Vertex AI"]
 
-### Speed
+    subgraph cluster["GKE Standard, control plane in europe-north1-a, DNS endpoint only"]
+        subgraph pool["Node pool general: 2 to 3 e2-standard-2, zones a, b, c"]
+            subgraph demo["demo namespace: restricted, default deny, quota"]
+                gw["Gateway external<br/>HTTPRoutes"]
+                nginx["nginx<br/>2 replicas, PDB"]
+                sky["sky<br/>2 to 8 replicas, HPA, PDB"]
+            end
+            subgraph agents["agents namespace: restricted, default deny, quota"]
+                worker["triage-worker<br/>1 replica, Recreate"]
+            end
+        end
+    end
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/speed-dark.png">
-  <img alt="Rules path, measured end to end: 2.9 seconds, almost all of it getting the finding to the worker. Model path, summed from measured parts: about 4.4 seconds at p50 and 5.0 seconds at p95." src="images/diagrams/speed-light.png">
-</picture>
+    lb -- ":8080 to Pod IPs, NEG" --> nginx
+    lb -- ":8080 to Pod IPs, NEG" --> sky
+    gw -. "programs" .-> lb
+    gh -- "Role deploy: patch Deployments, smoke Pod" --> demo
+    worker -- "Workload Identity, :443" --> apis
 
-A finding change became a recorded verdict in 2.9 s, measured end to end on the rules path in [slice 8](worklog/phase-15-scc-triage.md#recovery). Getting the finding to the worker is most of it. The model path was not timed end to end. It is that measured path plus the model call, 1.3 s at p50 and 1.9 s at p95 from [slice 13](worklog/phase-15-scc-triage.md#latency-and-cost), plus the 285 ms a notifying verdict took to write in [slice 7](worklog/phase-15-scc-triage.md#kill-after-inference-before-persistence).
+    classDef ext fill:#FEF7E0,stroke:#E37400,stroke-width:1.5px,color:#3C2A00
+    classDef gcp fill:#E8F0FE,stroke:#1A73E8,stroke-width:1.5px,color:#0B2E6B
+    classDef k8s fill:#E6F4EA,stroke:#188038,stroke-width:1.5px,color:#0B3D1C
+    class gh ext
+    class lb,apis gcp
+    class gw,nginx,sky,worker k8s
+    style cluster fill:none,stroke:#1A73E8,stroke-width:1.5px,color:#1A73E8
+    style pool fill:none,stroke:#5F6368,stroke-width:1px,stroke-dasharray:3 3,color:#5F6368
+    style demo fill:none,stroke:#188038,stroke-width:1.5px,stroke-dasharray:6 4,color:#188038
+    style agents fill:none,stroke:#188038,stroke-width:1.5px,stroke-dasharray:6 4,color:#188038
+```
 
-### Results
+| Setting | Value | Why |
+| --- | --- | --- |
+| Mode | GKE Standard, zonal control plane | Direct control over nodes, scaling, networking and upgrades. See [Cluster](decisions.md#cluster) |
+| Nodes | One pool of `e2-standard-2`, 2 to 3 nodes, `BALANCED` across three zones | Two so an evicted replica has somewhere to land. Three zones after one ran out of capacity |
+| Node image | Container-Optimized OS with containerd, Shielded VMs with secure boot, no external IP | Private nodes reach Google APIs through Private Google Access |
+| Networking | VPC-native, Dataplane V2 (eBPF) | Enforces NetworkPolicy with no extra add-on. See [Networking](reference/networking.md) |
+| Control plane | DNS endpoint only, IP endpoints off | IAM authorizes each call, so GitHub Actions needs no bastion |
+| Upgrades | Regular channel, auto-upgrade, surge 1 and unavailable 0, window at 01:00 UTC | A drain happens at night and never removes a node before its replacement exists |
+| Identity | Workload Identity, node metadata server `GKE_METADATA` | A Pod gets a Google identity from its ServiceAccount, with no key file |
+| Add-ons | Gateway API (standard channel), Managed Service for Prometheus, vulnerability scanning | Installed by GKE, declared in [Terraform](terraform/modules/gke/main.tf) |
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/accuracy-dark.png">
-  <img alt="Cases right on all 5 runs: rules alone 14 of 18 dev and 5 of 7 holdout, rules plus model 16 of 18 and 7 of 7. False contradictions fell from 15 of 125 runs to 0 once a contradiction had to name a control covering the finding's resource." src="images/diagrams/accuracy-light.png">
-</picture>
+### Namespaces
 
-The model beats the rules alone only after a contradiction has to land on a control that covers the finding's resource. The evaluation is 25 cases, and one person wrote the holdout. See [slice 14](worklog/phase-15-scc-triage.md#slice-14-a-contradiction-has-to-land-on-something).
+Each namespace is a trust boundary. `demo` holds no Google identity. `agents` holds one and reaches Google APIs, so it is kept apart.
 
-### Guardrails
+| Control | `demo` | `agents` |
+| --- | --- | --- |
+| Pod Security | `restricted`, enforced, warned and audited | Same |
+| NetworkPolicy | Default deny, then DNS, load balancer ranges to `:8080`, and labelled clients | Default deny, then DNS, the metadata server, and `:443` outside private ranges |
+| ResourceQuota | 5 CPU requested, 13 CPU limit, 16 Pods | 1 CPU requested, 2 CPU limit, 4 Pods |
+| LimitRange | Defaults for a container that declares none | Same |
+| RBAC | The pipeline's `deploy` Role: patch Deployments, run a smoke-test Pod | None for the pipeline |
 
-| The model | Enforced by |
+The `demo` quota is sized for `sky` at its HPA maximum during a rollout: 8 replicas, a surge Pod, two Pods still in their `preStop` sleep, `nginx`, and a smoke test.
+
+### Workloads
+
+| Workload | Replicas | Rollout | Disruption budget | Probes |
+| --- | --- | --- | --- | --- |
+| `nginx` | 2 | Rolling, surge 1, unavailable 0 | `minAvailable: 1` | Readiness and liveness on `/healthz` |
+| `sky` | 2 to 8, HPA at 70% of a 350m CPU request | Rolling, surge 1, unavailable 0 | `minAvailable: 1` | Readiness and liveness on `/health` |
+| `triage-worker` | 1 | `Recreate`, so two workers never pull at once | None | Readiness on `/readyz`, liveness on `/healthz` |
+
+Every container runs as non-root with a read-only root filesystem, all capabilities dropped, no privilege escalation, the `RuntimeDefault` seccomp profile, and no mounted ServiceAccount token. Images are pulled by digest. Topology spread prefers one replica per node and counts only the current ReplicaSet, so the spread survives a rollout.
+
+### Rollouts that drop nothing
+
+A rollout dropped 72 connections at 20 rps while the load balancer detached each old Pod. Three changes took it to zero:
+
+| Change | Value | Effect |
+| --- | --- | --- |
+| `preStop` sleep | 35 s, grace period 60 s | A stopping Pod keeps serving until the load balancer lets go. 20 s was not enough: a proxy sent requests 28.6 s after the stop |
+| Backend keep-alive | 620 s | Longer than the load balancer's 600 s reuse, so a backend never closes a connection first |
+| One deploy at a time | Concurrency group `deploy-demo` | Two overlapping rollouts filled the quota with Pods in their `preStop` sleep and refused the smoke test |
+
+GKE also gates each Pod with `cloud.google.com/load-balancer-neg-ready`, so a Pod counts as ready only once the load balancer agrees. See [Phase 12c](worklog/phase-12c-rollouts-connections.md).
+
+### Scaling
+
+| Step | Result |
 | --- | --- |
-| Cannot accept a finding | `accepted` is absent from the schema, refused by the worker, and rejected by the validator |
-| Cannot act | No tools are declared, and a tool call in the reply is rejected |
-| Cannot overspend | 1.00 USD a UTC day. Each call reserves its worst case in the ledger first, so the ceiling survives restarts |
-| Cannot lose a finding to a crash | Record, then notify, then acknowledge. A crash at each boundary was [drilled](worklog/phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled). A message that fails five deliveries is parked on the dead letter topic with its body intact, and an alert fires |
-| Was not steered by an injected instruction | An instruction in the fields a resource's creator controls gave [the same verdict](worklog/phase-15-scc-triage.md#the-injection) as without it. The detector-written fields are covered by unit tests only |
+| 2 fixed replicas | 40 rps settled, no failures |
+| HPA, quota too small | Capped at 5 of 8 replicas, 60 rps |
+| HPA, one zone | A third node failed with `ZONE_RESOURCE_POOL_EXHAUSTED`. 4 of 8 replicas, 100 rps |
+| HPA, three zones | 8 of 8 replicas, **125 rps**, no failures |
+| Spike from two nodes | 97 s from the HPA decision to a Pod on a new node, 2m51s to eight available |
 
-The worker holds no Security Command Center permission and no cluster credential. Its code lives in [ai-k8s](https://github.com/sindredg/ai-k8s). How it works is in [the triage worker reference](reference/triage-worker.md).
-
-## Platform
+The fixes were the quota resized for eight replicas, the CPU limit raised to one core for a single-process server, and the node pool spread over three zones. See [Phase 12d](worklog/phase-12d-autoscaling.md).
 
 ### Serving
 
@@ -139,6 +202,43 @@ sequenceDiagram
 ```
 
 No key is stored anywhere. In `demo`, the pipeline can patch Deployments and run a smoke-test Pod, and can create nothing else. See [operations](reference/operations.md#what-each-path-applies).
+
+## AI triage agent
+
+Security Command Center publishes each finding change to Pub/Sub. A worker in the `agents` namespace counts vulnerability findings and does not triage them, because a vulnerability is fixed by an image pin, not by a decision. It settles every other finding with a reviewed mapping first, and asks Vertex AI only when no mapping matches and the finding is complete. It writes every verdict to an append-only ledger before it notifies anyone.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/triage-dark.png">
+  <img alt="A finding change reaches Pub/Sub in about 2 seconds. The reviewed mapping settles a match straight into the verdict ledger. An unmatched finding goes to Vertex AI, 1.3 seconds at p50, and then to the ledger. A verdict that is not accepted emails the owner about 3 minutes later. After 5 failed deliveries a message goes to the dead letter topic." src="images/diagrams/triage-light.png">
+</picture>
+
+### Speed and accuracy
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/speed-dark.png">
+  <img alt="Rules path, measured end to end: 2.9 seconds, almost all of it getting the finding to the worker. Model path, summed from measured parts: about 4.4 seconds at p50 and 5.0 seconds at p95." src="images/diagrams/speed-light.png">
+</picture>
+
+A finding change became a recorded verdict in 2.9 s on the rules path, most of it spent reaching the worker. See [slice 8](worklog/phase-15-scc-triage.md#recovery). The model path adds a model call of 1.3 s at p50, from [slice 13](worklog/phase-15-scc-triage.md#latency-and-cost).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/diagrams/accuracy-dark.png">
+  <img alt="Cases right on all 5 runs: rules alone 14 of 18 dev and 5 of 7 holdout, rules plus model 16 of 18 and 7 of 7. False contradictions fell from 15 of 125 runs to 0 once a contradiction had to name a control covering the finding's resource." src="images/diagrams/accuracy-light.png">
+</picture>
+
+The model beats the rules alone only once a contradiction has to land on a control that covers the finding's resource. The evaluation is 25 cases, and one person wrote the holdout. See [slice 14](worklog/phase-15-scc-triage.md#slice-14-a-contradiction-has-to-land-on-something).
+
+### Guardrails
+
+| The model | Enforced by |
+| --- | --- |
+| Cannot accept a finding | `accepted` is absent from the schema, refused by the worker, and rejected by the validator |
+| Cannot act | No tools are declared, and a tool call in the reply is rejected |
+| Cannot overspend | 1.00 USD a UTC day. Each call reserves its worst case in the ledger first, so the ceiling survives restarts |
+| Cannot lose a finding to a crash | Record, then notify, then acknowledge. A crash at each boundary was [drilled](worklog/phase-15-scc-triage.md#slice-7-the-crash-boundaries-drilled). A message that fails five deliveries is parked on the dead letter topic with its body intact, and an alert fires |
+| Was not steered by an injected instruction | An instruction in the fields a resource's creator controls gave [the same verdict](worklog/phase-15-scc-triage.md#the-injection) as without it. The detector-written fields are covered by unit tests only |
+
+The worker holds no Security Command Center permission and no cluster credential. Its code lives in [ai-k8s](https://github.com/sindredg/ai-k8s). How it works is in [the triage worker reference](reference/triage-worker.md).
 
 ## What it does
 
