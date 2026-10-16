@@ -1,0 +1,3 @@
+Raw environment export withdrawn during privacy cleanup.
+See worklog/shutdown.md for the historical shutdown result.
+This file is a withdrawal notice, not a replacement command transcript.

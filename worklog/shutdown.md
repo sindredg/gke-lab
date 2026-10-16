@@ -25,6 +25,8 @@ The Terraform in this repository is left as it was at the close on 2026-09-22, d
 
 ## What was recorded first
 
+> Privacy cleanup: the raw files listed below have been replaced with withdrawal notices. The table records what was originally captured; it does not claim the original exports are still published. See [the cleanup note](shutdown/README.md).
+
 Captured while the platform was still running, in `worklog/shutdown/`:
 
 | File | Holds |

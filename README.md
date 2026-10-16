@@ -1,9 +1,11 @@
 # Secure Kubernetes Platform on GKE, with an AI Triage Agent
 
+> Archived lab record. Raw shutdown exports have been withdrawn and textual cloud identifiers replaced with example values. Historical screenshots may still show retired environment details. See [privacy cleanup](worklog/shutdown/README.md).
+
 A private GKE Standard cluster with nodes in three zones, built by Terraform and deployed to by GitHub Actions with no stored key. Two web workloads run behind GKE Gateway with restricted Pod Security, default-deny NetworkPolicies, autoscaling, and rollouts that drop no connections. An AI triage agent in its own namespace turns each security finding into a recorded verdict in seconds.
 
 > [!NOTE]
-> **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The code is kept as it ran. See [the shutdown worklog](worklog/shutdown.md).
+> **Closed on 2026-09-22. Shut down on 2026-09-25.** The infrastructure and the `sindrg.com` DNS records are deleted. The implementation is retained with example cloud identifiers after privacy cleanup. See [the shutdown worklog](worklog/shutdown.md).
 
 ## At a glance
 
